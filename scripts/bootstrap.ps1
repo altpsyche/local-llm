@@ -41,14 +41,17 @@ if (-not $SkipBuild) {
   else { Write-Warning "Skipping llama-swap build — Go missing. Download release binary into bin\llama-swap.exe." }
 } else { Write-Host "Skipping builds (-SkipBuild)" -ForegroundColor DarkGray }
 
-# --- Python venv + tools ---
-Step "Python venv (3.12) + tools"
+# --- Python tools: ISOLATED venvs (open-webui & aider have conflicting dep pins) ---
+Step "Python venvs (3.12) + tools"
 if ($py) {
-  $venv = Join-Path $repo "tools\venv312"
-  if (-not (Test-Path $venv)) { & $py -m venv $venv }
-  & "$venv\Scripts\python.exe" -m pip install --upgrade pip
-  & "$venv\Scripts\python.exe" -m pip install -r (Join-Path $repo "tools\requirements.txt")
-} else { Write-Warning "Skipping venv — Python 3.12 not found." }
+  foreach ($t in @(@{n='venv-webui'; r='webui-requirements.txt'}, @{n='venv-aider'; r='aider-requirements.txt'})) {
+    $venv = Join-Path $repo "tools\$($t.n)"
+    if (-not (Test-Path $venv)) { & $py -m venv $venv }
+    & "$venv\Scripts\python.exe" -m pip install --upgrade pip
+    & "$venv\Scripts\python.exe" -m pip install -r (Join-Path $repo "tools\$($t.r)")
+    if ($LASTEXITCODE -ne 0) { Write-Warning "pip install failed for $($t.n)" }
+  }
+} else { Write-Warning "Skipping venvs — Python 3.12 not found." }
 
 # --- models ---
 if (-not $SkipModels) { Step "Fetch models (multi-GB)"; & "$PSScriptRoot\fetch-models.ps1" }

@@ -1,11 +1,24 @@
 # USAGE
 
-## Start the endpoint
+## One-time setup
+```powershell
+.\scripts\setup-clients.ps1    # wire VS Code Continue + aider to the repo configs (symlink/copy)
+```
+Run once per machine. Open WebUI needs nothing here — it's auto-wired at launch by `up.ps1`.
+
+## Daily: start everything (one command)
+```powershell
+.\scripts\up.ps1               # endpoint :8080 + Open WebUI :3000, in two windows
+```
+Or just the endpoint (for IDE/CLI/your scripts, no UI):
 ```powershell
 .\scripts\start.ps1            # llama-swap on http://localhost:8080/v1
 ```
 Models load on first request and unload when idle (except `fim` + `embed`, pinned). One big model
 (`planner`/`coder`/`chat`) is resident at a time; `fim` + `embed` stay alongside.
+
+> Want it to auto-start at login? Put a shortcut to `up.ps1` in `shell:startup`, or create a Task
+> Scheduler task "At log on" running `pwsh -File C:\local-llm\scripts\up.ps1`.
 
 ## Models exposed
 | `model:` | Role | Backing GGUF |
@@ -23,11 +36,9 @@ curl http://localhost:8080/v1/chat/completions -H "Content-Type: application/jso
 ```
 
 ## VS Code — Continue.dev (autocomplete + chat)
-Config lives at `config/continue/config.yaml` (roles assign models). Activate it:
-```powershell
-New-Item -ItemType SymbolicLink -Path $HOME\.continue\config.yaml -Target C:\local-llm\config\continue\config.yaml
-```
-Roles: `chat/edit/apply` → `coder` (and a `planner` entry for heavy chats), `autocomplete` → `fim`, `embed` → `embed`.
+`setup-clients.ps1` links `config/continue/config.yaml` to `~/.continue/config.yaml`. Just install the
+**Continue** extension. Roles: `chat/edit/apply` → `coder` (plus a `planner` entry for heavy chats),
+`autocomplete` → `fim`, `embed` → `embed`.
 
 ## VS Code — Cline (agentic)
 Settings → API Provider **OpenAI Compatible** → Base URL `http://localhost:8080/v1`, key `sk-local`, Model ID `coder`.
@@ -35,18 +46,18 @@ Settings → API Provider **OpenAI Compatible** → Base URL `http://localhost:8
 For planner≠editor, use aider (below).
 
 ## Terminal — aider (plan ≠ edit, architect mode)
-Config at `config/aider/.aider.conf.yml` (`planner` drafts, `coder` edits). Run:
+`setup-clients.ps1` links `config/aider/.aider.conf.yml` to `~/.aider.conf.yml`, so just run:
 ```powershell
-.\tools\venv312\Scripts\aider --config C:\local-llm\config\aider\.aider.conf.yml
+.\tools\venv-aider\Scripts\aider          # planner drafts, coder applies — config auto-loaded
 ```
 
 ## General chat + RAG — Open WebUI
+Launched by `up.ps1` on **:3000**, pre-wired via env vars (connection `http://localhost:8080/v1`,
+RAG embedding model `embed`) — no manual Admin setup. To run it standalone:
 ```powershell
-.\tools\venv312\Scripts\open-webui serve --port 3000        # browser: http://localhost:3000
+.\tools\venv-webui\Scripts\open-webui serve --port 3000
 ```
-- Admin → Settings → Connections → OpenAI → add `http://localhost:8080/v1` (key `sk-local`).
-- RAG: set the embedding model to `embed`. Upload docs, ask grounded questions.
-- Presets: Workspace → Models → make a "Planner" preset (base `planner`, low temp) and a "Chat" preset (base `chat`).
+Optional presets: Workspace → Models → a "Planner" preset (base `planner`, low temp) and a "Chat" preset (base `chat`).
 
 ## Per-role model separation (no code)
 - **llama-swap**: add a named entry in `config/llama-swap.yaml`.

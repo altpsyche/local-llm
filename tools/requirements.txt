@@ -1,6 +1,0 @@
-# Python tools (installed into tools/venv312 by bootstrap.ps1).
-# Unpinned initially because compatible versions for Python 3.12 shift over time.
-# After a successful install, LOCK them:  tools\venv312\Scripts\pip freeze > tools\requirements.lock
-open-webui
-aider-chat
-huggingface-hub

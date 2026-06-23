@@ -1,8 +1,9 @@
 # Built artifacts (reproduced by scripts/build-*.ps1)
 /bin/
 
-# Python venv (reproduced from tools/requirements.txt)
-/tools/venv312/
+# Python venvs (reproduced from the per-tool requirements files)
+/tools/venv-webui/
+/tools/venv-aider/
 
 # Models (multi-GB, reproduced by scripts/fetch-models.ps1 from models/models.manifest)
 /models/*.gguf

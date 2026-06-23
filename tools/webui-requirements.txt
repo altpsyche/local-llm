@@ -1,0 +1,3 @@
+# Open WebUI — its own venv (tools/venv-webui). Conflicts with aider's pins, so kept separate.
+# Lock after a good install: tools\venv-webui\Scripts\pip freeze > tools\webui-requirements.lock
+open-webui

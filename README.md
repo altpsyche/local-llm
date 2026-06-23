@@ -10,8 +10,9 @@ git clone --recurse-submodules <your-remote> C:\local-llm
 cd C:\local-llm
 # prereqs: CUDA Toolkit 12.8, then:
 scoop install python312 go
-.\scripts\bootstrap.ps1     # submodules -> build -> venv -> fetch models
-.\scripts\start.ps1         # launch the endpoint on :8080
+.\scripts\bootstrap.ps1       # submodules -> build -> venvs -> fetch models
+.\scripts\setup-clients.ps1   # one-time: wire Continue + aider to repo configs
+.\scripts\up.ps1              # daily: endpoint :8080 + Open WebUI :3000
 ```
 
 ## Layout
@@ -21,10 +22,10 @@ scoop install python312 go
 | `config/` | ✅ committed | `llama-swap.yaml`, Continue `config.yaml`, aider `.aider.conf.yml` — your tuning |
 | `models/models.manifest` | ✅ committed | HF repo + filename per model |
 | `models/*.gguf` | ✗ gitignored | fetched by `scripts/fetch-models.ps1` |
-| `tools/requirements.txt` | ✅ committed | Open WebUI + aider (pip) |
-| `tools/venv312/` | ✗ gitignored | Python 3.12 venv |
-| `bin/` | ✗ gitignored | built `llama-server.exe`, `llama-swap.exe` |
-| `scripts/` | ✅ committed | bootstrap / build / fetch / start |
+| `tools/*-requirements.txt` | ✅ committed | Open WebUI + aider pins (separate — they conflict) |
+| `tools/venv-webui,-aider/` | ✗ gitignored | per-tool Python 3.12 venvs |
+| `bin/` | ✗ gitignored | built `llama-server.exe`, `llama-swap.exe`, CUDA DLLs |
+| `scripts/` | ✅ committed | bootstrap · build · fetch · start · setup-clients · up |
 | `docs/` | ✅ committed | SETUP · USAGE · TUNING · FALLBACKS |
 
 ## ⚠️ Build with CUDA 12.8 — never 13.x
