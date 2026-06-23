@@ -1,0 +1,14 @@
+# Built artifacts (reproduced by scripts/build-*.ps1)
+/bin/
+
+# Python venv (reproduced from tools/requirements.txt)
+/tools/venv312/
+
+# Models (multi-GB, reproduced by scripts/fetch-models.ps1 from models/models.manifest)
+/models/*.gguf
+
+# llama.cpp build dir (inside submodule; not tracked by parent anyway)
+/external/llama.cpp/build/
+
+# misc
+*.log
