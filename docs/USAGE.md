@@ -6,13 +6,24 @@
 ```
 Run once per machine. Open WebUI needs nothing here — it's auto-wired at launch by `up.ps1`.
 
-## Daily: start everything (one command)
-```powershell
-.\scripts\up.ps1               # endpoint :8080 + Open WebUI :3000, in two windows
+## The `llm` command (installed on PATH by setup)
 ```
-Or just the endpoint (for IDE/CLI/your scripts, no UI):
+llm up                   start endpoint :8080 + Open WebUI :3000
+llm serve                endpoint only (:8080)
+llm stop                 stop the endpoint (frees VRAM)
+llm aider [args]         aider architect mode in the current folder
+llm webui                Open WebUI only (:3000)
+llm chat <model> <text>  one-shot chat   e.g.  llm chat coder "write fizzbuzz"
+llm models               list model names
+llm bench [gguf]         throughput benchmark
+```
+(Run `scripts\install-cli.ps1` if `llm` isn't found; open a fresh terminal after.)
+
+## Daily: start everything
 ```powershell
-.\scripts\start.ps1            # llama-swap on http://localhost:8080/v1
+llm up        # endpoint :8080 + Open WebUI :3000, in two windows
+# or just the endpoint for IDE/CLI/scripts:
+llm serve     # llama-swap on http://localhost:8080/v1
 ```
 Models load on first request and unload when idle (except `fim` + `embed`, pinned). One big model
 (`planner`/`coder`/`chat`) is resident at a time; `fim` + `embed` stay alongside.
@@ -51,17 +62,15 @@ Settings → API Provider **OpenAI Compatible** → Base URL `http://localhost:8
 For planner≠editor, use aider (below).
 
 ## Terminal — aider (plan ≠ edit, architect mode)
-`setup-clients.ps1` links `config/aider/.aider.conf.yml` to `~/.aider.conf.yml`, so just run:
+`setup-clients.ps1` links `config/aider/.aider.conf.yml` to `~/.aider.conf.yml`. From any project folder:
 ```powershell
-.\tools\venv-aider\Scripts\aider          # planner drafts, coder applies — config auto-loaded
+cd <your-project>
+llm aider          # planner drafts, coder applies — config auto-loaded
 ```
 
 ## General chat + RAG — Open WebUI
-Launched by `up.ps1` on **:3000**, pre-wired via env vars (connection `http://localhost:8080/v1`,
-RAG embedding model `embed`) — no manual Admin setup. To run it standalone:
-```powershell
-.\tools\venv-webui\Scripts\open-webui serve --port 3000
-```
+`llm up` launches it on **:3000**, pre-wired via env (connection `http://localhost:8080/v1`,
+RAG embedding model `embed`) — no manual Admin setup. Standalone: `llm webui`.
 Optional presets: Workspace → Models → a "Planner" preset (base `planner`, low temp) and a "Chat" preset (base `chat`).
 
 ## Per-role model separation (no code)

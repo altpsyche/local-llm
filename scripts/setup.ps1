@@ -36,6 +36,9 @@ $ba = @(); if ($SkipModels) { $ba += '-SkipModels' }
 Step "Wire clients (Continue + aider)"
 & "$PSScriptRoot\setup-clients.ps1"
 
+Step "Install 'llm' CLI command"
+& "$PSScriptRoot\install-cli.ps1"
+
 Step "All set"
-Write-Host "Start the stack anytime:  .\scripts\up.ps1   (endpoint :8080 + Open WebUI :3000)" -ForegroundColor Green
+Write-Host "Open a new terminal, then:  llm up   (or  llm help  for all commands)" -ForegroundColor Green
 if ($Launch) { & "$PSScriptRoot\up.ps1" }
