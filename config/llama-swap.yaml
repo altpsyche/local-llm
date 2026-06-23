@@ -4,7 +4,7 @@
 #       If you clone elsewhere, update the paths below (or keep the canonical location).
 
 macros:
-  srv: "C:/local-llm/bin/llama-server.exe --port ${PORT} -ngl 99 --flash-attn"
+  srv: "C:/local-llm/bin/llama-server.exe --port ${PORT} -ngl 99 --flash-attn on"
   kv:  "--cache-type-k q8_0 --cache-type-v q8_0"
 
 models:

@@ -9,10 +9,10 @@
 
 ## Per-model launch flags (Blackwell / 16GB)
 ```
--ngl 99 -c 16384 --flash-attn --cache-type-k q8_0 --cache-type-v q8_0
+-ngl 99 -c 16384 --flash-attn on --cache-type-k q8_0 --cache-type-v q8_0
 ```
 - `-ngl 99` — all layers on GPU. Lower it only if a model+context spills past 16GB.
-- `--flash-attn` — required; also the prerequisite for KV-cache quant.
+- `--flash-attn on` — required; also the prerequisite for KV-cache quant. (This build needs the explicit `on`/`off`/`auto` value; a bare `--flash-attn` errors.)
 - `--cache-type-k/v q8_0` — halves KV memory, negligible quality loss → more context or bigger model.
   - **Gemma 3 exception:** regresses with q8_0 KV — use f16 (drop the two cache-type flags) for Gemma.
 
