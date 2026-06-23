@@ -8,12 +8,11 @@ One tuned inference engine (`llama.cpp`, CUDA 12.8) behind a hot-swap proxy (`ll
 ```powershell
 git clone --recurse-submodules <your-remote> C:\local-llm
 cd C:\local-llm
-# prereqs: CUDA Toolkit 12.8, then:
-scoop install python312 go
-.\scripts\bootstrap.ps1       # submodules -> build -> venvs -> fetch models
-.\scripts\setup-clients.ps1   # one-time: wire Continue + aider to repo configs
-.\scripts\up.ps1              # daily: endpoint :8080 + Open WebUI :3000
+.\setup.bat            # ONE-SHOT: prereqs (CUDA 12.8, Python, Go) -> build -> models -> wire clients
+.\scripts\up.ps1       # then, each session: endpoint :8080 + Open WebUI :3000
 ```
+`setup.bat` is idempotent — re-run it anytime. `setup.bat -SkipModels` skips the ~38GB downloads;
+`setup.bat -Launch` starts the stack when done. (Prereqs: Git, scoop, and PowerShell 7 must already exist.)
 
 ## Layout
 | Path | Tracked? | What |
@@ -25,7 +24,8 @@ scoop install python312 go
 | `tools/*-requirements.txt` | ✅ committed | Open WebUI + aider pins (separate — they conflict) |
 | `tools/venv-webui,-aider/` | ✗ gitignored | per-tool Python 3.12 venvs |
 | `bin/` | ✗ gitignored | built `llama-server.exe`, `llama-swap.exe`, CUDA DLLs |
-| `scripts/` | ✅ committed | bootstrap · build · fetch · start · setup-clients · up |
+| `setup.bat` | ✅ committed | one-shot post-clone setup (→ `scripts/setup.ps1`) |
+| `scripts/` | ✅ committed | setup · bootstrap · build · fetch · start · setup-clients · up |
 | `docs/` | ✅ committed | SETUP · USAGE · TUNING · FALLBACKS |
 
 ## ⚠️ Build with CUDA 12.8 — never 13.x

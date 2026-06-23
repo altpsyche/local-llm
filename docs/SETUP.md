@@ -16,19 +16,26 @@ If `nvcc` rejects the newest VS 2022 toolset (`unsupported Microsoft Visual Stud
 - add `-DCMAKE_CUDA_FLAGS="-allow-unsupported-compiler"` to the cmake line in `scripts/build-llama.ps1`, **or**
 - install a CUDA-12.8-supported MSVC v14.4x toolset via the VS Installer and select it.
 
-## Build (automated)
+## One-shot (recommended)
 ```powershell
 git clone --recurse-submodules <your-remote> C:\local-llm
 cd C:\local-llm
-.\scripts\bootstrap.ps1            # submodules -> build -> venv -> fetch models
-# or: .\scripts\bootstrap.ps1 -SkipModels    (skip the multi-GB downloads)
+.\setup.bat            # installs CUDA 12.8 + Python 3.12 + Go, then bootstrap + wire clients
+```
+Idempotent. `setup.bat -SkipModels` skips downloads; `setup.bat -Launch` starts the stack after.
+`setup.bat` → `scripts\setup.ps1`: installs prereqs, then runs `bootstrap.ps1` + `setup-clients.ps1`.
+
+## Build (just the build, prereqs already present)
+```powershell
+.\scripts\bootstrap.ps1            # submodules -> build engine+proxy -> venvs -> fetch models
+# or: .\scripts\bootstrap.ps1 -SkipModels
 ```
 
 ## Build (manual / what bootstrap does)
 1. `git submodule update --init --recursive`
 2. `.\scripts\build-llama.ps1` — CUDA-12.8 build of `external/llama.cpp` → `bin/`
 3. `.\scripts\build-llama-swap.ps1` — `go build` of `external/llama-swap` → `bin/`
-4. venv: `python3.12 -m venv tools\venv312` then `pip install -r tools\requirements.txt`
+4. venvs: `tools\venv-aider` + `tools\venv-webui` (separate — conflicting deps), each `pip install -r tools\*-requirements.txt`
 5. `.\scripts\fetch-models.ps1` — download GGUFs per `models/models.manifest`
 
 ## Submodule pinning
