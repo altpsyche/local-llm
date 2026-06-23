@@ -4,9 +4,13 @@
 # ⚠️ VERIFY repo + filename on huggingface.co before fetching — quant filenames vary by
 #    uploader and newer model versions appear over time. Adjust freely; this file is yours to maintain.
 #
-# localname                       | hf_repo                                   | path_in_repo
-qwen3-30b-a3b-q4.gguf             | Qwen/Qwen3-30B-A3B-GGUF                    | Qwen3-30B-A3B-Q4_K_M.gguf
-qwen-coder-14b-q4_k_m.gguf        | Qwen/Qwen2.5-Coder-14B-Instruct-GGUF      | qwen2.5-coder-14b-instruct-q4_k_m.gguf
-qwen3-14b-q4_k_m.gguf             | Qwen/Qwen3-14B-GGUF                        | Qwen3-14B-Q4_K_M.gguf
-qwen-coder-3b-q8_0.gguf           | Qwen/Qwen2.5-Coder-3B-Instruct-GGUF       | qwen2.5-coder-3b-instruct-q8_0.gguf
-bge-m3-q8_0.gguf                  | gpustack/bge-m3-GGUF                       | bge-m3-Q8_0.gguf
+# localname                       | hf_repo                                       | path_in_repo
+# (repos + exact filenames verified present on HF, 2026-06. Casing matters — copy as-is.)
+qwen3-30b-a3b-q4.gguf             | Qwen/Qwen3-30B-A3B-GGUF                        | Qwen3-30B-A3B-Q4_K_M.gguf
+qwen-coder-14b-q4_k_m.gguf        | bartowski/Qwen2.5-Coder-14B-Instruct-GGUF      | Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf
+qwen3-14b-q4_k_m.gguf             | Qwen/Qwen3-14B-GGUF                            | Qwen3-14B-Q4_K_M.gguf
+qwen-coder-3b-q8_0.gguf           | Qwen/Qwen2.5-Coder-3B-Instruct-GGUF            | qwen2.5-coder-3b-instruct-q8_0.gguf
+bge-m3-q8_0.gguf                  | gpustack/bge-m3-GGUF                           | bge-m3-Q8_0.gguf
+# Sizes ≈ 18.6 / 9.0 / 9.0 / 3.6 / 0.6 GB  → ~41 GB total. All single-file (not split).
+# Note: there is NO ~14B Qwen3-Coder (MoE-only at small sizes) → Qwen2.5-Coder-14B is the right dense coder.
+# For pure fill-in-middle autocomplete, the base model Qwen/Qwen2.5-Coder-3B-GGUF is an alternative to -Instruct.
