@@ -35,6 +35,11 @@ curl http://localhost:8080/v1/chat/completions -H "Content-Type: application/jso
   "model": "coder", "messages": [{"role":"user","content":"write a fizzbuzz in rust"}] }'
 ```
 
+> **Qwen3 thinking mode:** `chat`/`planner` (Qwen3) reason in a hidden block first, which can
+> consume your whole `max_tokens` and leave `content` empty. Either give plenty of tokens (512+),
+> or append `/no_think` to your prompt for a fast direct answer. GUI clients (Open WebUI) show/collapse
+> the reasoning automatically, so this only bites raw API calls with small `max_tokens`.
+
 ## VS Code — Continue.dev (autocomplete + chat)
 `setup-clients.ps1` links `config/continue/config.yaml` to `~/.continue/config.yaml`. Just install the
 **Continue** extension. Roles: `chat/edit/apply` → `coder` (plus a `planner` entry for heavy chats),
