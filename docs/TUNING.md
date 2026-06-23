@@ -25,14 +25,15 @@
 ## Perf check — confirm MMQ, not the cuBLAS trap
 Launch the `coder` model and watch startup/throughput. A ~7B should show **prefill ≈ several-thousand tok/s**.
 If prefill is ~1000 tok/s (≈5–6× low), you're on the cuBLAS fallback → the build used CUDA 13.x or a stale cache.
-Fix: rerun `scripts\build-llama.ps1` (it wipes `build/`) with CUDA **12.8**.
+Fix: `scripts\build-llama.ps1 -Force` (wipes `build/` and rebuilds) with CUDA **12.8**.
+(Builds skip if `bin\llama-server.exe` already exists — use `-Force` to actually rebuild.)
 
 ## Bumping the llama.cpp submodule
 ```powershell
 cd external\llama.cpp
 git fetch origin; git checkout <new-commit-or-tag>
 cd ..\..
-.\scripts\build-llama.ps1          # rebuild
+.\scripts\build-llama.ps1 -Force   # rebuild (omit -Force and it would skip, seeing the old binary)
 # if good, pin it:
 git add external/llama.cpp; git commit -m "bump llama.cpp to <commit>"
 ```

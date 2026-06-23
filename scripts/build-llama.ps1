@@ -1,9 +1,16 @@
 #requires -Version 7
 # Build llama.cpp submodule for Blackwell (sm_120) with CUDA 12.8. Copies binaries to bin/.
+#   -Force   rebuild even if bin\llama-server.exe already exists
+param([switch]$Force)
 $ErrorActionPreference = "Stop"
 $repo = Split-Path $PSScriptRoot -Parent
 $src  = Join-Path $repo "external\llama.cpp"
 $bin  = Join-Path $repo "bin"
+
+if (-not $Force -and (Test-Path (Join-Path $bin "llama-server.exe"))) {
+  Write-Host "llama-server.exe already built — skipping (use -Force to rebuild)." -ForegroundColor DarkGray
+  return
+}
 
 if (-not (Test-Path (Join-Path $src "CMakeLists.txt"))) {
   throw "llama.cpp submodule not found at $src. Run: git submodule update --init --recursive"
