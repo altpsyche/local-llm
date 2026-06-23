@@ -44,11 +44,14 @@ if (-not $SkipBuild) {
 # --- Python tools: ISOLATED venvs (open-webui & aider have conflicting dep pins) ---
 Step "Python venvs (3.12) + tools"
 if ($py) {
-  foreach ($t in @(@{n='venv-webui'; r='webui-requirements.txt'}, @{n='venv-aider'; r='aider-requirements.txt'})) {
+  foreach ($t in @(@{n='venv-webui'; base='webui-requirements'}, @{n='venv-aider'; base='aider-requirements'})) {
     $venv = Join-Path $repo "tools\$($t.n)"
     if (-not (Test-Path $venv)) { & $py -m venv $venv }
     & "$venv\Scripts\python.exe" -m pip install --upgrade pip
-    & "$venv\Scripts\python.exe" -m pip install -r (Join-Path $repo "tools\$($t.r)")
+    # prefer the pinned .lock (reproducible); fall back to the loose .txt on a first-ever run
+    $lock = Join-Path $repo "tools\$($t.base).lock"
+    $req  = if (Test-Path $lock) { $lock } else { Join-Path $repo "tools\$($t.base).txt" }
+    & "$venv\Scripts\python.exe" -m pip install -r $req
     if ($LASTEXITCODE -ne 0) { Write-Warning "pip install failed for $($t.n)" }
   }
 } else { Write-Warning "Skipping venvs — Python 3.12 not found." }

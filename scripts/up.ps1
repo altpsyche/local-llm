@@ -18,7 +18,10 @@ if (Test-Path $webui) {
     "`$env:RAG_EMBEDDING_ENGINE='openai';",
     "`$env:RAG_OPENAI_API_BASE_URL='http://localhost:8080/v1';",
     "`$env:RAG_OPENAI_API_KEY='sk-local';",
-    "`$env:RAG_EMBEDDING_MODEL='embed';"
+    "`$env:RAG_EMBEDDING_MODEL='embed';",
+    # keep ALL Open WebUI state inside the (gitignored) repo data dir, not scattered in CWD
+    "`$env:DATA_DIR='$repo\tools\webui-data';",
+    "`$env:WEBUI_SECRET_KEY='local-llm-dev';"
   ) -join ""
   Start-Process pwsh -ArgumentList "-NoExit","-Command","$owEnv & '$webui' serve --port 3000"
   Write-Host "Open WebUI: http://localhost:3000   (first launch takes ~20s)" -ForegroundColor Green

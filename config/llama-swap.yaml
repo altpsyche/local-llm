@@ -1,30 +1,30 @@
 # llama-swap config — one OpenAI-compatible endpoint, models hot-swapped on demand.
 # Adding/retuning a model = edit this file. No code.
-# NOTE: model paths are absolute and assume the repo lives at C:\local-llm.
-#       If you clone elsewhere, update the paths below (or keep the canonical location).
+# Paths use ${env.LLAMA_LOCAL_ROOT}, which scripts\start.ps1 sets to this repo's root —
+# so the stack works wherever you clone it (no hardcoded C:\local-llm).
 
 macros:
-  srv: "C:/local-llm/bin/llama-server.exe --port ${PORT} -ngl 99 --flash-attn on"
+  srv: "${env.LLAMA_LOCAL_ROOT}/bin/llama-server.exe --port ${PORT} -ngl 99 --flash-attn on"
   kv:  "--cache-type-k q8_0 --cache-type-v q8_0"
 
 models:
   planner:                                    # strong reasoning model for planning (aider architect, deep tasks)
-    cmd: "${srv} -m C:/local-llm/models/qwen3-30b-a3b-q4.gguf -c 16384 ${kv} --temp 0.3"
+    cmd: "${srv} -m ${env.LLAMA_LOCAL_ROOT}/models/qwen3-30b-a3b-q4.gguf -c 16384 ${kv} --temp 0.3"
 
   coder:                                      # coding chat + agentic edits (Cline, Continue chat/edit)
-    cmd: "${srv} -m C:/local-llm/models/qwen-coder-14b-q4_k_m.gguf -c 16384 ${kv}"
+    cmd: "${srv} -m ${env.LLAMA_LOCAL_ROOT}/models/qwen-coder-14b-q4_k_m.gguf -c 16384 ${kv}"
 
   chat:                                       # general chat / reasoning
-    cmd: "${srv} -m C:/local-llm/models/qwen3-14b-q4_k_m.gguf -c 16384 ${kv}"
+    cmd: "${srv} -m ${env.LLAMA_LOCAL_ROOT}/models/qwen3-14b-q4_k_m.gguf -c 16384 ${kv}"
     filters:
       setParams: { temperature: 0.7, top_p: 0.9 }   # enforce sampling server-side
 
   fim:                                        # fast autocomplete (FIM); pinned so it never unloads
-    cmd: "${srv} -m C:/local-llm/models/qwen-coder-3b-q8_0.gguf -c 8192"
+    cmd: "${srv} -m ${env.LLAMA_LOCAL_ROOT}/models/qwen-coder-3b-q8_0.gguf -c 8192"
     ttl: 0
 
   embed:                                      # RAG embeddings; pinned
-    cmd: "${srv} -m C:/local-llm/models/bge-m3-q8_0.gguf --embedding"
+    cmd: "${srv} -m ${env.LLAMA_LOCAL_ROOT}/models/bge-m3-q8_0.gguf --embedding"
     ttl: 0
 
 groups:

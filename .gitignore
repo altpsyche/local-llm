@@ -5,8 +5,14 @@
 /tools/venv-webui/
 /tools/venv-aider/
 
+# Open WebUI runtime state (db, uploads, secret key)
+/tools/webui-data/
+.webui_secret_key
+
 # Models (multi-GB, reproduced by scripts/fetch-models.ps1 from models/models.manifest)
 /models/*.gguf
+/models/*.part
+/models/.hf-cache/
 
 # llama.cpp build dir (inside submodule; not tracked by parent anyway)
 /external/llama.cpp/build/

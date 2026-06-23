@@ -29,6 +29,10 @@ if (Test-Path "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8") {
   Write-Warning "winget not found — install CUDA Toolkit 12.8 manually, then re-run."
 }
 
+# Refresh PATH so shims from packages just installed by scoop (go, python312) are visible
+# to bootstrap in THIS session — otherwise a fresh machine may "miss" go and skip the proxy build.
+$env:PATH = [Environment]::GetEnvironmentVariable('PATH','Machine') + ';' + [Environment]::GetEnvironmentVariable('PATH','User')
+
 Step "Bootstrap: submodules -> build engine+proxy -> venvs+tools -> models"
 $ba = @(); if ($SkipModels) { $ba += '-SkipModels' }
 & "$PSScriptRoot\bootstrap.ps1" @ba

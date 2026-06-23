@@ -7,6 +7,15 @@ $config = Join-Path $repo "config\llama-swap.yaml"
 
 if (-not (Test-Path $swap))   { throw "llama-swap.exe missing. Run scripts\build-llama-swap.ps1 (or drop the release binary in bin\)." }
 if (-not (Test-Path $config)) { throw "config missing: $config" }
+# portable port-in-use check (Get-NetTCPListener isn't present on all boxes)
+$inUse = $false
+try { $c = [System.Net.Sockets.TcpClient]::new(); $c.Connect('127.0.0.1', 8080); $inUse = $true; $c.Close() } catch {}
+if ($inUse) {
+  Write-Warning "Port 8080 already in use — the endpoint is probably already running ('llm stop' to free it)."; return
+}
 
-Write-Host "Endpoint: http://localhost:8080/v1   (Ctrl+C to stop)" -ForegroundColor Green
-& $swap --config $config --listen :8080
+# Expose the repo root to the config so model paths relocate with the clone (see config\llama-swap.yaml).
+$env:LLAMA_LOCAL_ROOT = ($repo -replace '\\','/')
+
+Write-Host "Endpoint: http://localhost:8080/v1   (loopback only; Ctrl+C to stop)" -ForegroundColor Green
+& $swap --config $config --listen 127.0.0.1:8080

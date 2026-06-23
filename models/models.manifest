@@ -11,6 +11,6 @@ qwen-coder-14b-q4_k_m.gguf        | bartowski/Qwen2.5-Coder-14B-Instruct-GGUF   
 qwen3-14b-q4_k_m.gguf             | Qwen/Qwen3-14B-GGUF                            | Qwen3-14B-Q4_K_M.gguf
 qwen-coder-3b-q8_0.gguf           | Qwen/Qwen2.5-Coder-3B-Instruct-GGUF            | qwen2.5-coder-3b-instruct-q8_0.gguf
 bge-m3-q8_0.gguf                  | gpustack/bge-m3-GGUF                           | bge-m3-Q8_0.gguf
-# Sizes ≈ 18.6 / 9.0 / 9.0 / 3.6 / 0.6 GB  → ~41 GB total. All single-file (not split).
+# Sizes (measured) ≈ 17.3 / 8.4 / 8.4 / 3.4 / 0.6 GB  → ~38 GB total. All single-file (not split).
 # Note: there is NO ~14B Qwen3-Coder (MoE-only at small sizes) → Qwen2.5-Coder-14B is the right dense coder.
 # For pure fill-in-middle autocomplete, the base model Qwen/Qwen2.5-Coder-3B-GGUF is an alternative to -Instruct.
