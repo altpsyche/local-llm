@@ -14,8 +14,9 @@ rarely touches the others.
 
 ## Engine won't build (CUDA pain)
 - **Prebuilt llama.cpp:** grab `*-bin-win-cuda-12.4-x64.zip` from
-  [llama.cpp releases](https://github.com/ggml-org/llama.cpp/releases), unzip into `bin/`. Runs on Blackwell,
-  slightly slower than a 12.8 source build; skips the whole toolchain.
+  [llama.cpp releases](https://github.com/ggml-org/llama.cpp/releases), or `scoop install llama.cpp-cu124`,
+  and put the binaries in `bin/`. Runs on Blackwell, slightly slower than a 12.8 source build; skips the
+  whole toolchain. (Also copy the matching CUDA DLLs into `bin/`, like `build-llama.ps1` does.)
 - **Ollama (nuclear option):** official Blackwell support, no build. Install it, then repoint every tool to
   `http://localhost:11434/v1`. Lower peak perf, but everything else in this repo (Continue/aider/Open WebUI
   configs) works unchanged — just change the `apiBase`/port.
@@ -30,9 +31,10 @@ Distinct Plan-vs-Act models don't work over an OpenAI-compatible endpoint as of 
 - Use **aider architect mode** for true planner≠editor (`config/aider/.aider.conf.yml`).
 
 ## Open WebUI won't install (Python)
-Needs Python 3.11/3.12 (3.14 too new, 3.10 too old). If pip still fails, use the
-**AnythingLLM** desktop installer (no Python) — add the OpenAI connection `http://localhost:8080/v1`,
-pick a separate embedding backend, organize docs per workspace.
+Needs Python 3.11/3.12 (3.14 too new, 3.10 too old). It lives in its **own** venv (`tools/venv-webui`),
+separate from aider (`tools/venv-aider`) — their dependency pins conflict (`ddgs`), so never merge them
+into one venv. If pip still fails, use the **AnythingLLM** desktop installer (no Python) — add the OpenAI
+connection `http://localhost:8080/v1`, pick a separate embedding backend, organize docs per workspace.
 
 ## Model 404 on fetch
 HF repo/filename changed or the quant name differs. Open the repo on huggingface.co, copy the exact

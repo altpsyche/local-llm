@@ -23,8 +23,11 @@
 - **MoE memory = TOTAL params**, not active. An 80B-A3B at Q4 ≈ 45 GB → heavy RAM offload.
 
 ## Perf check — confirm MMQ, not the cuBLAS trap
-Launch the `coder` model and watch startup/throughput. A ~7B should show **prefill ≈ several-thousand tok/s**.
-If prefill is ~1000 tok/s (≈5–6× low), you're on the cuBLAS fallback → the build used CUDA 13.x or a stale cache.
+```powershell
+llm bench            # = llama-bench on the 14B coder
+```
+Healthy on this RTX 5080: **pp512 ≈ 4300 t/s, tg128 ≈ 86 t/s** (14B Q4). If prefill is ~1000 t/s
+(≈5–6× low), you're on the cuBLAS fallback → the build used CUDA 13.x or a stale cache.
 Fix: `scripts\build-llama.ps1 -Force` (wipes `build/` and rebuilds) with CUDA **12.8**.
 (Builds skip if `bin\llama-server.exe` already exists — use `-Force` to actually rebuild.)
 
@@ -42,4 +45,4 @@ Always re-verify the perf check above after a bump (Blackwell MMQ status can reg
 ## Swapping/adding a model
 1. Add the GGUF to `models/models.manifest` and run `scripts\fetch-models.ps1`.
 2. Add a named entry in `config/llama-swap.yaml` (copy an existing one, change `-m` path).
-3. (Optional) add it to a `groups` member list. Restart `start.ps1`.
+3. (Optional) add it to a `groups` member list, then restart the endpoint: `llm stop` then `llm serve`.
