@@ -9,10 +9,13 @@
 /tools/webui-data/
 .webui_secret_key
 
-# Models (multi-GB, reproduced by scripts/fetch-models.ps1 from models/models.manifest)
+# Models (multi-GB, reproduced by scripts/fetch-models.ps1 from config/models.psd1)
 /models/*.gguf
 /models/*.part
 /models/.hf-cache/
+
+# Generated runtime config (reproduced by scripts/gen-llama-swap.ps1 from config/models.psd1)
+/config/llama-swap.yaml
 
 # llama.cpp build dir (inside submodule; not tracked by parent anyway)
 /external/llama.cpp/build/

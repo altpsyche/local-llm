@@ -6,7 +6,9 @@ $swap   = Join-Path $repo "bin\llama-swap.exe"
 $config = Join-Path $repo "config\llama-swap.yaml"
 
 if (-not (Test-Path $swap))   { throw "llama-swap.exe missing. Run scripts\build-llama-swap.ps1 (or drop the release binary in bin\)." }
-if (-not (Test-Path $config)) { throw "config missing: $config" }
+# Regenerate the runtime config from the single source (config/models.psd1) so edits /
+# profile switches always take effect, and a fresh clone always has a config. Sub-second.
+& "$PSScriptRoot\gen-llama-swap.ps1"
 # portable port-in-use check (Get-NetTCPListener isn't present on all boxes)
 $inUse = $false
 try { $c = [System.Net.Sockets.TcpClient]::new(); $c.Connect('127.0.0.1', 8080); $inUse = $true; $c.Close() } catch {}

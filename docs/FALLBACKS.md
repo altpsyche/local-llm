@@ -38,4 +38,5 @@ connection `http://localhost:8080/v1`, pick a separate embedding backend, organi
 
 ## Model 404 on fetch
 HF repo/filename changed or the quant name differs. Open the repo on huggingface.co, copy the exact
-filename, fix the line in `models/models.manifest`, rerun `scripts\fetch-models.ps1`.
+`repo`/`path`, fix that model's entry in `config/models.psd1`, rerun `scripts\fetch-models.ps1`
+(or `llm fetch`). Preview the resolved URLs first with `llm fetch --list`.

@@ -21,9 +21,10 @@ downloads; `setup.bat -Launch` starts the stack. (Prereqs: Git, scoop, PowerShel
 | Path | Tracked? | What |
 |---|---|---|
 | `external/` | submodules | `llama.cpp` (CUDA-12.8 build) + `llama-swap` (Go proxy) |
-| `config/` | ✅ committed | `llama-swap.yaml`, Continue `config.yaml`, aider `.aider.conf.yml` — your tuning |
-| `models/models.manifest` | ✅ committed | HF repo + filename per model |
-| `models/*.gguf` | ✗ gitignored | fetched by `scripts/fetch-models.ps1` |
+| `config/models.psd1` | ✅ committed | **single source of truth** — every model + VRAM profile |
+| `config/` (other) | ✅ committed | Continue `config.yaml`, aider `.aider.conf.yml` — your tuning |
+| `config/llama-swap.yaml` | ✗ gitignored | **generated** from `models.psd1` by `gen-llama-swap.ps1` |
+| `models/*.gguf` | ✗ gitignored | fetched by `scripts/fetch-models.ps1` (per the active profile) |
 | `tools/*-requirements.txt` | ✅ committed | Open WebUI + aider pins (separate — they conflict) |
 | `tools/venv-webui,-aider/` | ✗ gitignored | per-tool Python 3.12 venvs |
 | `bin/` | ✗ gitignored | built `llama-server.exe`, `llama-swap.exe`, CUDA DLLs |

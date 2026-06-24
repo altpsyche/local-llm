@@ -39,8 +39,9 @@ Idempotent. `setup.bat -SkipModels` skips downloads; `setup.bat -Launch` starts 
 2. `.\scripts\build-llama.ps1` — CUDA-12.8 build of `external/llama.cpp` → `bin/` (skips if already built; `-Force` to rebuild)
 3. `.\scripts\build-llama-swap.ps1` — `go build` of `external/llama-swap` → `bin/`
 4. venvs: `tools\venv-aider` + `tools\venv-webui` (separate — conflicting deps), each `pip install -r tools\*-requirements.txt`
-5. `.\scripts\fetch-models.ps1` — download GGUFs per `models/models.manifest`
-6. `.\scripts\install-cli.ps1` — put the `llm` command on PATH
+5. `.\scripts\gen-llama-swap.ps1` — generate `config/llama-swap.yaml` from `config/models.psd1`
+6. `.\scripts\fetch-models.ps1` — download GGUFs for the active profile in `config/models.psd1`
+7. `.\scripts\install-cli.ps1` — put the `llm` command on PATH
 
 ## Submodule pinning
 The repo records exact submodule commits. To use a Blackwell-verified `llama.cpp`:

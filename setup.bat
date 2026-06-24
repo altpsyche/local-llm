@@ -6,6 +6,7 @@ REM  creates venvs + installs tools -> fetches models -> wires Continue/aider.
 REM
 REM  Usage:   setup.bat                 (full)
 REM           setup.bat -SkipModels     (skip the ~38GB model downloads)
+REM           setup.bat -Profile 12gb   (smaller models for ~12GB VRAM; see config\models.psd1)
 REM           setup.bat -Launch         (start the stack when done)
 REM ============================================================================
 setlocal
