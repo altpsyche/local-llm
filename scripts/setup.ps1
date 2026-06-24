@@ -2,8 +2,9 @@
 # Master setup orchestrator (invoked by setup.bat). Idempotent; safe to re-run.
 #   .\scripts\setup.ps1                # full
 #   .\scripts\setup.ps1 -SkipModels    # skip the ~38GB model downloads
+#   .\scripts\setup.ps1 -Profile 12gb  # smaller models for ~12GB VRAM (see config/models.psd1)
 #   .\scripts\setup.ps1 -Launch        # start the stack (up.ps1) when finished
-param([switch]$SkipModels, [switch]$Launch)
+param([switch]$SkipModels, [switch]$Launch, [string]$Profile)
 $ErrorActionPreference = "Stop"
 $repo = Split-Path $PSScriptRoot -Parent
 function Have($n){ [bool](Get-Command $n -ErrorAction SilentlyContinue) }
@@ -35,6 +36,7 @@ $env:PATH = [Environment]::GetEnvironmentVariable('PATH','Machine') + ';' + [Env
 
 Step "Bootstrap: submodules -> build engine+proxy -> venvs+tools -> models"
 $ba = @(); if ($SkipModels) { $ba += '-SkipModels' }
+if ($Profile) { $ba += @('-Profile', $Profile) }
 & "$PSScriptRoot\bootstrap.ps1" @ba
 
 Step "Wire clients (Continue + aider)"

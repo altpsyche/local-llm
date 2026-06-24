@@ -3,12 +3,16 @@
 # Re-runnable. Heavy steps are skippable via flags.
 #   .\scripts\bootstrap.ps1                 # full
 #   .\scripts\bootstrap.ps1 -SkipModels     # everything except the multi-GB downloads
-param([switch]$SkipModels, [switch]$SkipBuild)
+param([switch]$SkipModels, [switch]$SkipBuild, [string]$Profile)
 $ErrorActionPreference = "Stop"
 $repo = Split-Path $PSScriptRoot -Parent
+. "$PSScriptRoot\_models.ps1"
 
 function Have($n) { [bool](Get-Command $n -ErrorAction SilentlyContinue) }
 function Step($m) { Write-Host "`n=== $m ===" -ForegroundColor Cyan }
+
+# Persist the requested profile (config/models.psd1) so fetch + generate both follow it.
+if ($Profile) { Step "Select profile '$Profile'"; Set-ActiveProfile $Profile }
 
 # --- prereq report ---
 Step "Prereqs"
@@ -55,6 +59,10 @@ if ($py) {
     if ($LASTEXITCODE -ne 0) { Write-Warning "pip install failed for $($t.n)" }
   }
 } else { Write-Warning "Skipping venvs — Python 3.12 not found." }
+
+# --- runtime config (generated from config/models.psd1; runs even with -SkipModels) ---
+Step "Generate llama-swap config"
+& "$PSScriptRoot\gen-llama-swap.ps1"
 
 # --- models ---
 if (-not $SkipModels) { Step "Fetch models (multi-GB)"; & "$PSScriptRoot\fetch-models.ps1" }

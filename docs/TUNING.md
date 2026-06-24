@@ -1,6 +1,9 @@
 # TUNING
 
-## llama-swap config (`config/llama-swap.yaml`)
+## llama-swap config (generated from `config/models.psd1`)
+`config/llama-swap.yaml` is **generated** by `scripts/gen-llama-swap.ps1` from the single source
+[config/models.psd1](../config/models.psd1) (and regenerated on every `llm serve`). Edit the PSD1, not
+the YAML. The generated YAML has this shape:
 - `macros:` — reusable strings (the shared `llama-server` invocation, KV flags). Reference as `${name}`.
 - `models:` — one named entry per model; `cmd` is the only required field. `${PORT}` is auto-assigned.
 - `ttl: 0` — never auto-unload (used to pin `fim` + `embed`).
@@ -43,6 +46,12 @@ git add external/llama.cpp; git commit -m "bump llama.cpp to <commit>"
 Always re-verify the perf check above after a bump (Blackwell MMQ status can regress between commits).
 
 ## Swapping/adding a model
-1. Add the GGUF to `models/models.manifest` and run `scripts\fetch-models.ps1`.
-2. Add a named entry in `config/llama-swap.yaml` (copy an existing one, change `-m` path).
-3. (Optional) add it to a `groups` member list, then restart the endpoint: `llm stop` then `llm serve`.
+Everything lives in one place — `config/models.psd1`:
+1. Add (or edit) the model under a profile: `repo`/`path` (HF source), `gguf` (local filename),
+   `ctx`, and optionally `kv = $true`, `flags`, `setParams`, `ttl`/`pinned`, `embedding`.
+2. (Optional) add its role to the `group.members` list to make it swap with the other big models.
+3. Download + apply: `llm fetch` (pulls new GGUFs) then `llm serve` (regenerates the config + restarts).
+   Preview downloads first with `llm fetch --list`.
+
+For a whole alternate set (e.g. low-VRAM), add a new key under `profiles` and switch with
+`llm profile <name>`. See [docs/USAGE.md](USAGE.md#changing-the-active-profile).
