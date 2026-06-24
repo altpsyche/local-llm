@@ -33,8 +33,9 @@
 #  Keys starting with '_' (e.g. _targetVRAM) are METADATA, not models — skipped
 #  by the generator and the downloader.
 #
-#  ⚠️ VERIFY repo + exact filename on huggingface.co before fetching — quant
-#     filenames vary by uploader and casing matters. Copy them as-is.
+#  All repo/path URLs below verified live on huggingface.co (HTTP 200) on 2026-06-24.
+#  If you CHANGE a repo/path, re-check it — quant filenames vary by uploader and casing
+#  matters. Quick check:  llm fetch --list <profile>  then HEAD the resolve URLs.
 # =============================================================================
 @{
   # The active profile. '$env:LLM_PROFILE' (if set) overrides this for one
