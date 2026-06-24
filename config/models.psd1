@@ -69,7 +69,7 @@
     }
 
     # Smaller quants + shorter context for ~12GB cards.
-    # ⚠️ NOT VRAM-validated by the authors (no 12GB card here). A 12GB-card owner
+    # NOT VRAM-validated by the authors (no 12GB card here). A 12GB-card owner
     #    must confirm peak fit: resident big model + pinned fim + embed + KV + ctx.
     #    If a model OOMs at -ngl 99, add e.g. flags=@('-ngl','30') to spill layers to RAM.
     '12gb' = @{
