@@ -11,8 +11,21 @@ $repo = Split-Path $PSScriptRoot -Parent
 function Have($n) { [bool](Get-Command $n -ErrorAction SilentlyContinue) }
 function Step($m) { Write-Host "`n=== $m ===" -ForegroundColor Cyan }
 
-# Persist the requested profile (config/models.psd1) so fetch + generate both follow it.
-if ($Profile) { Step "Select profile '$Profile'"; Set-ActiveProfile $Profile }
+# Profile selection. Explicit -Profile wins; otherwise suggest one from detected VRAM (never forces).
+if ($Profile) {
+  Step "Select profile '$Profile'"; Set-ActiveProfile $Profile
+} else {
+  $vram = Get-GpuVramGB
+  $sug  = Get-SuggestedProfile -VramGB $vram
+  $active = (Get-ModelsConfig).activeProfile
+  if ($sug -and $sug -ne $active) {
+    Step "VRAM check"
+    Write-Warning ("Detected ~$vram GB VRAM; active profile is '$active', but '$sug' fits better. " +
+      "Re-run as  setup.bat -Profile $sug  (or later: llm profile $sug). Continuing with '$active' for now.")
+  } elseif ($sug) {
+    Write-Host "VRAM ~$vram GB -> profile '$active' (good fit)." -ForegroundColor DarkGray
+  }
+}
 
 # --- prereq report ---
 Step "Prereqs"

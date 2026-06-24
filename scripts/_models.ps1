@@ -51,6 +51,32 @@ function Get-Models {
   return @{ profile = $name; config = $cfg; models = @($list) }
 }
 
+function Get-GpuVramGB {
+  # Total VRAM of GPU 0 in whole GB via nvidia-smi; $null if nvidia-smi is absent/unparseable.
+  if (-not (Get-Command nvidia-smi -ErrorAction SilentlyContinue)) { return $null }
+  try {
+    $mib = & nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>$null | Select-Object -First 1
+    if ("$mib".Trim() -match '^\d+$') { return [int][math]::Round([int]$mib / 1024) }
+  } catch {}
+  return $null
+}
+
+function Get-SuggestedProfile {
+  # Largest '<N>gb' profile whose N <= detected VRAM (auto-scales as 32gb/64gb are added).
+  # Falls back to the smallest sized profile if the card is below them all. $null if no GPU info.
+  param([int]$VramGB)
+  if (-not $VramGB) { $VramGB = Get-GpuVramGB }
+  if (-not $VramGB) { return $null }
+  $cfg = Get-ModelsConfig
+  $sized = foreach ($p in $cfg.profiles.Keys) {
+    if ($p -match '^(\d+)gb$') { [pscustomobject]@{ name = $p; gb = [int]$matches[1] } }
+  }
+  if (-not $sized) { return $null }
+  $fit = $sized | Where-Object { $_.gb -le $VramGB } | Sort-Object gb -Descending | Select-Object -First 1
+  if ($fit) { return $fit.name }
+  return ($sized | Sort-Object gb | Select-Object -First 1).name
+}
+
 function Set-ActiveProfile {
   param([Parameter(Mandatory)][string]$Name)
   $cfg = Get-ModelsConfig

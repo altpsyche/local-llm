@@ -33,7 +33,9 @@ switch ($cmd) {
       $mark  = if ($p -eq $cfg.activeProfile) { '* ' } else { '  ' }
       Write-Host ("{0}{1,-6} ~{2,5:N1} GB  {3}/{4} on disk   {5}" -f $mark, $p, $gb, $have, $roles.Count, $cfg.profiles[$p]._targetVRAM)
     }
-    Write-Host "`n(* = active)  switch: llm profile <name>   peek without switching: llm fetch --list <name>" -ForegroundColor DarkGray
+    $vram = Get-GpuVramGB; $sug = Get-SuggestedProfile -VramGB $vram
+    if ($sug) { Write-Host "`nDetected ~$vram GB VRAM -> suggested '$sug'." -ForegroundColor DarkGray }
+    Write-Host "(* = active)  switch: llm profile <name>   peek without switching: llm fetch --list <name>" -ForegroundColor DarkGray
   }
   'profile'  {
     if (-not $rest.Count) { Write-Host "usage: llm profile <name>   (see: llm profiles)"; break }

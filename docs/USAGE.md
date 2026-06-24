@@ -184,5 +184,8 @@ Optional presets: Workspace → Models → a "Planner" preset (base `planner`, l
 - **Anytime**: `llm profile 12gb` (persists the choice + regenerates the config). `llm profiles` lists
   them with footprints; `llm fetch --list 12gb` previews a profile's downloads without pulling anything.
 
+`setup` reads your GPU (`nvidia-smi`) and, if the active profile doesn't fit your VRAM, **suggests** a
+better one (it never switches for you — pass `-Profile` to act on it). `llm profiles` shows the same hint.
+
 Switching does not delete the previous profile's GGUFs — they stay in `models/`. Run `llm fetch` after
 switching to pull any models the new profile is missing.
