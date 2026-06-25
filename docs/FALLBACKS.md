@@ -8,7 +8,7 @@ Because all clients point at a single OpenAI-compatible endpoint, the stack is l
 | Proxy / model router | llama-swap (Go build) | llama-swap release binary | Ollama's built-in model swapping |
 | Chat and RAG UI | Open WebUI (Python 3.12, port 3000) | AnythingLLM desktop installer | LM Studio |
 | IDE autocomplete | Continue.dev | twinny | LM Studio + Continue |
-| Plan and edit separately | aider architect mode | Cline single-model | — |
+| Plan and edit separately | aider architect mode | Cline Plan/Act | Cline single-model |
 | Embeddings | bge-m3 | nomic-embed-text | Open WebUI's built-in nomic |
 
 ## Engine won't build
@@ -22,10 +22,6 @@ The build script (`scripts/build-llama.ps1`) detects your GPU and CUDA version a
 ## No Go compiler for llama-swap
 
 Download the native Windows `llama-swap.exe` from the [llama-swap releases page](https://github.com/mostlygeek/llama-swap/releases) and place it in `bin/`. Skip `build-llama-swap.ps1`.
-
-## Cline plan/act with separate models
-
-Cline's Plan/Act model split does not work correctly over OpenAI-compatible endpoints as of this writing ([cline#8126](https://github.com/cline/cline/issues/8126)). Use a single model (`coder`) for both modes; agentic editing works fine in that configuration. If you need a genuine planning-versus-editing split, use aider architect mode instead (`config/aider/.aider.conf.yml` is already set up for it).
 
 ## Open WebUI won't install
 

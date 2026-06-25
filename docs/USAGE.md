@@ -108,7 +108,7 @@ Install the **Cline** extension, start the endpoint, then open Cline settings an
 
 Set the context window to `16384` to match the server's limit. Leaving it higher causes Cline to send requests the server can't handle. Leave image support off; these models are not multimodal.
 
-Cline's distinct Plan/Act model setting (using one model for planning and another for editing) does not work correctly over OpenAI-compatible endpoints as of this writing ([cline#8126](https://github.com/cline/cline/issues/8126)). Use a single model (`coder`) for both modes. If you need a genuine planning-versus-editing split, use aider instead.
+To use separate models for planning and editing, enable **Use different models for Plan and Act** in Cline settings and set the Plan Model ID to `planner` and the Act Model ID to `coder`. This works correctly on OpenAI-compatible endpoints since Cline 3.43 ([cline#8126](https://github.com/cline/cline/issues/8126) fixed). Switching between modes evicts the other model from VRAM, so there is a brief load pause.
 
 Cline burns through its 16k context window quickly on multi-step tasks. Keep tasks focused and start a new task when the history grows large. For tasks that need deeper reasoning, set the Model ID to `planner`; it's slower but handles complex planning better. Switching models evicts the other from VRAM.
 
