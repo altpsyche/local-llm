@@ -37,6 +37,11 @@ if ($sug -and $sug -eq $active) {
   Row "Profile" $active 'DarkGray'
 }
 
+$port = $cfg.defaults.port ?? 8080
+$epUp = $false
+try { $c = [System.Net.Sockets.TcpClient]::new(); $c.Connect('127.0.0.1', $port); $epUp = $true; $c.Close() } catch {}
+Row "Endpoint" "http://localhost:$port/v1  ($(if ($epUp) { 'up' } else { 'not running' }))" $(if ($epUp) { 'Green' } else { 'DarkGray' })
+
 # CUDA
 $cudaBase  = 'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA'
 $installed = @()

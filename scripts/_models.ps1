@@ -17,7 +17,16 @@ $script:ModelsFile = Join-Path $script:ModelsRepo 'config\models.psd1'
 
 function Get-ModelsConfig {
   if (-not (Test-Path $script:ModelsFile)) { throw "models config not found: $script:ModelsFile" }
-  return Import-PowerShellDataFile -LiteralPath $script:ModelsFile
+  $base = Import-PowerShellDataFile -LiteralPath $script:ModelsFile
+  $userFile = Join-Path (Split-Path $script:ModelsFile) 'user.psd1'
+  if (Test-Path $userFile) {
+    $user = Import-PowerShellDataFile -LiteralPath $userFile
+    if ($user.defaults) {
+      if (-not $base.defaults) { $base.defaults = @{} }
+      foreach ($k in $user.defaults.Keys) { $base.defaults[$k] = $user.defaults[$k] }
+    }
+  }
+  return $base
 }
 
 function Resolve-ProfileName {

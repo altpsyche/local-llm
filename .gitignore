@@ -20,5 +20,8 @@
 # llama.cpp build dir (inside submodule; not tracked by parent anyway)
 /external/llama.cpp/build/
 
+# User-local config overrides (gitignored so git pull never clobbers tuning)
+/config/user.psd1
+
 # misc
 *.log

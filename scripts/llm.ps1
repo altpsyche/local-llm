@@ -4,7 +4,9 @@
 $ErrorActionPreference = "Stop"
 $repo = Split-Path $PSScriptRoot -Parent
 . "$PSScriptRoot\_models.ps1"
-$base = "http://localhost:8080/v1"
+$d        = (Get-ModelsConfig).defaults
+$port     = $d.port ?? 8080
+$base     = "http://localhost:$port/v1"
 # Copy out of the automatic $args (whose slicing unwraps oddly) into plain arrays.
 $argv = @($args)
 $cmd  = if ($argv.Count) { $argv[0] } else { 'help' }
@@ -14,7 +16,7 @@ switch ($cmd) {
   'diagnose' { & "$repo\scripts\diagnose.ps1" }
   'up'     { & "$repo\scripts\up.ps1" }                       # endpoint + Open WebUI
   'serve'  { & "$repo\scripts\start.ps1" }                    # endpoint only (:8080)
-  'webui'  { & "$repo\tools\venv-webui\Scripts\open-webui.exe" serve --port 3000 }
+  'webui'  { & "$repo\tools\venv-webui\Scripts\open-webui.exe" serve --port ($d.webuiPort ?? 3000) }
   'aider'  { & "$repo\tools\venv-aider\Scripts\aider.exe" @rest }   # runs in your current folder
   'models' { (Invoke-RestMethod "$base/models").data.id }
   'gen'    { & "$repo\scripts\gen-llama-swap.ps1" @rest }     # regenerate config from models.psd1
@@ -53,7 +55,7 @@ switch ($cmd) {
   'chat'   {
     if ($rest.Count -lt 2) { Write-Host "usage: llm chat <model> <prompt...>   (models: coder chat planner fim)"; break }
     $model = $rest[0]; $prompt = ($rest[1..($rest.Count-1)] -join ' ')
-    $body = @{ model=$model; messages=@(@{role='user';content=$prompt}); max_tokens=512 } | ConvertTo-Json -Depth 6
+    $body = @{ model=$model; messages=@(@{role='user';content=$prompt}); max_tokens=($d.maxTokens ?? 512) } | ConvertTo-Json -Depth 6
     try {
       $r = Invoke-RestMethod "$base/chat/completions" -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 300
       $r.choices[0].message.content
@@ -64,14 +66,15 @@ switch ($cmd) {
     Write-Host "stopped llama-swap + llama-server (frees VRAM). Close the Open WebUI window to stop it." -ForegroundColor Green
   }
   default  {
+    $wp = $d.webuiPort ?? 3000
 @"
 llm — local LLM stack (endpoint $base)
   llm diagnose             GPU, VRAM, CUDA, and model file health check
-  llm up                   start endpoint :8080 + Open WebUI :3000 (two windows)
-  llm serve                start the endpoint only (:8080)
+  llm up                   start endpoint :$port + Open WebUI :$wp (two windows)
+  llm serve                start the endpoint only (:$port)
   llm stop                 stop the endpoint (frees VRAM)
   llm aider [args]         aider architect mode in the CURRENT folder
-  llm webui                Open WebUI only (:3000)
+  llm webui                Open WebUI only (:$wp)
   llm chat <model> <text>  one-shot chat   e.g.  llm chat coder "write fizzbuzz"
   llm models               list model names (coder chat planner fim embed)
   llm bench [gguf]         throughput benchmark (default: active profile's coder)

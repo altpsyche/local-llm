@@ -15,6 +15,26 @@ $name     = $resolved.profile
 $cfg      = $resolved.config
 $models   = $resolved.models
 
+# --- build macros from defaults (overrides the empty placeholder values in models.psd1) ---
+$d = $cfg.defaults
+if (-not $d) { throw 'models.psd1 is missing the defaults block. Add it per MODULE-A docs.' }
+
+$ngl   = if ($null -ne $d.ngl)   { $d.ngl }   else { 99 }
+$fa    = if ($d.flashAttn -ne $false) { '--flash-attn on' } else { '' }
+$batch = if ($d.batch -and $d.batch -ne 512)  { "-b $($d.batch)" }   else { '' }
+$par   = if ($d.parallel -and $d.parallel -gt 1) { "-np $($d.parallel)" } else { '' }
+$thr   = if ($d.threads -and $d.threads -gt 0)   { "-t $($d.threads)" }   else { '' }
+$srvParts = @(
+    '${env.LLAMA_LOCAL_ROOT}/bin/llama-server.exe',
+    '--port ${PORT}',
+    "-ngl $ngl",
+    $fa, $batch, $par, $thr
+) | Where-Object { $_ -ne '' }
+$cfg.macros['srv'] = $srvParts -join ' '
+
+$kvQuant = if ($null -ne $d.kvQuant) { $d.kvQuant } else { 'q8_0' }
+$cfg.macros['kv'] = if ($kvQuant) { "--cache-type-k $kvQuant --cache-type-v $kvQuant" } else { '' }
+
 # --- format helpers (InvariantCulture so 0.7 never becomes "0,7" on EU locales) ---
 $inv = [System.Globalization.CultureInfo]::InvariantCulture
 function Fmt($v) {
@@ -29,6 +49,9 @@ function Assert-NoQuote($s, $what) { if ($s -match '"') { throw "value for $what
 $roleNames = $models.role
 foreach ($m in $models) {
   Assert-NoQuote $m.gguf "model '$($m.role)' gguf"
+  if ($m.gguf -match 'gemma' -and $m.kv -eq $true) {
+    Write-Warning "[$($m.role)] Gemma model with kv=`$true — KV quant causes quality regression. Set kvQuant='' in config/user.psd1 or set kv=`$false on the model."
+  }
   $parts = @('${srv}', "-m `${env.LLAMA_LOCAL_ROOT}/models/$($m.gguf)")
   if ($null -ne $m.ctx)              { $parts += "-c $(Fmt $m.ctx)" }
   if ($m.kv)                         { $parts += '${kv}' }
