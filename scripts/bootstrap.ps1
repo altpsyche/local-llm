@@ -75,12 +75,14 @@ if ($py) {
   foreach ($t in @(@{n='venv-webui'; base='webui-requirements'}, @{n='venv-aider'; base='aider-requirements'})) {
     $venv = Join-Path $repo "tools\$($t.n)"
     if (-not (Test-Path $venv)) { & $py -m venv $venv }
-    & "$venv\Scripts\python.exe" -m pip install --upgrade pip
+    $venvPy = Join-Path $venv "Scripts\python.exe"
+    if (-not (Test-Path $venvPy)) { throw "venv creation failed for $($t.n) — $venvPy not found" }
+    & $venvPy -m pip install --upgrade pip
     # prefer the pinned .lock (reproducible); fall back to the loose .txt on a first-ever run
     $lock = Join-Path $repo "tools\$($t.base).lock"
     $req  = if (Test-Path $lock) { $lock } else { Join-Path $repo "tools\$($t.base).txt" }
-    & "$venv\Scripts\python.exe" -m pip install -r $req
-    if ($LASTEXITCODE -ne 0) { Write-Warning "pip install failed for $($t.n)" }
+    & $venvPy -m pip install -r $req
+    if ($LASTEXITCODE -ne 0) { throw "pip install failed for $($t.n) — re-run scripts\bootstrap.ps1 to retry" }
   }
 } else { Write-Warning "Skipping venvs — Python 3.12 not found." }
 

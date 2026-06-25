@@ -34,6 +34,25 @@ if (-not (Get-Command curl.exe -ErrorAction SilentlyContinue)) { throw "curl.exe
 $hdr = @()
 if ($env:HF_TOKEN) { $hdr = @("-H", "Authorization: Bearer $env:HF_TOKEN") }
 
+# disk-space pre-check
+$missing  = @($models | Where-Object { -not (Test-Path (Join-Path $outDir $_.gguf)) })
+$neededGB = ($missing | Measure-Object -Property sizeGB -Sum).Sum
+if ($neededGB -gt 0) {
+  $drive = Split-Path $outDir -Qualifier   # string-only parse, works before dir exists
+  $drv   = Get-PSDrive ($drive -replace ':','') -ErrorAction SilentlyContinue
+  if ($drv) {
+    $freeGB = $drv.Free / 1GB
+    if ($freeGB -lt $neededGB * 1.2) {
+      Write-Warning ("Low disk space: {0:N1} GB free, ~{1:N1} GB needed (+20% buffer = {2:N1} GB)" -f `
+        $freeGB, $neededGB, ($neededGB * 1.2))
+    }
+  }
+}
+$staleParts = @(Get-ChildItem $outDir -Filter '*.gguf.part' -ErrorAction SilentlyContinue)
+if ($staleParts.Count -gt 0) {
+  Write-Warning "$($staleParts.Count) stale .part file(s) in $outDir — curl will resume them."
+}
+
 $fail = 0
 foreach ($m in $models) {
   $dest = Join-Path $outDir $m.gguf

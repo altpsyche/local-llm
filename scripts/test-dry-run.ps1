@@ -369,8 +369,8 @@ if (-not $anyPresent10) {
     }
     $expGB10 = [float]$m10['sizeGB']
     $actGB10 = (Get-Item $f10).Length / 1GB
-    $lo10    = [math]::Round($expGB10 * 0.90, 2)
-    $hi10    = [math]::Round($expGB10 * 1.10, 2)
+    $lo10    = [math]::Round($expGB10 * (1 - $script:SizeTolPct), 2)
+    $hi10    = [math]::Round($expGB10 * (1 + $script:SizeTolPct), 2)
     Assert "[$pname10][$role] $name10 size within 10% of $($expGB10)GB" `
       ($actGB10 -ge $lo10 -and $actGB10 -le $hi10) `
       "$([math]::Round($actGB10,2))GB" "${lo10}–${hi10}GB"

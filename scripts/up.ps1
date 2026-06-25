@@ -12,6 +12,10 @@ $port       = $cfg.defaults.port ?? 8080
 $webuiPort  = $cfg.defaults.webuiPort ?? 3000
 $secret     = $cfg.defaults.webuiSecret ?? 'local-llm-dev'
 
+if (Test-PortInUse -Port $port) {
+  Write-Warning "Port $port already in use — endpoint may already be running ('llm stop' to free it)."; return
+}
+
 # 1) endpoint
 Start-Process pwsh -ArgumentList "-NoExit","-File","$repo\scripts\start.ps1"
 

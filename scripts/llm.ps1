@@ -65,6 +65,11 @@ switch ($cmd) {
     Get-Process llama-swap,llama-server -ErrorAction SilentlyContinue | Stop-Process -Force
     Write-Host "stopped llama-swap + llama-server (frees VRAM). Close the Open WebUI window to stop it." -ForegroundColor Green
   }
+  'verify-urls' {
+    $vArgs = @{}
+    if ($rest.Count) { $vArgs['Profile'] = $rest[0] }
+    & "$repo\scripts\verify-urls.ps1" @vArgs
+  }
   default  {
     $wp = $d.webuiPort ?? 3000
 @"
@@ -81,6 +86,7 @@ llm — local LLM stack (endpoint $base)
   llm profiles             list VRAM profiles + which is active (config/models.psd1)
   llm profile <name>       switch profile (regenerates config; e.g. llm profile 12gb)
   llm fetch [--list] [p]   download models for a profile (--list = dry-run, no download)
+  llm verify-urls [<profile>]  check HuggingFace URLs for all models (needs network)
   llm gen                  regenerate config/llama-swap.yaml from config/models.psd1
 "@
   }

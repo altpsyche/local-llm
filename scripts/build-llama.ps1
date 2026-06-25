@@ -79,12 +79,29 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "cmake build failed" }
 } finally { Pop-Location }
 
-# --- stage binaries + DLLs into bin/ ---
-New-Item -ItemType Directory -Force -Path $bin | Out-Null
-Copy-Item (Join-Path $build "bin\Release\*") $bin -Force
-# CUDA runtime DLLs are not statically linked — copy them so bin/ runs without CUDA on PATH.
-foreach ($d in "cublas64_$cudaMajor.dll", "cublasLt64_$cudaMajor.dll", "cudart64_$cudaMajor.dll") {
-  Copy-Item (Join-Path $CudaRoot "bin\$d") $bin -Force -ErrorAction SilentlyContinue
+# --- stage into _build_tmp\, then atomic-swap into bin/ on success ---
+$tmp = Join-Path $bin "_build_tmp"
+if (Test-Path $tmp) { Remove-Item -Recurse -Force $tmp }
+New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+
+try {
+  Copy-Item (Join-Path $build "bin\Release\*") $tmp -Force
+  # CUDA runtime DLLs are not statically linked — copy them so bin/ runs without CUDA on PATH.
+  foreach ($d in "cublas64_$cudaMajor.dll", "cublasLt64_$cudaMajor.dll", "cudart64_$cudaMajor.dll") {
+    Copy-Item (Join-Path $CudaRoot "bin\$d") $tmp -Force -ErrorAction SilentlyContinue
+  }
+  if (-not (Test-Path (Join-Path $tmp "llama-server.exe"))) {
+    throw "llama-server.exe missing from staged output — aborting swap"
+  }
+  New-Item -ItemType Directory -Force -Path $bin | Out-Null
+  $svr = Join-Path $bin "llama-server.exe"
+  if (Test-Path $svr) { Move-Item $svr "$svr.bak" -Force }
+  Copy-Item (Join-Path $tmp "*") $bin -Force
+} catch {
+  Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+  throw
 }
+Remove-Item -Recurse -Force $tmp
+
 Write-Host "Built. llama-server at: $bin\llama-server.exe" -ForegroundColor Green
 & (Join-Path $bin "llama-server.exe") --version

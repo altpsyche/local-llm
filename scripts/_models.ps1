@@ -11,9 +11,12 @@
 #   Get-SuggestedProfile [-VramGB n]  -> best-fit profile name for the detected VRAM, or $null
 #   Get-GpuArch                       -> @{ CudaArch; Gen; MinCudaMajor } for GPU 0, or $null
 #   Get-BestCudaRoot [-CudaArch n]    -> best installed CUDA toolkit path for the arch, or $null
+#   Test-PortInUse -Port n [-Hostname h]  -> $true if port is in use
+#   $script:SizeTolPct                    -> 0.10 — ±10% size tolerance for GGUF validation
 
 $script:ModelsRepo = Split-Path $PSScriptRoot -Parent
 $script:ModelsFile = Join-Path $script:ModelsRepo 'config\models.psd1'
+$script:SizeTolPct = 0.10
 
 function Get-ModelsConfig {
   if (-not (Test-Path $script:ModelsFile)) { throw "models config not found: $script:ModelsFile" }
@@ -134,6 +137,16 @@ function Get-BestCudaRoot {
   } | Where-Object { $_ -and $_.Major -ge $minMajor } | Sort-Object Major, Minor -Descending
   if ($installed) { return $installed[0].Path }
   return $null
+}
+
+function Test-PortInUse {
+  param([int]$Port, [string]$Hostname = '127.0.0.1')
+  try {
+    $c = [System.Net.Sockets.TcpClient]::new()
+    $c.Connect($Hostname, $Port)
+    $c.Close()
+    return $true
+  } catch { return $false }
 }
 
 function Set-ActiveProfile {

@@ -10,6 +10,15 @@ $repo = Split-Path $PSScriptRoot -Parent
 . "$PSScriptRoot\_models.ps1"
 function Have($n){ [bool](Get-Command $n -ErrorAction SilentlyContinue) }
 function Step($m){ Write-Host "`n==== $m ====" -ForegroundColor Cyan }
+function Install-WithWinget {
+  param([string]$Package, [string[]]$ExtraArgs = @())
+  winget install $Package @ExtraArgs `
+    --accept-package-agreements --accept-source-agreements --disable-interactivity
+  # -1978335189 (0x8A150011 as signed int32) = APPINSTALLER_CLI_ERROR_PACKAGE_ALREADY_INSTALLED
+  if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne -1978335189) {
+    throw "winget install $Package failed (exit $LASTEXITCODE)"
+  }
+}
 
 Step "System check"
 & "$PSScriptRoot\diagnose.ps1"
@@ -36,7 +45,7 @@ if ($gpuInfo -and $gpuInfo.CudaArch -ge 120) {
     Write-Host "CUDA 12.8 ok (Blackwell)"
   } elseif (Have winget) {
     Write-Host "Installing CUDA Toolkit 12.8 (required for Blackwell, large download)..." -ForegroundColor Yellow
-    winget install Nvidia.CUDA --version 12.8 --accept-package-agreements --accept-source-agreements --disable-interactivity
+    Install-WithWinget 'Nvidia.CUDA' @('--version','12.8')
   } else {
     Write-Warning "winget not found — install CUDA Toolkit 12.8 manually for Blackwell, then re-run."
   }
@@ -46,7 +55,7 @@ if ($gpuInfo -and $gpuInfo.CudaArch -ge 120) {
     Write-Host "CUDA ok: $cudaRoot ($($gpuInfo.Gen))"
   } elseif (Have winget) {
     Write-Host "No CUDA 12.x found for $($gpuInfo.Gen). Installing CUDA 12.8..." -ForegroundColor Yellow
-    winget install Nvidia.CUDA --version 12.8 --accept-package-agreements --accept-source-agreements --disable-interactivity
+    Install-WithWinget 'Nvidia.CUDA' @('--version','12.8')
   } else {
     Write-Warning "No compatible CUDA found. Install CUDA 12.x manually, then re-run."
   }
@@ -56,7 +65,7 @@ if ($gpuInfo -and $gpuInfo.CudaArch -ge 120) {
     Write-Host "CUDA 12.8 ok"
   } elseif (Have winget) {
     Write-Host "Installing CUDA Toolkit 12.8..." -ForegroundColor Yellow
-    winget install Nvidia.CUDA --version 12.8 --accept-package-agreements --accept-source-agreements --disable-interactivity
+    Install-WithWinget 'Nvidia.CUDA' @('--version','12.8')
   } else {
     Write-Warning "winget not found — install CUDA Toolkit 12.8 manually, then re-run."
   }

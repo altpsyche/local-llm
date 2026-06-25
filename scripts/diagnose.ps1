@@ -84,7 +84,7 @@ foreach ($role in @('planner','coder','chat','fim','embed')) {
     $bad += "$($m['gguf'])  (partial download — delete and re-run: llm fetch)"
   } else {
     $expGB = [float]$m['sizeGB']; $actGB = (Get-Item $f).Length / 1GB
-    if ($actGB -lt $expGB * 0.90 -or $actGB -gt $expGB * 1.10) {
+    if ($actGB -lt $expGB * (1 - $script:SizeTolPct) -or $actGB -gt $expGB * (1 + $script:SizeTolPct)) {
       $bad += "$($m['gguf'])  (size $([math]::Round($actGB,1)) GB, expected ~$expGB GB — re-download: llm fetch)"
     }
   }
