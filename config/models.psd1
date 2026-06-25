@@ -68,6 +68,19 @@
       embed   = @{ repo = 'gpustack/bge-m3-GGUF';                      path = 'bge-m3-Q8_0.gguf';                      gguf = 'bge-m3-q8_0.gguf';           sizeGB = 0.6; embedding = $true; ttl = 0; pinned = $true }
     }
 
+    # Tight fit for ~8GB cards (RTX 3070, 4060, etc.). One big model at a time alongside
+    # pinned fim + embed. If a model OOMs at -ngl 99, lower it (e.g. flags=@('-ngl','24'))
+    # until it fits. UNVALIDATED: no 8GB card in the authors' hardware; verify with llm bench.
+    # Repo/path URLs need verification on huggingface.co before first use (llm fetch --list 8gb).
+    '8gb' = @{
+      _targetVRAM = '~8GB (ctx 4096, smaller quants) — NEEDS on-card validation'
+      planner = @{ repo = 'Qwen/Qwen3-8B-GGUF';                       path = 'Qwen3-8B-Q4_K_M.gguf';                  gguf = 'qwen3-8b-q4_k_m.gguf';       ctx = 4096; kv = $true; sizeGB = 5.0; flags = @('--temp', '0.3') }
+      coder   = @{ repo = 'bartowski/Qwen2.5-Coder-7B-Instruct-GGUF'; path = 'Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf'; gguf = 'qwen-coder-7b-q4_k_m.gguf';  ctx = 4096; kv = $true; sizeGB = 4.7 }
+      chat    = @{ repo = 'Qwen/Qwen3-4B-GGUF';                       path = 'Qwen3-4B-Q4_K_M.gguf';                  gguf = 'qwen3-4b-q4_k_m.gguf';       ctx = 4096; kv = $true; sizeGB = 2.6; setParams = @{ temperature = 0.7; top_p = 0.9 } }
+      fim     = @{ repo = 'Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF';   path = 'qwen2.5-coder-1.5b-instruct-q8_0.gguf'; gguf = 'qwen-coder-1.5b-q8_0.gguf'; ctx = 2048; sizeGB = 1.9; ttl = 0; pinned = $true }
+      embed   = @{ repo = 'gpustack/bge-m3-GGUF';                     path = 'bge-m3-Q8_0.gguf';                      gguf = 'bge-m3-q8_0.gguf';           sizeGB = 0.6; embedding = $true; ttl = 0; pinned = $true }
+    }
+
     # Smaller quants + shorter context for ~12GB cards.
     # NOT VRAM-validated by the authors (no 12GB card here). A 12GB-card owner
     #    must confirm peak fit: resident big model + pinned fim + embed + KV + ctx.

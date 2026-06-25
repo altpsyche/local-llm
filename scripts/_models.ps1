@@ -3,10 +3,14 @@
 # Dot-source from another script:  . "$PSScriptRoot\_models.ps1"
 #
 # Exposes:
-#   Get-ModelsConfig            -> raw hashtable from the PSD1
+#   Get-ModelsConfig                  -> raw hashtable from the PSD1
 #   Resolve-ProfileName [-Profile n]  -> profile name (arg -> $env:LLM_PROFILE -> activeProfile)
-#   Get-Models [-Profile n]     -> @{ profile; config; models } ; models = ordered role objects
-#   Set-ActiveProfile -Name n   -> rewrite the activeProfile line in place (validated)
+#   Get-Models [-Profile n]           -> @{ profile; config; models } ; models = ordered role objects
+#   Set-ActiveProfile -Name n         -> rewrite the activeProfile line in place (validated)
+#   Get-GpuVramGB                     -> total VRAM of GPU 0 in whole GB, or $null
+#   Get-SuggestedProfile [-VramGB n]  -> best-fit profile name for the detected VRAM, or $null
+#   Get-GpuArch                       -> @{ CudaArch; Gen; MinCudaMajor } for GPU 0, or $null
+#   Get-BestCudaRoot [-CudaArch n]    -> best installed CUDA toolkit path for the arch, or $null
 
 $script:ModelsRepo = Split-Path $PSScriptRoot -Parent
 $script:ModelsFile = Join-Path $script:ModelsRepo 'config\models.psd1'
@@ -75,6 +79,52 @@ function Get-SuggestedProfile {
   $fit = $sized | Where-Object { $_.gb -le $VramGB } | Sort-Object gb -Descending | Select-Object -First 1
   if ($fit) { return $fit.name }
   return ($sized | Sort-Object gb | Select-Object -First 1).name
+}
+
+function Get-GpuArch {
+  # Returns @{ CudaArch = int; Gen = string; MinCudaMajor = int } for GPU 0, or $null.
+  # CudaArch maps directly to CMake CUDA_ARCHITECTURES (120 = Blackwell, 89 = Ada, 86 = Ampere).
+  if (-not (Get-Command nvidia-smi -ErrorAction SilentlyContinue)) { return $null }
+  try {
+    $cap = (& nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>$null | Select-Object -First 1)
+    $cap = "$cap".Trim()
+    if ($cap -notmatch '^\d+\.\d+$') { return $null }
+    $arch = [int]($cap -replace '\.', '')   # "8.9" -> 89, "12.0" -> 120
+    $gen = switch ($arch) {
+      { $_ -ge 120 }                 { 'Blackwell';    break }
+      { $_ -ge 89 -and $_ -lt 120 } { 'Ada Lovelace'; break }
+      { $_ -ge 80 -and $_ -lt 89 }  { 'Ampere';       break }
+      { $_ -ge 75 -and $_ -lt 80 }  { 'Turing';       break }
+      default                        { "sm_$arch" }
+    }
+    $minCudaMajor = if ($arch -ge 120) { 12 } else { 11 }
+    return @{ CudaArch = $arch; Gen = $gen; MinCudaMajor = $minCudaMajor }
+  } catch {}
+  return $null
+}
+
+function Get-BestCudaRoot {
+  # Returns the best available CUDA toolkit path for the given architecture, or $null.
+  # Blackwell (arch >= 120): requires exactly 12.8 for the MMQ fast path.
+  # Ada / Ampere: prefers latest 12.x, falls back to 11.x.
+  param([int]$CudaArch = 0)
+  $base = 'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA'
+  if (-not (Test-Path $base)) { return $null }
+
+  if ($CudaArch -ge 120) {
+    $p = Join-Path $base 'v12.8'
+    if (Test-Path $p) { return $p }
+    return $null
+  }
+
+  $minMajor = if ($CudaArch -ge 75) { 11 } else { 10 }
+  $installed = Get-ChildItem $base -Directory | ForEach-Object {
+    if ($_.Name -match '^v(\d+)\.(\d+)$') {
+      [pscustomobject]@{ Path = $_.FullName; Major = [int]$Matches[1]; Minor = [int]$Matches[2] }
+    }
+  } | Where-Object { $_ -and $_.Major -ge $minMajor } | Sort-Object Major, Minor -Descending
+  if ($installed) { return $installed[0].Path }
+  return $null
 }
 
 function Set-ActiveProfile {

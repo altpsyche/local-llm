@@ -1,60 +1,82 @@
 # SETUP
 
-## Hardware target
-Windows 11, NVIDIA RTX 5080 (16GB VRAM, Blackwell `sm_120`), Ryzen 9 7950X3D, 64GB RAM.
+## Hardware
 
-## Prereqs
-| Tool | Install |
+The verified configuration is Windows 11 with an NVIDIA RTX 5080 (16 GB VRAM, Blackwell sm_120), a Ryzen 9 7950X3D, and 64 GB of system RAM. RTX 4000-series (Ada Lovelace) and RTX 3000-series (Ampere) cards are supported with the same scripts; setup detects the GPU and adapts the build automatically. Profiles for 16 GB, 12 GB, and 8 GB VRAM are included.
+
+## Prerequisites
+
+`setup.bat` installs these automatically, so you normally don't need to handle them by hand. They're listed here in case you're troubleshooting a partial build or want to understand what's being installed.
+
+| Tool | Install command |
 |---|---|
-| **CUDA Toolkit 12.8** | `winget install Nvidia.CUDA --version 12.8` (toolkit only; driver already present). **NOT 13.x.** |
+| **CUDA Toolkit** | Auto-detected. Blackwell (RTX 5000): requires 12.8 exactly (`winget install Nvidia.CUDA --version 12.8`). Ada (RTX 4000) / Ampere (RTX 3000): any CUDA 12.x. |
 | Python 3.12 | `scoop install python312` |
-| Go | `scoop install go` (or use the llama-swap release binary) |
-| Git, CMake, VS 2022 + C++ x64 | already present |
+| Go | `scoop install go` |
+| Git, CMake, VS 2022 with C++ x64 | assumed present |
 
-> `setup.bat` installs all of the above automatically if missing — you normally don't run these by hand.
+You need to supply Git, Scoop, and PowerShell 7 yourself before running setup. Those are the only tools setup can't install.
 
-### CUDA 12.8 ↔ MSVC gotcha
-If `nvcc` rejects the newest VS 2022 toolset (`unsupported Microsoft Visual Studio version`):
-- add `-DCMAKE_CUDA_FLAGS="-allow-unsupported-compiler"` to the cmake line in `scripts/build-llama.ps1`, **or**
-- install a CUDA-12.8-supported MSVC v14.4x toolset via the VS Installer and select it.
+### CUDA and the MSVC compiler version
 
-## One-shot (recommended)
+Some CUDA versions reject the newest VS 2022 toolset with an `unsupported Microsoft Visual Studio version` error during the build. If this happens, either add `-DCMAKE_CUDA_FLAGS="-allow-unsupported-compiler"` to the cmake line in `scripts/build-llama.ps1`, or install an MSVC toolset that matches your CUDA version through the VS Installer (v14.4x for CUDA 12.8).
+
+## Installing
+
 ```powershell
 git clone --recurse-submodules <your-remote> C:\local-llm
 cd C:\local-llm
-.\setup.bat            # installs CUDA 12.8 + Python 3.12 + Go, then bootstrap + wire clients
+.\setup.bat
 ```
-Idempotent. `setup.bat -SkipModels` skips downloads; `setup.bat -Launch` starts the stack after.
-`setup.bat` → `scripts\setup.ps1`: installs prereqs, then runs `bootstrap.ps1` + `setup-clients.ps1` +
-`install-cli.ps1` (which puts the **`llm`** command on PATH). Open a new terminal afterwards, then `llm up`.
 
-## Build (just the build, prereqs already present)
+`setup.bat` takes the repository from a fresh clone to a fully working stack. In order, it installs prerequisites, builds the inference engine and proxy from source, creates isolated Python environments for the web UI and terminal tools, downloads the model files, wires the VS Code and terminal clients, and puts the `llm` command on your PATH.
+
+The script is idempotent. If something fails partway through, fix the issue and re-run it; completed steps are skipped.
+
+- `setup.bat -SkipModels` builds and configures everything but skips the downloads
+- `setup.bat -Launch` starts the stack automatically when setup finishes
+- `setup.bat -Profile 12gb` selects the smaller model profile before downloading anything
+
+After setup, open a new terminal to pick up the PATH change, then run `llm up`.
+
+## What setup does, step by step
+
+`setup.bat` calls `scripts\setup.ps1`, which runs these steps in order. You can run any of them individually if you need to redo a specific part:
+
+0. `.\scripts\diagnose.ps1` prints a machine summary (GPU, VRAM, CUDA, active profile, model files) before anything is installed. Run `llm diagnose` at any time to see the same report.
+1. `git submodule update --init --recursive` fetches the llama.cpp and llama-swap source trees.
+2. `.\scripts\build-llama.ps1` compiles llama.cpp against CUDA 12.8 and writes the binaries to `bin/`. Skips if the binary already exists; pass `-Force` to rebuild from scratch.
+3. `.\scripts\build-llama-swap.ps1` compiles the model-swap proxy.
+4. Python virtual environments are created in `tools/venv-aider` and `tools/venv-webui` and their dependencies are installed. These are kept separate on purpose, because their dependency pins conflict and can't be merged into one environment.
+5. `.\scripts\gen-llama-swap.ps1` generates `config/llama-swap.yaml` from `config/models.psd1`.
+6. `.\scripts\fetch-models.ps1` downloads GGUF model files for the active profile.
+7. `.\scripts\install-cli.ps1` puts the `llm` command on PATH.
+
+Running `.\scripts\bootstrap.ps1` directly does steps 1 through 6 without the client wiring. Add `-SkipModels` to skip the downloads.
+
+## Pinning the llama.cpp version
+
+The repository records the exact llama.cpp commit that is verified to work on Blackwell. To pin a different commit:
+
 ```powershell
-.\scripts\bootstrap.ps1            # submodules -> build engine+proxy -> venvs -> fetch models
-# or: .\scripts\bootstrap.ps1 -SkipModels
+cd external\llama.cpp
+git checkout <commit-or-tag>
+cd ..\..
+git add external/llama.cpp
+git commit -m "pin llama.cpp to <commit>"
 ```
 
-## Build (manual / what bootstrap does)
-1. `git submodule update --init --recursive`
-2. `.\scripts\build-llama.ps1` — CUDA-12.8 build of `external/llama.cpp` → `bin/` (skips if already built; `-Force` to rebuild)
-3. `.\scripts\build-llama-swap.ps1` — `go build` of `external/llama-swap` → `bin/`
-4. venvs: `tools\venv-aider` + `tools\venv-webui` (separate — conflicting deps), each `pip install -r tools\*-requirements.txt`
-5. `.\scripts\gen-llama-swap.ps1` — generate `config/llama-swap.yaml` from `config/models.psd1`
-6. `.\scripts\fetch-models.ps1` — download GGUFs for the active profile in `config/models.psd1`
-7. `.\scripts\install-cli.ps1` — put the `llm` command on PATH
+See [TUNING.md](TUNING.md#bumping-the-llamacpp-submodule) for bumping to a newer version and re-verifying performance afterward.
 
-## Submodule pinning
-The repo records exact submodule commits. To use a Blackwell-verified `llama.cpp`:
+## Verifying the install
+
 ```powershell
-cd external\llama.cpp; git checkout <known-good-commit>; cd ..\..
-git add external/llama.cpp; git commit -m "pin llama.cpp to <commit>"
+llm serve                 # start the inference endpoint on port 8080
+llm models                # should list: planner, coder, chat, fim, embed
+llm bench                 # performance check (see expected numbers below)
+llm chat coder "hi"       # end-to-end sanity check
 ```
-See [TUNING.md](TUNING.md#bumping-the-llamacpp-submodule) for bumping later.
 
-## Verify
-```powershell
-llm serve                 # start the endpoint (:8080)
-llm models                # lists planner/coder/chat/fim/embed
-llm bench                 # ~pp512 4300 t/s, tg128 86 t/s on RTX 5080 = fast MMQ path
-llm chat coder "hi"       # end-to-end sanity
-```
+On an RTX 5080 with the 14B Q4 coder model, expected numbers are **pp512 ≈ 4300 t/s, tg128 ≈ 86 t/s**. These confirm the engine is on the fast Blackwell hardware path. Ada and Ampere cards will show lower numbers — what matters is that prefill is not disproportionately slow relative to generation (see [TUNING.md](TUNING.md#verifying-the-fast-path)).
+
+If prefill throughput is around 1000 t/s rather than 4000+, the build is using a slower fallback, most likely because it was compiled against CUDA 13.x or has a stale build cache. Fix this by running `scripts\build-llama.ps1 -Force`, which wipes the build directory and recompiles from scratch. Make sure CUDA 12.8 is the active toolkit when you do.

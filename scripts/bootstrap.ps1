@@ -1,5 +1,5 @@
 #requires -Version 7
-# One-shot setup: submodules -> build engine + proxy -> Python venv -> fetch models.
+# One-shot setup: submodules -> build engine + proxy -> Python venvs -> fetch models.
 # Re-runnable. Heavy steps are skippable via flags.
 #   .\scripts\bootstrap.ps1                 # full
 #   .\scripts\bootstrap.ps1 -SkipModels     # everything except the multi-GB downloads
@@ -19,29 +19,33 @@ if ($Profile) {
   $sug  = Get-SuggestedProfile -VramGB $vram
   $active = (Get-ModelsConfig).activeProfile
   if ($sug -and $sug -ne $active) {
-    Step "VRAM check"
-    Write-Warning ("Detected ~$vram GB VRAM; active profile is '$active', but '$sug' fits better. " +
-      "Re-run as  setup.bat -Profile $sug  (or later: llm profile $sug). Continuing with '$active' for now.")
+    Step "VRAM check — auto-selecting profile"
+    Write-Host "Detected ~$vram GB VRAM -> switching profile '$active' -> '$sug'" -ForegroundColor Cyan
+    Set-ActiveProfile $sug
   } elseif ($sug) {
     Write-Host "VRAM ~$vram GB -> profile '$active' (good fit)." -ForegroundColor DarkGray
   }
 }
 
+# GPU architecture + compatible CUDA root (used for prereq report and passed to build-llama).
+$gpuArch  = Get-GpuArch
+$cudaRoot = if ($gpuArch) { Get-BestCudaRoot -CudaArch $gpuArch.CudaArch } else { Get-BestCudaRoot -CudaArch 120 }
+
 # --- prereq report ---
 Step "Prereqs"
 if (-not (Have git))   { throw "git missing" }
 if (-not (Have cmake)) { throw "cmake missing" }
-$cuda = Test-Path "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.8"
 "git    : ok"
 "cmake  : ok"
-"CUDA128: $(if($cuda){'ok'}else{'MISSING — install CUDA Toolkit 12.8 (not 13.x) before building'})"
-"go     : $(if(Have go){'ok'}else{'missing — will need llama-swap release binary instead'})"
+if ($gpuArch) { "GPU    : $($gpuArch.Gen) (sm_$($gpuArch.CudaArch))" }
+"CUDA   : $(if ($cudaRoot) { "ok — $cudaRoot" } else { 'MISSING — install CUDA 12.x before building' })"
+"go     : $(if (Have go) { 'ok' } else { 'missing — will need llama-swap release binary instead' })"
 
 # locate Python 3.12 (scoop)
 $py = $null
 try { $p = (scoop prefix python312) 2>$null; if ($p) { $py = Join-Path $p "python.exe" } } catch {}
 if (-not $py -or -not (Test-Path $py)) { if (Have python3.12) { $py = "python3.12" } }
-"python : $(if($py){$py}else{'MISSING — scoop install python312'})"
+"python : $(if ($py) { $py } else { 'MISSING — scoop install python312' })"
 
 # --- submodules ---
 Step "Submodules"
@@ -50,12 +54,19 @@ if ($LASTEXITCODE -ne 0) { throw "submodule init failed" }
 
 # --- build engine + proxy ---
 if (-not $SkipBuild) {
-  if ($cuda) { Step "Build llama.cpp (CUDA 12.8)"; & "$PSScriptRoot\build-llama.ps1" }
-  else { Write-Warning "Skipping llama.cpp build — CUDA 12.8 not installed." }
+  if ($cudaRoot) {
+    $label = if ($gpuArch) { "$($gpuArch.Gen) sm_$($gpuArch.CudaArch)" } else { 'sm_120 (default)' }
+    Step "Build llama.cpp ($label)"
+    $buildArgs = @('-CudaRoot', $cudaRoot)
+    if ($gpuArch) { $buildArgs += @('-Arch', $gpuArch.CudaArch) }
+    & "$PSScriptRoot\build-llama.ps1" @buildArgs
+  } else {
+    Write-Warning "Skipping llama.cpp build — no compatible CUDA toolkit found. Install CUDA 12.x, or drop a prebuilt llama-server.exe into bin\."
+  }
 
   Step "Build llama-swap"
   if (Have go) { & "$PSScriptRoot\build-llama-swap.ps1" }
-  else { Write-Warning "Skipping llama-swap build — Go missing. Download release binary into bin\llama-swap.exe." }
+  else { Write-Warning "Skipping llama-swap build — Go missing. Download the release binary into bin\llama-swap.exe." }
 } else { Write-Host "Skipping builds (-SkipBuild)" -ForegroundColor DarkGray }
 
 # --- Python tools: ISOLATED venvs (open-webui & aider have conflicting dep pins) ---

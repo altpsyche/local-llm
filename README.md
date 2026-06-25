@@ -1,33 +1,51 @@
 # local-llm
 
-Self-contained, reproducible local LLM stack for Windows 11 with an NVIDIA RTX 5080 (16GB, Blackwell sm_120). One tuned inference engine (llama.cpp on CUDA 12.8) sits behind a hot-swap proxy (llama-swap) that exposes a single OpenAI-compatible endpoint at `http://localhost:8080/v1` for your IDE, terminal tools, RAG UI, and scripts.
+This project sets up a private AI assistant on your Windows PC. The models run on your GPU with no cloud service involved, no API fees, and no internet connection required after the initial model download. The inference is fast enough for real-time autocomplete and responsive back-and-forth conversation.
 
-Verified on the target box: 14B Q4 at roughly 4300 t/s prefill and 86 t/s generation on the fast sm_120 MMQ path, with chat, autocomplete, and embeddings all served through the one endpoint.
+After setup you have in-editor autocomplete as you type in VS Code, a chat panel for asking questions and reviewing code, a terminal coding agent (aider) that separates planning from editing so you can review proposed changes before anything is written to disk, a browser-based chat interface at `http://localhost:3000`, and a local embedding model for searching your own documents and codebase.
+
+Everything routes through a single local server at `http://localhost:8080/v1`, which speaks the same protocol as the OpenAI API. Any tool already pointed at OpenAI can be redirected here instead.
+
+You need Windows 11 and an NVIDIA GPU from the RTX 3000 series or newer. Setup detects your GPU automatically and selects the right CUDA toolkit and build flags. The default profile targets 16 GB VRAM (RTX 5080, Blackwell) and runs at about 86 tokens per second on generation. Profiles for 12 GB and 8 GB cards are included; the VRAM suggestion is automatic at setup.
 
 ## Quick start
+
 ```powershell
 git clone --recurse-submodules <your-remote> C:\local-llm
 cd C:\local-llm
 .\setup.bat
 llm up
 ```
-`setup.bat` is a one-shot, idempotent installer: it sets up prereqs (CUDA 12.8, Python, Go), builds the engine and proxy, downloads the models, wires the clients, and puts the `llm` command on PATH. Re-run it any time. Use `setup.bat -SkipModels` to skip the model downloads, or `setup.bat -Launch` to start the stack when it finishes. You provide Git, scoop, and PowerShell 7.
 
-After setup, start the stack each session from a new terminal with `llm up` (endpoint on :8080 plus Open WebUI on :3000). Other commands include `llm serve`, `llm aider`, `llm chat coder "..."`, `llm profiles`, `llm bench`, and `llm help`.
+`setup.bat` handles everything in one shot. It installs the required prerequisites (CUDA 12.8, Python, Go), builds the inference engine and proxy from source, downloads the model files (about 38 GB for the default 16 GB profile), and wires the VS Code and terminal clients. It's safe to re-run if something fails partway through.
 
-## Choosing a model set for your VRAM
-Every model is defined once in `config/models.psd1`, grouped into VRAM profiles. The default is `16gb`. On a smaller card, pick the `12gb` profile before setup with `setup.bat -Profile 12gb`, or switch any time with `llm profile 12gb`. Setup reads your GPU and suggests a profile when the active one will not fit.
+After setup, open a new terminal so the PATH update takes effect, then run `llm up`. This starts the API endpoint on port 8080 and the web chat interface on port 3000.
 
-The downloader and the runtime config both read `config/models.psd1`, so a single edit changes both. `config/llama-swap.yaml` is generated from it (and regenerated on every `llm serve`), so you never edit that file by hand. See [docs/USAGE.md](docs/USAGE.md) for switching profiles and adding new ones.
+Pass `-Profile 12gb` if your GPU has less than 16 GB of VRAM (about 21 GB download instead of 38). Pass `-SkipModels` to build everything but defer the downloads. Pass `-Launch` to start the stack automatically when setup finishes.
 
-## Build with CUDA 12.8, never 13.x
-Blackwell (sm_120) MMQ kernels built against CUDA 13.x crash or fall back to cuBLAS, roughly 5 to 6 times slower on prefill. The llama.cpp submodule is pinned to a known-good commit. See [docs/SETUP.md](docs/SETUP.md) and [docs/TUNING.md](docs/TUNING.md).
+Once the stack is running, `llm up` is the only command you need at the start of each session. Use `llm serve` if you only want the API endpoint without the web UI. All other commands are in [docs/USAGE.md](docs/USAGE.md).
+
+## Model profiles
+
+All models are defined in `config/models.psd1`, grouped into VRAM profiles. The default is `16gb`. To see what's available and switch profiles:
+
+```powershell
+llm profiles          # list profiles with their VRAM requirements
+llm profile 12gb      # switch profiles and regenerate the config
+```
+
+Setup reads your GPU automatically and switches to the best-fit profile if the active one won't fit. Pass `-Profile` explicitly to override the automatic choice. See [docs/USAGE.md](docs/USAGE.md) for adding custom profiles.
+
+## CUDA versions
+
+Setup detects your GPU and picks the right CUDA toolkit automatically. The only strict version requirement is for Blackwell (RTX 5000 series): those cards need CUDA 12.8 specifically for the hardware acceleration path that delivers the benchmark numbers above. Building Blackwell with any other version falls back to a code path roughly five times slower on prefill. For Ada Lovelace (RTX 4000 series) and Ampere (RTX 3000 series), any CUDA 12.x works. Details are in [docs/SETUP.md](docs/SETUP.md) and [docs/TUNING.md](docs/TUNING.md).
 
 ## Docs
-[SETUP](docs/SETUP.md) covers install and build.
 
-[USAGE](docs/USAGE.md) covers daily use, pointing each tool at the endpoint, and model profiles.
+[SETUP](docs/SETUP.md) covers prerequisites, install, build steps, and how to verify the stack is working.
 
-[TUNING](docs/TUNING.md) covers launch flags, VRAM math, perf checks, and submodule bumps.
+[USAGE](docs/USAGE.md) covers daily commands, configuring each client (VS Code, aider, Open WebUI), and managing model profiles.
 
-[FALLBACKS](docs/FALLBACKS.md) covers what to do when any layer fails.
+[TUNING](docs/TUNING.md) covers per-model launch flags, VRAM sizing, performance checks, and updating the inference engine.
+
+[FALLBACKS](docs/FALLBACKS.md) covers alternatives and workarounds for when something won't build or install.

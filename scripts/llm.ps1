@@ -11,6 +11,7 @@ $cmd  = if ($argv.Count) { $argv[0] } else { 'help' }
 $rest = @($argv | Select-Object -Skip 1)   # always an array, even for a single arg
 
 switch ($cmd) {
+  'diagnose' { & "$repo\scripts\diagnose.ps1" }
   'up'     { & "$repo\scripts\up.ps1" }                       # endpoint + Open WebUI
   'serve'  { & "$repo\scripts\start.ps1" }                    # endpoint only (:8080)
   'webui'  { & "$repo\tools\venv-webui\Scripts\open-webui.exe" serve --port 3000 }
@@ -65,6 +66,7 @@ switch ($cmd) {
   default  {
 @"
 llm — local LLM stack (endpoint $base)
+  llm diagnose             GPU, VRAM, CUDA, and model file health check
   llm up                   start endpoint :8080 + Open WebUI :3000 (two windows)
   llm serve                start the endpoint only (:8080)
   llm stop                 stop the endpoint (frees VRAM)

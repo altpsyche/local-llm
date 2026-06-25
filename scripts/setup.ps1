@@ -7,8 +7,12 @@
 param([switch]$SkipModels, [switch]$Launch, [string]$Profile)
 $ErrorActionPreference = "Stop"
 $repo = Split-Path $PSScriptRoot -Parent
+. "$PSScriptRoot\_models.ps1"
 function Have($n){ [bool](Get-Command $n -ErrorAction SilentlyContinue) }
 function Step($m){ Write-Host "`n==== $m ====" -ForegroundColor Cyan }
+
+Step "System check"
+& "$PSScriptRoot\diagnose.ps1"
 
 Step "Core tooling"
 if (-not (Have git))   { throw "git not found. Install Git, then re-run setup.bat." }
@@ -20,14 +24,42 @@ if (Have go) { Write-Host "go ok" } else { scoop install go }
 $hasPy = $false; try { scoop prefix python312 *> $null; $hasPy = ($LASTEXITCODE -eq 0) } catch {}
 if ($hasPy) { Write-Host "python312 ok" } else { scoop install python312 }
 
-Step "Prereq: CUDA Toolkit 12.8 (NOT 13.x)"
-if (Test-Path "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8") {
-  Write-Host "CUDA 12.8 ok"
-} elseif (Have winget) {
-  Write-Host "Installing CUDA Toolkit 12.8 (large download, several minutes)..." -ForegroundColor Yellow
-  winget install Nvidia.CUDA --version 12.8 --accept-package-agreements --accept-source-agreements --disable-interactivity
+Step "Prereq: CUDA Toolkit"
+$gpuInfo  = Get-GpuArch
+$cudaRoot = if ($gpuInfo) { Get-BestCudaRoot -CudaArch $gpuInfo.CudaArch } else { $null }
+
+if ($gpuInfo) { Write-Host "Detected GPU: $($gpuInfo.Gen) (sm_$($gpuInfo.CudaArch))" -ForegroundColor Cyan }
+
+if ($gpuInfo -and $gpuInfo.CudaArch -ge 120) {
+  # Blackwell requires CUDA 12.8 for the MMQ fast path — install it if missing.
+  if ($cudaRoot) {
+    Write-Host "CUDA 12.8 ok (Blackwell)"
+  } elseif (Have winget) {
+    Write-Host "Installing CUDA Toolkit 12.8 (required for Blackwell, large download)..." -ForegroundColor Yellow
+    winget install Nvidia.CUDA --version 12.8 --accept-package-agreements --accept-source-agreements --disable-interactivity
+  } else {
+    Write-Warning "winget not found — install CUDA Toolkit 12.8 manually for Blackwell, then re-run."
+  }
+} elseif ($gpuInfo) {
+  # Ada / Ampere: any CUDA 12.x works.
+  if ($cudaRoot) {
+    Write-Host "CUDA ok: $cudaRoot ($($gpuInfo.Gen))"
+  } elseif (Have winget) {
+    Write-Host "No CUDA 12.x found for $($gpuInfo.Gen). Installing CUDA 12.8..." -ForegroundColor Yellow
+    winget install Nvidia.CUDA --version 12.8 --accept-package-agreements --accept-source-agreements --disable-interactivity
+  } else {
+    Write-Warning "No compatible CUDA found. Install CUDA 12.x manually, then re-run."
+  }
 } else {
-  Write-Warning "winget not found — install CUDA Toolkit 12.8 manually, then re-run."
+  # Could not detect GPU — fall back to original behavior (install 12.8).
+  if (Test-Path "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8") {
+    Write-Host "CUDA 12.8 ok"
+  } elseif (Have winget) {
+    Write-Host "Installing CUDA Toolkit 12.8..." -ForegroundColor Yellow
+    winget install Nvidia.CUDA --version 12.8 --accept-package-agreements --accept-source-agreements --disable-interactivity
+  } else {
+    Write-Warning "winget not found — install CUDA Toolkit 12.8 manually, then re-run."
+  }
 }
 
 # Refresh PATH so shims from packages just installed by scoop (go, python312) are visible

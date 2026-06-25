@@ -1,191 +1,162 @@
 # USAGE
 
-## One-time setup
-```powershell
-.\scripts\setup-clients.ps1    # wire VS Code Continue + aider to the repo configs (symlink/copy)
-```
-Run once per machine. Open WebUI needs nothing here — it's auto-wired at launch by `up.ps1`.
+This document covers day-to-day use: starting and stopping the server, what each client does and how to configure it, and how to manage model profiles. For installation, see [SETUP.md](SETUP.md). For performance tuning and updating the engine, see [TUNING.md](TUNING.md).
 
-## The `llm` command (installed on PATH by setup)
+## One-time client setup
+
+```powershell
+.\scripts\setup-clients.ps1
 ```
-llm up                   start endpoint :8080 + Open WebUI :3000
-llm serve                endpoint only (:8080)
-llm stop                 stop the endpoint (frees VRAM)
-llm aider [args]         aider architect mode in the current folder
-llm webui                Open WebUI only (:3000)
-llm chat <model> <text>  one-shot chat   e.g.  llm chat coder "write fizzbuzz"
-llm models               list model names
-llm bench [gguf]         throughput benchmark
-llm profiles             list VRAM profiles + which is active
-llm profile <name>       switch profile (e.g. llm profile 12gb) — regenerates config
-llm fetch [--list] [p]   download models for a profile (--list = dry-run)
+
+Run this once per machine. It links the VS Code Continue config and the aider config from the repo into your home directory, so both tools work without any in-app configuration. Open WebUI is wired automatically when you start the stack. If you don't have symlink privileges, the script copies the files instead; re-run it after editing the repo configs to sync the copies.
+
+## The `llm` command
+
+`setup.bat` puts `llm` on your PATH. Open a terminal and these commands are available:
+
+```
+llm diagnose             GPU, VRAM, CUDA, and model file health check
+llm up                   start the endpoint on port 8080 and Open WebUI on port 3000
+llm serve                start the endpoint only (port 8080), without the web UI
+llm stop                 stop the endpoint and free VRAM
+llm aider [args]         run aider in architect mode in the current folder
+llm webui                start Open WebUI only (port 3000)
+llm chat <model> <text>  send a one-shot message, e.g.  llm chat coder "write fizzbuzz"
+llm models               list the available model names
+llm bench [gguf]         run a throughput benchmark
+llm profiles             list VRAM profiles and which one is active
+llm profile <name>       switch profiles (e.g. llm profile 12gb) and regenerate the config
+llm fetch [--list] [p]   download models for a profile; --list previews without downloading
 llm gen                  regenerate config/llama-swap.yaml from config/models.psd1
 ```
-(Run `scripts\install-cli.ps1` if `llm` isn't found; open a fresh terminal after.)
 
-## Daily: start everything
+If `llm` isn't found after setup, run `scripts\install-cli.ps1` and open a fresh terminal.
+
+## Starting the stack each session
+
 ```powershell
-llm up        # endpoint :8080 + Open WebUI :3000, in two windows
-# or just the endpoint for IDE/CLI/scripts:
-llm serve     # llama-swap on http://localhost:8080/v1
+llm up        # endpoint on port 8080 + Open WebUI on port 3000
 ```
-Models load on first request and unload when idle (except `fim` + `embed`, pinned). One big model
-(`planner`/`coder`/`chat`) is resident at a time; `fim` + `embed` stay alongside.
 
-> Want it to auto-start at login? Put a shortcut to `up.ps1` in `shell:startup`, or create a Task
-> Scheduler task "At log on" running `pwsh -File C:\local-llm\scripts\up.ps1`.
+Or, if you only need the API for IDE and terminal tools:
 
-## Models exposed (`16gb` profile)
-| `model:` | Role | Backing GGUF |
+```powershell
+llm serve     # inference endpoint at http://localhost:8080/v1
+```
+
+The server loads a model into VRAM when it first receives a request, and unloads it when it's been idle for a while. The exception is `fim` (autocomplete) and `embed` (embeddings), which are pinned in VRAM and never unloaded. Only one large model (`planner`, `coder`, or `chat`) is resident at a time; switching between them takes a few seconds.
+
+To start automatically at login, put a shortcut to `up.ps1` in `shell:startup`, or create a Task Scheduler task set to "At log on" running `pwsh -File C:\local-llm\scripts\up.ps1`.
+
+## Available models (16gb profile)
+
+| Name | Role | Backing model |
 |---|---|---|
-| `planner` | heavy reasoning / architect | Qwen3-30B-A3B Q4 |
-| `coder` | coding chat + agentic edits | Qwen2.5-Coder-14B Q4_K_M |
-| `chat` | general chat | Qwen3-14B Q4_K_M |
-| `fim` | autocomplete | Qwen-Coder-3B Q8_0 |
-| `embed` | RAG embeddings | bge-m3 Q8 |
+| `planner` | heavy reasoning and architecture | Qwen3-30B-A3B Q4 |
+| `coder` | coding chat and agentic edits | Qwen2.5-Coder-14B Q4_K_M |
+| `chat` | general conversation | Qwen3-14B Q4_K_M |
+| `fim` | autocomplete (pinned) | Qwen-Coder-3B Q8_0 |
+| `embed` | RAG embeddings (pinned) | bge-m3 Q8 |
 
-Every model — its GGUF, HuggingFace source, context size, and flags — is defined once in
-[config/models.psd1](../config/models.psd1). The downloader and the runtime config
-(`config/llama-swap.yaml`, generated) both derive from it. Clients reference only the role names
-above, so swapping the backing model never touches client config.
+Every model's GGUF file, HuggingFace source, context size, and launch flags are defined once in [config/models.psd1](../config/models.psd1). The downloader and the runtime config both read from it. Clients reference the role names above (`coder`, `planner`, etc.), so swapping the backing model for a role never requires touching any client configuration.
 
-**Low on VRAM?** Ship-with profiles: `16gb` (default, the verified set, ~38 GB on disk) and `12gb`
-(smaller quants, ~21 GB). Switch in one line — `llm profile 12gb`, or `setup.bat -Profile 12gb` before
-setup. (`32gb`/`64gb` can be added later in `config/models.psd1`.) See `llm profiles` and the
-[Per-role model separation](#per-role-model-separation-no-code) section.
+The `12gb` profile uses smaller variants (about 21 GB on disk instead of 38 GB). The `8gb` profile targets cards like the RTX 3070 and 4060 and is marked unvalidated — it ships with the repo but has not been tested on physical hardware yet. Switch with `llm profile 12gb` or `llm profile 8gb`, or pass `-Profile` to `setup.bat` before the first model download.
 
-## Raw API / your own scripts
+## Calling the API directly
+
+The endpoint speaks the OpenAI chat completions API, so any HTTP client works:
+
 ```powershell
 curl http://localhost:8080/v1/chat/completions -H "Content-Type: application/json" -d '{
   "model": "coder", "messages": [{"role":"user","content":"write a fizzbuzz in rust"}] }'
 ```
 
-> **Qwen3 thinking mode:** `chat`/`planner` (Qwen3) reason in a hidden block first, which can
-> consume your whole `max_tokens` and leave `content` empty. Either give plenty of tokens (512+),
-> or append `/no_think` to your prompt for a fast direct answer. GUI clients (Open WebUI) show/collapse
-> the reasoning automatically, so this only bites raw API calls with small `max_tokens`.
+The `chat` and `planner` models (Qwen3) reason in a hidden scratchpad before responding. This can consume your entire `max_tokens` budget if you set it too low, leaving the visible reply empty. Give these models at least 512 tokens, or append `/no_think` to your prompt to skip the reasoning step and get a direct answer. GUI clients like Open WebUI handle this automatically, so it only affects raw API calls with small token limits.
 
-## VS Code — Continue.dev (autocomplete + chat)
-`setup-clients.ps1` links `config/continue/config.yaml` → `~/.continue/config.yaml`, so all four roles
-are wired with **zero in-editor setup**.
+## VS Code — Continue.dev (autocomplete and chat)
 
-**Setup**
-1. `.\scripts\setup-clients.ps1` (once per machine — links the config; copies instead if you lack
-   symlink privilege, see note below).
-2. Install the **Continue** extension from the VS Code Marketplace.
-3. `llm serve` (or `llm up`) so the endpoint is live on `:8080`.
-4. Open the Continue panel (sidebar icon, or `Ctrl+L`). It should already list `coder` / `planner`.
+Continue.dev provides inline autocomplete and a chat panel inside VS Code. `setup-clients.ps1` links the repo's config into `~/.continue/config.yaml`, so all models are wired with no in-editor setup needed.
 
-**Role → model map** (from `config/continue/config.yaml`)
-| Continue role | Model entry | llama-swap `model:` | Use |
-|---|---|---|---|
-| `chat`, `edit`, `apply` | `coder` | `coder` (Qwen2.5-Coder-14B) | default coding chat + inline edits |
-| `chat`, `edit` | `planner` | `planner` (Qwen3-30B-A3B) | heavy reasoning / architecture chats |
-| `autocomplete` | `autocomplete` | `fim` (Qwen-Coder-3B, pinned) | as-you-type completions |
-| `embed` | `embeddings` | `embed` (bge-m3, pinned) | `@codebase` / `@docs` RAG indexing |
+To get started, run `.\scripts\setup-clients.ps1` once, install the **Continue** extension from the VS Code Marketplace, then start the endpoint with `llm serve` or `llm up`. Open the Continue panel with the sidebar icon or `Ctrl+L` and the `coder` and `planner` models should appear immediately.
 
-**Keys & actions**
-- `Ctrl+L` — new chat (selection auto-attached as context).
-- `Ctrl+I` — inline edit on the selected lines; review diff, then accept/reject.
-- Autocomplete fires automatically as ghost text; `Tab` accepts. Served by `fim` (pinned, so it stays
-  warm and never evicts the big model).
-- `@codebase`, `@file`, `@docs` in chat pull RAG context via the `embed` model.
-- Switch chat model with the dropdown at the bottom of the chat box — pick `planner` for design/architecture,
-  `coder` for everyday edits.
+**How models map to Continue roles:**
 
-**Notes**
-- Context window is 16384 tokens for `coder`/`planner` (`ctx` in `config/models.psd1`). Large
-  `@codebase` queries get truncated to fit — narrow with `@file` when precision matters.
-- First message to a model is slow (loads to VRAM). `fim` + `embed` stay pinned, so autocomplete and
-  RAG never trigger a reload; only switching between `coder`/`planner`/`chat` swaps the resident model.
-- Edited the repo config but using a **copied** (not symlinked) `~/.continue/config.yaml`? Re-run
-  `setup-clients.ps1` after deleting the copy, or edit `~/.continue/config.yaml` directly.
+| Continue role | Model | Purpose |
+|---|---|---|
+| Chat, edit, apply | `coder` (Qwen2.5-Coder-14B) | default coding chat and inline edits |
+| Chat, edit | `planner` (Qwen3-30B-A3B) | architecture discussion and heavy reasoning |
+| Autocomplete | `fim` (Qwen-Coder-3B, pinned) | as-you-type ghost text completions |
+| Embed | `embed` (bge-m3, pinned) | `@codebase` and `@docs` RAG indexing |
+
+`Ctrl+L` opens a new chat with any selected code attached as context. `Ctrl+I` opens an inline edit on the selected lines and shows a diff for you to accept or reject. Autocomplete fires as ghost text; `Tab` accepts it. Use the model dropdown at the bottom of the chat panel to switch between `coder` (everyday edits) and `planner` (design and architecture questions).
+
+Context is 16384 tokens for `coder` and `planner`. Large `@codebase` queries get truncated to fit; use `@file` when you need to be precise about what's included. The first message to a large model is slower while it loads into VRAM. `fim` and `embed` stay pinned so autocomplete and RAG never trigger a reload.
+
+If you used a copied config rather than a symlink and later edited the repo's config, re-run `setup-clients.ps1` after deleting the copy, or edit `~/.continue/config.yaml` directly.
 
 ## VS Code — Cline (agentic)
-Cline is **not** auto-wired — configure it once in its settings.
 
-**Setup**
-1. Install the **Cline** extension.
-2. `llm serve` (endpoint on `:8080`).
-3. Cline → ⚙️ Settings → **API Provider** = `OpenAI Compatible`:
-   | Field | Value |
-   |---|---|
-   | Base URL | `http://localhost:8080/v1` |
-   | API Key | `sk-local` (any non-empty string works; llama-swap ignores it) |
-   | Model ID | `coder` |
-4. Set **context window** to `16384` (matches `ctx` for `coder` in `config/models.psd1`) so Cline doesn't
-   overflow the server and stall. Enable image support only if the model is multimodal — these aren't.
+Cline is a more autonomous agent that reads and writes files, runs commands, and works across many turns. It's not auto-wired; configure it once in its settings panel.
 
-**⚠️ Single-model only.** Cline's distinct **Plan/Act** models are broken on OpenAI-compatible endpoints
-([cline#8126](https://github.com/cline/cline/issues/8126)). Use **one** model (`coder`) for both modes.
-Want a real planner≠editor split? Use **aider** (below) — it runs `planner` for design and `coder` for edits.
+Install the **Cline** extension, start the endpoint, then open Cline settings and set the API provider to `OpenAI Compatible`:
 
-**Notes**
-- Cline is agentic: it reads/writes files and runs commands across many turns, so it burns through the
-  16k context fast. Keep tasks scoped; start a fresh task when the history balloons.
-- Want stronger reasoning for a hard task? Set Model ID to `planner` instead of `coder` (slower, but the
-  30B model plans better). Switching evicts the other big model from VRAM.
-
-## Terminal — aider (plan ≠ edit, architect mode)
-The one client with a **true planner≠editor split**: `planner` (Qwen3-30B) drafts the change, `coder`
-(Qwen2.5-Coder-14B) writes the diff. This is the workaround for Cline's broken Plan/Act split.
-
-**Setup**
-1. `.\scripts\setup-clients.ps1` links `config/aider/.aider.conf.yml` → `~/.aider.conf.yml`. aider
-   auto-discovers it from home / git root / cwd — no `--config` flag needed.
-2. `llm serve` (endpoint on `:8080`).
-3. From any project:
-   ```powershell
-   cd <your-project>
-   llm aider          # config auto-loaded
-   ```
-
-**How architect mode flows** (from `config/aider/.aider.conf.yml`)
-- `architect: true` — `planner` proposes the change in prose, then `coder` turns it into a `diff` edit.
-- `auto-accept-architect: false` — you **review the plan before any edit lands**. Press Enter to apply,
-  or refine first.
-- Both models go through one endpoint; aider swaps `planner`↔`coder` per step, so each turn triggers a
-  VRAM swap between them (a few seconds). That's the cost of the split.
-
-**In-session commands**
-| Command | Does |
+| Field | Value |
 |---|---|
-| `/add <file>` | put a file in the editable context |
+| Base URL | `http://localhost:8080/v1` |
+| API Key | `sk-local` (any non-empty string; the server ignores it) |
+| Model ID | `coder` |
+
+Set the context window to `16384` to match the server's limit. Leaving it higher causes Cline to send requests the server can't handle. Leave image support off; these models are not multimodal.
+
+Cline's distinct Plan/Act model setting (using one model for planning and another for editing) does not work correctly over OpenAI-compatible endpoints as of this writing ([cline#8126](https://github.com/cline/cline/issues/8126)). Use a single model (`coder`) for both modes. If you need a genuine planning-versus-editing split, use aider instead.
+
+Cline burns through its 16k context window quickly on multi-step tasks. Keep tasks focused and start a new task when the history grows large. For tasks that need deeper reasoning, set the Model ID to `planner`; it's slower but handles complex planning better. Switching models evicts the other from VRAM.
+
+## Terminal — aider (plan and edit separately)
+
+Aider is the one client here with a genuine planning-versus-editing split. `planner` (Qwen3-30B) drafts the change, and `coder` (Qwen2.5-Coder-14B) turns that draft into file edits. You review the plan before any edit lands.
+
+Run `.\scripts\setup-clients.ps1` to link the aider config (`config/aider/.aider.conf.yml`) into your home directory. aider picks it up automatically from there. Then start the endpoint and run aider from any project:
+
+```powershell
+cd <your-project>
+llm aider
+```
+
+The config sets `architect: true`, which sends your request to `planner` first. It writes a prose description of what needs to change, then `coder` turns that into a diff. With `auto-accept-architect: false`, you see the plan and press Enter to apply it, or refine it before anything is written. Each turn triggers a VRAM swap between `planner` and `coder`, which takes a few seconds.
+
+Useful in-session commands:
+
+| Command | What it does |
+|---|---|
+| `/add <file>` | add a file to the editable context |
 | `/read <file>` | add a file as read-only reference |
-| `/ask <q>` | question without editing |
+| `/ask <question>` | ask a question without triggering any edits |
 | `/diff` | show pending changes |
-| `/undo` | revert aider's last commit |
-| `/drop` | shrink context when it gets big |
+| `/undo` | revert aider's last committed edit |
+| `/drop` | remove files from context when it gets large |
 
-**Notes**
-- Local OpenAI-compatible models **must** be prefixed `openai/` in the config (`openai/planner`,
-  `openai/coder`) — case-sensitive, already set.
-- aider auto-commits each accepted edit to git. Work on a branch; `/undo` rolls back the last one.
-- 16k context per model — use `/drop` and `/read` (vs `/add`) to keep it lean on big repos.
+aider commits each accepted edit to git automatically. Work on a branch so `/undo` can roll back cleanly. Both models use a 16k context window; on large repos, prefer `/read` over `/add` for files you're only referencing, and use `/drop` to remove files you no longer need. The `openai/` prefix in the config (`openai/planner`, `openai/coder`) is required for aider to route through a local OpenAI-compatible endpoint and is already set correctly.
 
-## General chat + RAG — Open WebUI
-`llm up` launches it on **:3000**, pre-wired via env (connection `http://localhost:8080/v1`,
-RAG embedding model `embed`) — no manual Admin setup. Standalone: `llm webui`.
-Optional presets: Workspace → Models → a "Planner" preset (base `planner`, low temp) and a "Chat" preset (base `chat`).
+## Browser chat and RAG — Open WebUI
 
-## Per-role model separation (no code)
-- **Models / profiles**: edit [config/models.psd1](../config/models.psd1) — the single source. Add or
-  retune a model under a profile (or add a whole profile), then `llm gen` (or just `llm serve`, which
-  regenerates `config/llama-swap.yaml` on launch). `config/llama-swap.yaml` is **generated — do not edit
-  it by hand** (it's overwritten on every launch and is gitignored).
-- **Continue**: add a model with the desired `roles:`.
-- **aider**: `architect: true` + `model:` (planner) + `editor-model:` (editor).
-- **Open WebUI / AnythingLLM**: presets / per-workspace model.
+`llm up` starts Open WebUI on port 3000, pre-wired to the local inference endpoint and embedding model. There's no manual admin setup. If you want it without the inference stack, use `llm webui`.
 
-### Changing the active profile
-`config/models.psd1` ships two profiles; `activeProfile` selects one. Three ways to switch:
-- **Edit one line** (before setup): set `activeProfile = '12gb'` at the top of `config/models.psd1`.
-- **At setup**: `setup.bat -Profile 12gb`.
-- **Anytime**: `llm profile 12gb` (persists the choice + regenerates the config). `llm profiles` lists
-  them with footprints; `llm fetch --list 12gb` previews a profile's downloads without pulling anything.
+Open WebUI uses the `embed` model for document search automatically. Add documents through the workspace panel; they're indexed locally and available in any chat via the RAG interface. You can create model presets in Workspace → Models, for example a "Planner" preset with low temperature for precise answers, or a "Chat" preset for general conversation.
 
-`setup` reads your GPU (`nvidia-smi`) and, if the active profile doesn't fit your VRAM, **suggests** a
-better one (it never switches for you — pass `-Profile` to act on it). `llm profiles` shows the same hint.
+## Managing model profiles
 
-Switching does not delete the previous profile's GGUFs — they stay in `models/`. Run `llm fetch` after
-switching to pull any models the new profile is missing.
+`config/models.psd1` defines all models grouped into profiles. The `activeProfile` key at the top selects which one is used.
+
+```powershell
+llm profiles             # list all profiles with VRAM footprints and current selection
+llm profile 12gb         # switch profiles and regenerate the server config
+llm fetch --list 12gb    # preview what the 12gb profile would download, without downloading
+llm fetch                # download any models the current profile is missing
+```
+
+Switching profiles does not delete models from previous profiles; they stay in `models/`. Run `llm fetch` after switching to pull any files the new profile needs that aren't already there.
+
+To add or change a model, edit its entry in `config/models.psd1` (setting `repo`, `path`, `gguf`, `ctx`, and any optional flags), then run `llm fetch` to download it and `llm serve` to pick it up. The server config (`config/llama-swap.yaml`) is generated automatically on each launch and should never be edited by hand.
+
+To add a new profile for a different VRAM tier, add a new key under `profiles` in the PSD1 file and switch to it with `llm profile <name>`.
