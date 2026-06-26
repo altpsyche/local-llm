@@ -2,6 +2,8 @@
 
 This document covers day-to-day use: starting and stopping the server, what each client does and how to configure it, and how to manage model profiles. For installation, see [SETUP.md](SETUP.md). For performance tuning and updating the engine, see [TUNING.md](TUNING.md).
 
+> **New here?** [DAY-IN-THE-LIFE.md](DAY-IN-THE-LIFE.md) walks through every feature in one hands-on session. It's a better starting point than reading this document top to bottom.
+
 ## One-time client setup
 
 ```powershell
@@ -16,7 +18,7 @@ Run this once per machine. It links the VS Code Continue config and the aider co
 
 ```
 Inference:
-  llm serve                            Start API endpoint — interactive, Ctrl+C to stop
+  llm serve                            Start API endpoint (interactive, Ctrl+C to stop)
   llm up [-NoOpen]                     Start endpoint + Open WebUI silently (no popup windows) [+ browser]
   llm stop                             Stop all services and free VRAM
   llm restart                          Stop then start endpoint (interactive, shows logs)
@@ -47,7 +49,7 @@ Tools:
 
 Ecosystem:
   llm fabric-setup                     Build fabric from source and configure it for the local endpoint
-  llm litellm [-NoWindow]              Start LiteLLM proxy (:8081) — foreground or background
+  llm litellm [-NoWindow]              Start LiteLLM proxy (:8081), foreground or background
   llm litellm stop                     Stop the background LiteLLM proxy
   llm litellm status                   Show PID and uptime of the background LiteLLM proxy
   llm services start|stop|status|logs  Docker services: Langfuse (:3001) SearXNG (:8888) n8n (:5678)
@@ -71,50 +73,50 @@ No extra steps.
 | Shell pattern pipes | `llm fabric-setup` once, then `git diff \| fabric --pattern write_git_commit` |
 | LiteLLM proxy (retry + logging) | `llm litellm` |
 | Model quality benchmarks | `llm eval coder humaneval` (needs endpoint running) |
-| Continue MCP: read files (`@filesystem`) | Wired automatically — use `@filesystem` in Continue chat |
-| Continue MCP: fetch URLs (`@url`) | Wired automatically — use `@url https://...` in Continue chat |
+| Continue MCP: read files (`@filesystem`) | Wired automatically; use `@filesystem` in Continue chat |
+| Continue MCP: fetch URLs (`@url`) | Wired automatically; use `@url https://...` in Continue chat |
 
-**Not ready without extra steps** (all require Docker Desktop, which setup.bat cannot install in one pass):
+**Requires Docker Desktop** (installed by `install_prereqs.bat`; services start automatically at the end of `setup.bat` if Docker is present):
 
 | Feature | What to run |
 |---------|------------|
-| Langfuse observability | `.\scripts\setup-docker.ps1` (one-time), then `llm services start` |
-| SearXNG private web search | Same as above — SearXNG starts as part of the Docker stack |
-| n8n workflow automation | Same as above |
-| Continue MCP `@web` search | Requires SearXNG running (see above) |
+| Langfuse observability | Starts automatically; or manually: `.\scripts\setup-docker.ps1` then `llm services start` |
+| SearXNG private web search | Same; starts as part of the Docker stack |
+| n8n workflow automation | Same |
+| Continue MCP `@web` search | Requires SearXNG running (`llm services start`) |
 | Continue MCP `@github` | Set `GITHUB_TOKEN` environment variable (GitHub PAT with `repo` scope) |
 | Langfuse tracing via LiteLLM | After Docker setup: get API keys from Langfuse UI → uncomment callback block in `config/litellm.yaml` → `llm litellm` |
 
 ### Quick test scenarios
 
-**1 — Verify the endpoint is up and serving all models:**
+**1. Verify the endpoint is up and serving all models:**
 ```powershell
 llm up -NoOpen
 llm status          # should show: planner, coder, chat, fim, embed
 llm chat coder "write a PowerShell one-liner that lists the 5 largest files in the current folder"
 ```
 
-**2 — Continue.dev autocomplete and inline edit:**
+**2. Continue.dev autocomplete and inline edit:**
 ```
 llm serve
 # Open VS Code, open any source file
-# Start typing a function — ghost text should appear within 1–2 seconds
+# Start typing a function (ghost text should appear within 1–2 seconds)
 # Select a block of code, press Ctrl+I, type "add error handling"
 # Accept or reject the diff that appears
 ```
 
-**3 — aider plan-then-edit workflow:**
+**3. aider plan-then-edit workflow:**
 ```powershell
 cd C:\my-project
 llm up -NoOpen
 llm aider
 # In aider: /add src/parser.py
-# Type: "add input validation — raise ValueError if the input string is empty or contains only whitespace"
+# Type: "add input validation. Raise ValueError if the input string is empty or contains only whitespace"
 # Review the plan, press Enter to apply edits
-# /undo   — rolls back if you don't like the result
+# /undo   (rolls back if you don't like the result)
 ```
 
-**4 — fabric for quick prompt patterns:**
+**4. fabric for quick prompt patterns:**
 ```powershell
 llm up -NoOpen
 git diff --staged | fabric --pattern write_git_commit
@@ -123,7 +125,7 @@ cat error.log | fabric --pattern explain_code
 fabric -l    # see all 254 patterns
 ```
 
-**5 — LiteLLM proxy with stop/status:**
+**5. LiteLLM proxy with stop/status:**
 ```powershell
 llm litellm -NoWindow    # starts proxy in background on :8081, logs to logs/litellm.log
 llm litellm status       # shows PID and uptime
@@ -131,7 +133,7 @@ llm litellm status       # shows PID and uptime
 llm litellm stop
 ```
 
-**6 — Model quality benchmark:**
+**6. Model quality benchmark:**
 ```powershell
 llm serve
 llm eval coder gsm8k --limit 100   # quick smoke test (~8 min); math word problems
@@ -140,9 +142,9 @@ llm eval planner mmlu --shots 5    # general knowledge, 5-shot (~90 min)
 # Results in results/eval-coder-gsm8k-<timestamp>/
 ```
 
-**7 — Docker services (Langfuse + SearXNG + n8n):**
+**7. Docker services (Langfuse + SearXNG + n8n):**
 ```powershell
-.\scripts\setup-docker.ps1   # first time only — installs Docker Desktop if needed
+.\scripts\setup-docker.ps1   # first time only (installs Docker Desktop if needed)
 llm services start
 llm services status          # verify all three containers are Up
 # Langfuse: http://localhost:3001  (admin@local.dev / admin123)
@@ -157,7 +159,7 @@ llm services status          # verify all three containers are Up
 llm up        # endpoint on configured port (default 8080) + Open WebUI (default 3000)
 ```
 
-`llm up` runs both services silently in the background — no terminal windows pop up. The endpoint logs go to `logs/llama-swap.log`; tail them live with `llm logs`. Pass `-NoOpen` to suppress the browser auto-open:
+`llm up` runs both services silently in the background; no terminal windows pop up. The endpoint logs go to `logs/llama-swap.log`; tail them live with `llm logs`. Pass `-NoOpen` to suppress the browser auto-open:
 
 ```powershell
 llm up -NoOpen    # start services but don't open the browser
@@ -170,7 +172,7 @@ llm status    # which models are loaded in VRAM
 llm ps        # daemon PIDs, RAM, and uptime
 ```
 
-If you only need the API for IDE and terminal tools, use interactive mode instead — it stays in your terminal, shows output directly, and stops with Ctrl+C:
+If you only need the API for IDE and terminal tools, use interactive mode instead: it stays in your terminal, shows output directly, and stops with Ctrl+C:
 
 ```powershell
 llm serve     # inference endpoint at http://localhost:<port>/v1  (default: 8080)
@@ -194,7 +196,7 @@ To start automatically at login, put a shortcut to `up.ps1` in `shell:startup`, 
 
 Every model's GGUF file, HuggingFace source, context size, and launch flags are defined once in [config/models.psd1](../config/models.psd1). The downloader and the runtime config both read from it. Clients reference the role names above (`coder`, `planner`, etc.), so swapping the backing model for a role never requires touching any client configuration.
 
-The `12gb` profile uses smaller variants (about 21 GB on disk instead of 38 GB). The `8gb` profile targets cards like the RTX 3070 and 4060 and is marked unvalidated — it ships with the repo but has not been tested on physical hardware yet. Switch with `llm profile 12gb` or `llm profile 8gb`, or pass `-Profile` to `setup.bat` before the first model download.
+The `12gb` profile uses smaller variants (about 21 GB on disk instead of 38 GB). The `8gb` profile targets cards like the RTX 3070 and 4060 and is marked unvalidated; it ships with the repo but has not been tested on physical hardware yet. Switch with `llm profile 12gb` or `llm profile 8gb`, or pass `-Profile` to `setup.bat` before the first model download.
 
 ## Calling the API directly
 
@@ -212,12 +214,42 @@ llm chat coder "write fizzbuzz in rust"
 llm chat planner "design a caching layer" --sys "Be concise." --max 1024
 ```
 
-The port defaults to `8080`. To change it, set `port` in the `defaults` block of `config/models.psd1` or create a `config/user.psd1` override (see [TUNING.md](TUNING.md#tunable-defaults-and-personal-overrides)).
+The port defaults to `8080`. To change it, set `port` in the `defaults` block of `config/models.psd1` or create a `config/user.psd1` override (see [Customizing your setup](#customizing-your-setup-configuserpsd1)).
+
+### Embeddings API
+
+The `embed` model (bge-m3) exposes an OpenAI-compatible embeddings endpoint:
+
+```powershell
+curl http://localhost:8080/v1/embeddings `
+  -H "Content-Type: application/json" `
+  -d '{"model": "embed", "input": "The quick brown fox"}'
+```
+
+Response shape (standard OpenAI format):
+```json
+{
+  "object": "list",
+  "data": [{ "object": "embedding", "index": 0, "embedding": [0.023, -0.011, ...] }],
+  "model": "embed",
+  "usage": { "prompt_tokens": 5, "total_tokens": 5 }
+}
+```
+
+The vector dimension is 1024. `embed` is pinned in VRAM and never unloads, so embedding calls never trigger a model swap. Use this endpoint to build your own RAG pipeline, or point any tool that accepts an OpenAI-compatible embeddings API at `http://localhost:8080/v1`.
+
+**From Python (openai SDK):**
+```python
+from openai import OpenAI
+client = OpenAI(base_url="http://localhost:8080/v1", api_key="sk-local")
+resp = client.embeddings.create(model="embed", input=["your text here"])
+vector = resp.data[0].embedding   # list of 1024 floats
+```
 
 ## Qwen3 Thinking Mode
 
 Qwen3 models (`planner`, `chat`) use a reasoning scratchpad by default. Before responding,
-the model internally reasons through the problem — this produces better answers but:
+the model internally reasons through the problem. This produces better answers but:
 
 - **Consumes `max_tokens` silently.** The scratchpad counts toward your token limit.
   For complex tasks, set `max_tokens` to at least 2000 (or 8192 for deep planning).
@@ -252,7 +284,7 @@ llm chat chat "What is 2+2? /no_think" --max 128
 | `/no_think` | Quick Q&A, simple edits, autocomplete-like tasks | 128–512 |
 
 **In Continue.dev:** Add `/no_think` to the end of your message in the chat box.
-Continue always uses the configured `maxTokens` — make sure it's large enough for planning tasks.
+Continue always uses the configured `maxTokens`; make sure it's large enough for planning tasks.
 
 **In aider:** The planner model is used for architecture; thinking mode is appropriate.
 aider auto-adjusts context size; no special configuration needed.
@@ -298,11 +330,11 @@ if ($choice.finish_reason -eq 'tool_calls') {
 }
 ```
 
-**Supported:** `coder` (Qwen2.5-Coder-14B). **Not supported:** `planner`, `chat` — Qwen3 tool-use quality varies; use `coder` for agentic tasks.
+**Supported:** `coder` (Qwen2.5-Coder-14B). **Not supported:** `planner`, `chat`. Qwen3 tool-use quality varies; use `coder` for agentic tasks.
 
 **In aider:** Tool use handled internally. **In Cline:** Point at `coder` for best results.
 
-## VS Code — Continue.dev (autocomplete and chat)
+## VS Code: Continue.dev (autocomplete and chat)
 
 Continue.dev provides inline autocomplete and a chat panel inside VS Code. `setup-clients.ps1` links the repo's config into `~/.continue/config.yaml`, so all models are wired with no in-editor setup needed.
 
@@ -342,7 +374,7 @@ Four MCP servers are wired into Continue automatically via `config/continue/conf
 
 If a server fails to load, Continue shows a warning badge on its name in the chat panel. Click it to see the error. Most failures are a missing `node`, `uvx`, or `GITHUB_TOKEN`.
 
-## VS Code — Cline (agentic)
+## VS Code: Cline (agentic)
 
 Cline is a more autonomous agent that reads and writes files, runs commands, and works across many turns. It's not auto-wired; configure it once in its settings panel.
 
@@ -360,7 +392,7 @@ To use separate models for planning and editing, enable **Use different models f
 
 Cline burns through its 16k context window quickly on multi-step tasks. Keep tasks focused and start a new task when the history grows large. For tasks that need deeper reasoning, set the Model ID to `planner`; it's slower but handles complex planning better. Switching models evicts the other from VRAM.
 
-## Terminal — aider (plan and edit separately)
+## Terminal: aider (plan and edit separately)
 
 Aider is the one client here with a genuine planning-versus-editing split. `planner` (Qwen3-30B) drafts the change, and `coder` (Qwen2.5-Coder-14B) turns that draft into file edits. You review the plan before any edit lands.
 
@@ -386,16 +418,16 @@ Useful in-session commands:
 
 aider commits each accepted edit to git automatically. Work on a branch so `/undo` can roll back cleanly. Both models use a 16k context window; on large repos, prefer `/read` over `/add` for files you're only referencing, and use `/drop` to remove files you no longer need. The `openai/` prefix in the config (`openai/planner`, `openai/coder`) is required for aider to route through a local OpenAI-compatible endpoint and is already set correctly.
 
-## Shell AI Patterns — fabric
+## Shell AI Patterns: fabric
 
-fabric transforms piped text through a named prompt pattern — a structured prompt with a
+fabric transforms piped text through a named prompt pattern: a structured prompt with a
 specific output format baked in. Where `llm chat` is a blank canvas, fabric patterns encode
 the _format_ of the answer (commit message, executive summary, code review checklist) so you
 don't rewrite the same prompt structure every time. Patterns live in
 `~/.config/fabric/patterns/`, each a directory with a `system.md` you can inspect or copy to
 build your own.
 
-It ships as a Go binary built from the `external/fabric` submodule — no winget, no download.
+It ships as a Go binary built from the `external/fabric` submodule; no winget, no download.
 Run `llm fabric-setup` once to build and configure it:
 
 ```powershell
@@ -426,7 +458,7 @@ fabric uses the `coder` model by default. Pass `--model planner` for complex ana
 Run `fabric -l` to see all 254 available patterns.
 
 To update patterns after a submodule bump: re-run `llm fabric-setup` (patterns re-copied,
-binary rebuilt only if `bin/fabric.exe` is missing — delete it first to force a rebuild).
+binary rebuilt only if `bin/fabric.exe` is missing; delete it first to force a rebuild).
 
 ## Ecosystem Services
 
@@ -435,13 +467,10 @@ binary rebuilt only if `bin/fabric.exe` is missing — delete it first to force 
 LiteLLM sits between clients and llama-swap, adding retry logic and structured request logging.
 
 ```powershell
-# One-time bootstrap
-.\scripts\bootstrap-litellm.ps1
-
-# Start proxy on port 8081 — foreground (Ctrl+C to stop)
+# Start proxy on port 8081 (foreground, Ctrl+C to stop)
 llm litellm
 
-# Start in background — PID tracked, stop/status commands work
+# Start in background (PID tracked, stop/status commands work)
 llm litellm -NoWindow
 ```
 
@@ -456,7 +485,7 @@ To point Cline at LiteLLM: change its Base URL from `http://localhost:8080/v1` t
 CPU-only services run in Docker Desktop. GPU tools (llama.cpp, Open WebUI) stay native for maximum performance.
 
 ```powershell
-# One-time setup — see SETUP.md for the full install walkthrough
+# One-time setup (see SETUP.md for the full install walkthrough)
 .\scripts\setup-docker.ps1
 
 # After setup, manage with:
@@ -466,39 +495,39 @@ llm services status   # show container names, state, and uptime
 llm services logs     # tail all container logs (Ctrl+C to stop)
 ```
 
-Docker Desktop must be running before `llm services start` — it does not auto-launch. Start it from the Start menu or system tray (look for the whale icon) if needed.
+Docker Desktop must be running before `llm services start`; it does not auto-launch. Start it from the Start menu or system tray (look for the whale icon) if needed.
 
-Override ports or timezone in `config/user.psd1` (file is gitignored — safe for per-machine settings):
+Override ports or timezone in `config/user.psd1` (file is gitignored, safe for per-machine settings):
 ```powershell
 @{ defaults = @{ langfusePort = 3001; searxngPort = 8888; n8nPort = 5678; n8nTimezone = 'UTC' } }
 ```
 After changing any of these, re-run `.\scripts\setup-docker.ps1` to regenerate `.env` and restart containers.
 
 **Persistent data** lives in gitignored directories under `tools/`:
-- `tools/langfuse-data/` — Postgres database: all Langfuse traces, projects, API keys
-- `tools/n8n-data/` — n8n workflows, credentials, execution history
+- `tools/langfuse-data/`: Postgres database containing all Langfuse traces, projects, and API keys
+- `tools/n8n-data/`: n8n workflows, credentials, and execution history
 
-These survive `llm services stop` and `llm services start`. They are deleted if you run `docker system prune -af` (used for fixing corrupted images — see Troubleshooting below). Back them up if you have valuable Langfuse history or n8n workflows.
+These survive `llm services stop` and `llm services start`. They are deleted if you run `docker system prune -af` (used for fixing corrupted images; see Troubleshooting below). Back them up if you have valuable Langfuse history or n8n workflows.
 
 ---
 
-#### Langfuse — LLM observability
+#### Langfuse: LLM observability
 
 Open `http://localhost:3001`. Default login: `admin@local.dev` / `admin123`.
 
 Langfuse records every LLM request routed through LiteLLM: the full prompt, response, model name, latency (time to first token + total), token counts, and any retry events. Use it to:
 
-- **Debug unexpected answers** — see the exact system prompt and user message the model received, not what your code sent before transformation
-- **Compare quant levels** — run `llm eval` before and after a profile switch, then look at Langfuse to see if latency changed alongside accuracy
-- **Audit agentic tools** — see every turn aider or Cline makes, including tool calls and their results
-- **Track token burn** — spot which workflows are expensive before they become a problem
+- **Debug unexpected answers**: see the exact system prompt and user message the model received, not what your code sent before transformation
+- **Compare quant levels**: run `llm eval` before and after a profile switch, then look at Langfuse to see if latency changed alongside accuracy
+- **Audit agentic tools**: see every turn aider or Cline makes, including tool calls and their results
+- **Track token burn**: spot which workflows are expensive before they become a problem
 
-**Enabling tracing (required — Langfuse doesn't auto-capture requests):**
+**Enabling tracing (required; Langfuse doesn't auto-capture requests):**
 
 Tracing only works through LiteLLM. Direct `:8080` requests are invisible to Langfuse.
 
 1. Start Docker services: `llm services start`
-2. Open `http://localhost:3001` → **Settings → API Keys** → create a key pair — copy the **Secret Key** and **Public Key**
+2. Open `http://localhost:3001` → **Settings → API Keys** → create a key pair, then copy the **Secret Key** and **Public Key**
 3. Open `config/litellm.yaml` and uncomment the `success_callback` block:
    ```yaml
    litellm_settings:
@@ -516,9 +545,9 @@ Tracing only works through LiteLLM. Direct `:8080` requests are invisible to Lan
 
 ---
 
-#### SearXNG — private web search
+#### SearXNG: private web search
 
-Open `http://localhost:8888` for a search UI. Queries go to Google, Bing, DuckDuckGo, and others in parallel — SearXNG aggregates the results. Your IP talks to SearXNG locally; SearXNG talks to search providers on your behalf.
+Open `http://localhost:8888` for a search UI. Queries go to Google, Bing, DuckDuckGo, and others in parallel; SearXNG aggregates the results. Your IP talks to SearXNG locally; SearXNG talks to search providers on your behalf.
 
 **Using `@web` in Continue.dev:**
 
@@ -530,7 +559,7 @@ When Docker services are running, the Continue MCP server `searxng-search` becom
 @web site:github.com llama.cpp quantization
 ```
 
-Continue sends the query to SearXNG, fetches the top results, and includes them as context before sending to the model. If Docker is stopped, `@web` returns nothing silently — start services first.
+Continue sends the query to SearXNG, fetches the top results, and includes them as context before sending to the model. If Docker is stopped, `@web` returns nothing silently; start services first.
 
 **As a browser search engine:** Go to browser settings → Search engines → Add:
 - Name: `local`
@@ -539,13 +568,13 @@ Continue sends the query to SearXNG, fetches the top results, and includes them 
 
 Type `s <query>` in the address bar to search privately.
 
-Config lives at `config/searxng/settings.yml` (committed to the repo — edit it to enable or disable specific search engines or change safe-search level).
+Config lives at `config/searxng/settings.yml` (committed to the repo; edit it to enable or disable specific search engines or change safe-search level).
 
 ---
 
-#### n8n — workflow automation
+#### n8n: workflow automation
 
-Open `http://localhost:5678`. No login required on first run — set up an account on first visit (credentials stay local in `tools/n8n-data/`).
+Open `http://localhost:5678`. No login required on first run; set up an account on first visit (credentials stay local in `tools/n8n-data/`).
 
 n8n is a visual workflow builder. Each workflow is a graph of nodes: triggers (webhook, schedule, file watch) connected to actions (HTTP request, email, code). Build without writing scripts.
 
@@ -568,12 +597,12 @@ Add an **HTTP Request** node:
   }
   ```
 
-The response is `choices[0].message.content` — wire that to whatever you want (Slack, email, file, another LLM call).
+The response is `choices[0].message.content`; wire that to whatever you want (Slack, email, file, another LLM call).
 
 **Example workflows:**
-- **PR summarizer** — GitHub webhook trigger → fetch PR diff → HTTP Request to `coder` → post summary comment
-- **Daily digest** — Schedule trigger → fetch RSS feed → HTTP Request to `planner` → email summary
-- **Commit message generator** — Webhook from git hook → send staged diff → return message to terminal
+- **PR summarizer**: GitHub webhook trigger → fetch PR diff → HTTP Request to `coder` → post summary comment
+- **Daily digest**: Schedule trigger → fetch RSS feed → HTTP Request to `planner` → email summary
+- **Commit message generator**: Webhook from git hook → send staged diff → return message to terminal
 
 n8n schedules run in UTC by default. To use local time, set `n8nTimezone` in `config/user.psd1` (e.g. `'America/New_York'`) and re-run `.\scripts\setup-docker.ps1`.
 
@@ -583,29 +612,40 @@ n8n schedules run in UTC by default. To use local time, set `n8nTimezone` in `co
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `exec /bin/sh: exec format error` on any container | Image layers corrupted by interrupted download (e.g. daemon crashed mid-pull) | `docker system prune -af` then re-run `.\scripts\setup-docker.ps1` — this deletes all cached images and re-downloads clean copies (~3 GB) |
-| `langfuse-postgres unhealthy`, `dependency failed to start` | Postgres container failed to start — almost always the corrupted-layer issue above | Same: `docker system prune -af` + re-run setup |
+| `exec /bin/sh: exec format error` on any container | Image layers corrupted by interrupted download (e.g. daemon crashed mid-pull) | `docker system prune -af` then re-run `.\scripts\setup-docker.ps1`; this deletes all cached images and re-downloads clean copies (~3 GB) |
+| `langfuse-postgres unhealthy`, `dependency failed to start` | Postgres container failed to start; almost always the corrupted-layer issue above | Same: `docker system prune -af` + re-run setup |
 | `500 Internal Server Error` on all `docker` commands | WSL2 backend not started or crashed | Restart Docker Desktop from system tray → wait for whale icon to go solid (60–90 s) |
-| `@web` in Continue returns nothing | Docker services not running, or SearXNG container stopped | `llm services status` — if any container is not `Up`, run `llm services start` |
-| Langfuse dashboard shows no traces | Tracing not enabled — LiteLLM not configured or not running | Follow the "Enabling tracing" steps above; confirm `llm litellm status` shows running |
+| `@web` in Continue returns nothing | Docker services not running, or SearXNG container stopped | `llm services status`; if any container is not `Up`, run `llm services start` |
+| Langfuse dashboard shows no traces | Tracing not enabled; LiteLLM not configured or not running | Follow the "Enabling tracing" steps above; confirm `llm litellm status` shows running |
 | Port already in use | Another process on 3001, 8888, or 5678 | Set override ports in `config/user.psd1`, re-run `.\scripts\setup-docker.ps1` |
 | Containers stop after reboot | `restart: unless-stopped` is set but Docker Desktop didn't start | Enable Docker Desktop → Settings → General → "Start Docker Desktop when you log in" |
-| Lost n8n workflows or Langfuse history | `docker system prune -af` deleted `tools/langfuse-data` and `tools/n8n-data` | These are not recoverable without a backup — back them up before running prune |
+| Lost n8n workflows or Langfuse history | `docker system prune -af` deleted `tools/langfuse-data` and `tools/n8n-data` | These are not recoverable without a backup; back them up before running prune |
 | `llm services logs` shows nothing for SearXNG | SearXNG logs are suppressed by design (noisy access logs) | To debug, temporarily change `logging.driver: none` to `logging.driver: json-file` in `tools/compose/docker-compose.yml`, re-run `docker compose -f tools/compose/docker-compose.yml up -d` |
+
+#### Updating Docker service images
+
+To pull newer versions of Langfuse, SearXNG, or n8n:
+
+1. Update the image tag in `tools/compose/docker-compose.yml` (e.g. `langfuse/langfuse:2` → bump the date tag on SearXNG, or `n8nio/n8n:1.101.0`)
+2. Pull the new images and restart:
+   ```powershell
+   docker compose -f tools\compose\docker-compose.yml pull
+   llm services stop
+   llm services start
+   ```
+
+Persistent data in `tools/langfuse-data/` and `tools/n8n-data/` is preserved across image updates. Back them up before a major version upgrade in case the new container runs a migration that isn't backwards-compatible.
 
 ### Model quality benchmarks
 
-`llm eval` uses [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness), an open-source benchmarking framework that runs standardized tasks against any OpenAI-compatible endpoint and returns a reproducible accuracy score. This is separate from `llm bench`, which measures throughput (tokens/sec) — `llm eval` measures *answer quality*.
+`llm eval` uses [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness), an open-source benchmarking framework that runs standardized tasks against any OpenAI-compatible endpoint and returns a reproducible accuracy score. This is separate from `llm bench`, which measures throughput (tokens/sec); `llm eval` measures *answer quality*.
 
 **Why run it:** VRAM savings from lower quant levels come at an accuracy cost. Speed and VRAM are easy to measure; `llm eval` closes the loop on whether a model or quant change actually degraded the answers.
 
-Requires `llm serve` running first. One-time bootstrap installs lm-eval into a dedicated venv:
+Requires `llm serve` running first. The eval venv is created by `setup.bat`; no separate bootstrap needed.
 
 ```powershell
-# One-time bootstrap (Python 3.12 required)
-.\scripts\bootstrap-eval.ps1
-
-# Quick smoke test (recommended first run — ~8 min)
+# Quick smoke test (recommended first run, ~8 min)
 llm eval coder gsm8k --limit 100
 
 # Full benchmarks (saved to results/)
@@ -615,7 +655,7 @@ llm eval planner mmlu           # general knowledge (~90 min)
 llm eval coder gsm8k --shots 5  # 5-shot variant (slightly higher scores, longer)
 ```
 
-Results are saved as JSON under `results/eval-<role>-<task>-<timestamp>/<role>/results_<timestamp>.json`. The primary metric is `exact_match,flexible-extract` (accuracy 0.0–1.0 — the flexible extractor finds the final number in the response). Reference points for 14B Q4 quant models at **5-shot**:
+Results are saved as JSON under `results/eval-<role>-<task>-<timestamp>/<role>/results_<timestamp>.json`. The primary metric is `exact_match,flexible-extract` (accuracy 0.0–1.0; the flexible extractor finds the final number in the response). Reference points for 14B Q4 quant models at **5-shot**:
 
 | Task | Measures | Expected (5-shot) | Expected (0-shot) |
 |------|---------|-------------------|-------------------|
@@ -625,11 +665,52 @@ Results are saved as JSON under `results/eval-<role>-<task>-<timestamp>/<role>/r
 
 Scores well below these ranges usually mean the chat template wasn't applied correctly. Run the same task before and after a quant change or profile switch to measure quality delta.
 
-## Browser chat and RAG — Open WebUI
+## Browser chat and RAG: Open WebUI
 
 `llm up` starts Open WebUI on port 3000, pre-wired to the local inference endpoint and embedding model. There's no manual admin setup. If you want it without the inference stack, use `llm webui`.
 
 Open WebUI uses the `embed` model for document search automatically. Add documents through the workspace panel; they're indexed locally and available in any chat via the RAG interface. You can create model presets in Workspace → Models, for example a "Planner" preset with low temperature for precise answers, or a "Chat" preset for general conversation.
+
+## Customizing your setup: config/user.psd1
+
+`config/user.psd1` is a per-machine override file that is gitignored. Create it to change ports, timezones, mlock behaviour, or the active model profile without touching the shared `config/models.psd1`. Every script that reads config merges `user.psd1` on top of `models.psd1`, so anything you set here wins.
+
+Create the file if it doesn't exist:
+
+```powershell
+# Minimal example: override just the things you need
+@{
+    activeProfile = '16gb'        # or '12gb', '8gb'
+    defaults = @{
+        port         = 8080       # inference endpoint port
+        langfusePort = 3001
+        searxngPort  = 8888
+        n8nPort      = 5678
+        n8nTimezone  = 'America/New_York'  # IANA timezone string
+    }
+} | Export-Clixml config\user.psd1
+```
+
+Or just write it as a plain PSD1 hashtable:
+
+```powershell
+# config/user.psd1
+@{
+    defaults = @{
+        n8nTimezone = 'America/New_York'
+    }
+}
+```
+
+After changing ports or timezone, re-run `.\scripts\setup-docker.ps1` to regenerate `.env` and restart containers. After changing `activeProfile`, run `llm gen` to regenerate the server config, then `llm fetch` to download any missing model files.
+
+`llm gen` regenerates `config/llama-swap.yaml` from `models.psd1` + `user.psd1` without restarting the server; useful after editing model parameters:
+
+```powershell
+llm gen       # regenerate config (no restart needed for the next llm serve)
+```
+
+---
 
 ## Managing model profiles
 
@@ -649,3 +730,17 @@ Switching profiles does not delete models from previous profiles; they stay in `
 To add or change a model, edit its entry in `config/models.psd1` (setting `repo`, `path`, `gguf`, `ctx`, and any optional flags), then run `llm fetch` to download it and `llm serve` to pick it up. The server config (`config/llama-swap.yaml`) is generated automatically on each launch and should never be edited by hand.
 
 To add a new profile for a different VRAM tier, add a new key under `profiles` in the PSD1 file and switch to it with `llm profile <name>`.
+
+## Keeping the stack current
+
+**Inference engine (llama.cpp):**
+```powershell
+llm update    # pulls latest llama.cpp submodule commit and rebuilds
+```
+This is equivalent to bumping the submodule, running `build-llama.ps1 -Force`, and copying the new binary. See [TUNING.md](TUNING.md#bumping-the-llamacpp-submodule) for how to verify performance didn't regress after an update.
+
+**Docker services (Langfuse, SearXNG, n8n):** bump image tags in `tools/compose/docker-compose.yml` and re-pull (see [Updating Docker service images](#updating-docker-service-images) above).
+
+**Python venv dependencies:** delete the relevant `tools/venv-*` directory and re-run `setup.bat`; it recreates missing venvs automatically.
+
+**Fabric patterns:** re-run `llm fabric-setup` after bumping the `external/fabric` submodule; it re-copies the pattern directory.

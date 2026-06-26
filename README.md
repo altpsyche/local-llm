@@ -1,51 +1,71 @@
 # local-llm
 
-This project sets up a private AI assistant on your Windows PC. The models run on your GPU with no cloud service involved, no API fees, and no internet connection required after the initial model download. The inference is fast enough for real-time autocomplete and responsive back-and-forth conversation.
+A private AI stack for Windows. Models run on your NVIDIA GPU with no cloud dependencies and no data leaving the machine. Fast enough for real-time autocomplete and multi-turn coding sessions.
 
-After setup you have in-editor autocomplete as you type in VS Code, a chat panel for asking questions and reviewing code, a terminal coding agent (aider) that separates planning from editing so you can review proposed changes before anything is written to disk, a browser-based chat interface at `http://localhost:3000`, and a local embedding model for searching your own documents and codebase.
+## What you get
 
-Everything routes through a single local server at `http://localhost:8080/v1`, which speaks the same protocol as the OpenAI API. Any tool already pointed at OpenAI can be redirected here instead.
+| Feature | Entry point |
+|---|---|
+| Inference API (OpenAI-compatible) | `http://localhost:8080/v1` |
+| Browser chat + RAG | Open WebUI at `:3000` |
+| VS Code autocomplete | Continue.dev ghost-text completions, `Tab` to accept |
+| VS Code chat | Continue.dev with `@web`, `@filesystem`, `@codebase` |
+| VS Code agent | Cline: reads/writes files and runs commands |
+| Terminal coding agent | aider: review the plan before any file is touched |
+| Shell prompt patterns | fabric: 254 named patterns, pipe any text through them |
+| Private web search | SearXNG at `:8888`, powers Continue's `@web` |
+| LLM observability | Langfuse at `:3001`: traces, latency, token counts |
+| Workflow automation | n8n at `:5678`: visual workflows calling the local LLM |
 
-You need Windows 11 and an NVIDIA GPU from the RTX 3000 series or newer. Setup detects your GPU automatically and selects the right CUDA toolkit and build flags. The default profile targets 16 GB VRAM (RTX 5080, Blackwell) and runs at about 86 tokens per second on generation. Profiles for 12 GB and 8 GB cards are included; the VRAM suggestion is automatic at setup.
+## Hardware
+
+Windows 11 with an NVIDIA RTX 3000 series card or newer. Three VRAM profiles are included:
+
+| Profile | Target cards | Model download |
+|---|---|---|
+| `16gb` (default) | RTX 5080, 4090, 4080 | ~38 GB |
+| `12gb` | RTX 4070 Ti, 3080 Ti, 4070 | ~21 GB |
+| `8gb` | RTX 3070, 4060 (unvalidated) | ~12 GB |
+
+Setup detects your GPU and selects the best-fit profile automatically. RTX 5000 (Blackwell) requires CUDA 12.8; `install_prereqs.bat` handles version selection. On an RTX 5080 with the default profile: pp512 ~4600 t/s, tg128 ~89 t/s.
 
 ## Quick start
+
+Git, Scoop, and PowerShell 7 are required before running these. Everything else installs automatically.
+
+**Step 1: install prerequisites (once per machine)**
 
 ```powershell
 git clone --recurse-submodules <your-remote> C:\local-llm
 cd C:\local-llm
+.\install_prereqs.bat
+```
+
+Installs CUDA, Python 3.12, Go, Node.js, cmake, and Docker Desktop. If Docker Desktop was just installed, log out and back in before step 2.
+
+**Step 2: build, configure, and start**
+
+```powershell
 .\setup.bat
 llm up
 ```
 
-`setup.bat` handles everything in one shot. It installs the required prerequisites (CUDA 12.8, Python, Go), builds the inference engine and proxy from source, downloads the model files (about 38 GB for the default 16 GB profile), and wires the VS Code and terminal clients. It's safe to re-run if something fails partway through.
+Builds the inference engine and proxy from source, downloads models, wires VS Code and terminal clients, and starts Docker services. Open a new terminal after setup so the PATH update takes effect. `llm up` starts the endpoint on `:8080` and Open WebUI on `:3000` in the background. Tail logs with `llm logs`.
 
-After setup, open a new terminal so the PATH update takes effect, then run `llm up`. This starts the API endpoint on port 8080 and the web chat interface on port 3000, both silently in the background with no popup windows. Logs go to `logs/llama-swap.log`; tail them with `llm logs`. Use `llm status` to see which models are loaded.
+Both scripts are safe to re-run if something fails partway through.
 
-Pass `-Profile 12gb` if your GPU has less than 16 GB of VRAM (about 21 GB download instead of 38). Pass `-SkipModels` to build everything but defer the downloads. Pass `-Launch` to start the stack automatically when setup finishes.
-
-Once the stack is running, `llm up` is the only command you need at the start of each session. Use `llm serve` if you only want the API endpoint without the web UI. All other commands are in [docs/USAGE.md](docs/USAGE.md).
-
-## Model profiles
-
-All models are defined in `config/models.psd1`, grouped into VRAM profiles. The default is `16gb`. To see what's available and switch profiles:
-
-```powershell
-llm profiles          # list profiles with their VRAM requirements
-llm profile 12gb      # switch profiles and regenerate the config
-```
-
-Setup reads your GPU automatically and switches to the best-fit profile if the active one won't fit. Pass `-Profile` explicitly to override the automatic choice. See [docs/USAGE.md](docs/USAGE.md) for adding custom profiles.
-
-## CUDA versions
-
-Setup detects your GPU and picks the right CUDA toolkit automatically. The only strict version requirement is for Blackwell (RTX 5000 series): those cards need CUDA 12.8 specifically for the hardware acceleration path that delivers the benchmark numbers above. Building Blackwell with any other version falls back to a code path roughly five times slower on prefill. For Ada Lovelace (RTX 4000 series) and Ampere (RTX 3000 series), any CUDA 12.x works. Details are in [docs/SETUP.md](docs/SETUP.md) and [docs/TUNING.md](docs/TUNING.md).
+Flags for `setup.bat`: `-Profile 12gb` (smaller model set), `-SkipModels` (skip downloads), `-Launch` (start the stack when setup finishes).
 
 ## Docs
 
-[SETUP](docs/SETUP.md) covers prerequisites, install, build steps, and how to verify the stack is working.
+[DAY-IN-THE-LIFE](docs/DAY-IN-THE-LIFE.md): hands-on walkthrough of every feature structured as a working session. Start here after setup.
 
-[USAGE](docs/USAGE.md) covers daily commands, configuring each client (VS Code, aider, Open WebUI), and managing model profiles.
+[SETUP](docs/SETUP.md): prerequisites, two-step install flow, build steps, verification.
 
-[TUNING](docs/TUNING.md) covers per-model launch flags, VRAM sizing, performance checks, and updating the inference engine.
+[USAGE](docs/USAGE.md): full command reference, API details, client configuration, Docker services, customization.
 
-[FALLBACKS](docs/FALLBACKS.md) covers alternatives and workarounds for when something won't build or install.
+[MANUAL-INSTALL.md](docs/MANUAL-INSTALL.md): step-by-step for advanced users with exact cmake flags, venv creation, and Docker wiring.
+
+[TUNING](docs/TUNING.md): per-model launch flags, VRAM sizing, performance checks, updating the engine.
+
+[FALLBACKS](docs/FALLBACKS.md): alternatives and workarounds for failed builds or installs.
