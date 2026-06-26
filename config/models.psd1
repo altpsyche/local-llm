@@ -14,8 +14,7 @@
 #  Peek a profile without switching or downloading:
 #      llm fetch --list 12gb      (dry-run; lists files + sizes, pulls nothing)
 #
-#  Profiles available: '16gb' (default), '12gb'.  Footprints: see _targetVRAM below.
-#  (Add '32gb'/'64gb' later the same way — copy a profile block, bump the models/quants.)
+#  Profiles available: '8gb', '12gb', '16gb' (default), '24gb', '32gb'. See _targetVRAM.
 #
 #  ── SCHEMA (per model) ──────────────────────────────────────────────────────
 #    repo / path  : HuggingFace repo + file path  → download URL
@@ -77,10 +76,37 @@
     '16gb' = @{
       _targetVRAM = '16GB+ (tested RTX 5080; 30B planner uses light RAM offload)'
       planner = @{ repo = 'Qwen/Qwen3-30B-A3B-GGUF';                   path = 'Qwen3-30B-A3B-Q4_K_M.gguf';             gguf = 'qwen3-30b-a3b-q4.gguf';      ctx = 16384; kv = $true; sizeGB = 17.3; flags = @('--temp', '0.3') }
-      coder   = @{ repo = 'bartowski/Qwen2.5-Coder-14B-Instruct-GGUF'; path = 'Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf'; gguf = 'qwen-coder-14b-q4_k_m.gguf'; ctx = 16384; kv = $true; sizeGB = 8.4 }
+      coder   = @{ repo = 'bartowski/Qwen2.5-Coder-14B-Instruct-GGUF'; path = 'Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf'; gguf = 'qwen-coder-14b-q4_k_m.gguf'; ctx = 16384; kv = $true; sizeGB = 8.4; draftRole = 'fim' }
       chat    = @{ repo = 'Qwen/Qwen3-14B-GGUF';                       path = 'Qwen3-14B-Q4_K_M.gguf';                 gguf = 'qwen3-14b-q4_k_m.gguf';      ctx = 16384; kv = $true; sizeGB = 8.4; setParams = @{ temperature = 0.7; top_p = 0.9 } }
-      fim     = @{ repo = 'Qwen/Qwen2.5-Coder-3B-Instruct-GGUF';       path = 'qwen2.5-coder-3b-instruct-q8_0.gguf';   gguf = 'qwen-coder-3b-q8_0.gguf';    ctx = 8192;  sizeGB = 3.4; ttl = 0; pinned = $true }
-      embed   = @{ repo = 'gpustack/bge-m3-GGUF';                      path = 'bge-m3-Q8_0.gguf';                      gguf = 'bge-m3-q8_0.gguf';           sizeGB = 0.6; embedding = $true; ttl = 0; pinned = $true }
+      fim     = @{ repo = 'Qwen/Qwen2.5-Coder-3B-Instruct-GGUF';       path = 'qwen2.5-coder-3b-instruct-q8_0.gguf';   gguf = 'qwen-coder-3b-q8_0.gguf';    ctx = 8192;  sizeGB = 3.4; ttl = 0; pinned = $true; mlock = $true }
+      embed   = @{ repo = 'gpustack/bge-m3-GGUF';                      path = 'bge-m3-Q8_0.gguf';                      gguf = 'bge-m3-q8_0.gguf';           sizeGB = 0.6; embedding = $true; ttl = 0; pinned = $true; mlock = $true }
+    }
+
+    # Better quants for RTX 3090 / 4090 / 4080 Super (24 GB). Q5_K_M planner + Q6_K coder/chat.
+    # Still swaps big models. UNVALIDATED: no 24GB card in authors' hardware — verify with llm bench.
+    # Repo/path URLs need verification on huggingface.co before first use (llm fetch --list 24gb).
+    '24gb' = @{
+      _targetVRAM = '~24GB (RTX 3090 / 4090 / 4080 Super) — NEEDS on-card validation'
+      _notes      = 'Q5_K_M planner (~21.3 GB), Q6_K coder/chat (~10.7 GB). Swaps big models as usual.'
+      planner = @{ repo = 'bartowski/Qwen3-30B-A3B-GGUF';                   path = 'Qwen3-30B-A3B-Q5_K_M.gguf';            gguf = 'qwen3-30b-a3b-q5_k_m.gguf';  ctx = 16384; kv = $true; sizeGB = 21.3; flags = @('--temp', '0.3') }
+      coder   = @{ repo = 'bartowski/Qwen2.5-Coder-14B-Instruct-GGUF';      path = 'Qwen2.5-Coder-14B-Instruct-Q6_K.gguf'; gguf = 'qwen-coder-14b-q6_k.gguf';   ctx = 16384; kv = $true; sizeGB = 10.7; draftRole = 'fim' }
+      chat    = @{ repo = 'bartowski/Qwen3-14B-GGUF';                       path = 'Qwen3-14B-Q6_K.gguf';                  gguf = 'qwen3-14b-q6_k.gguf';        ctx = 16384; kv = $true; sizeGB = 10.7; setParams = @{ temperature = 0.7; top_p = 0.9 } }
+      fim     = @{ repo = 'bartowski/Qwen2.5-Coder-3B-Instruct-GGUF';       path = 'Qwen2.5-Coder-3B-Instruct-Q8_0.gguf';  gguf = 'qwen-coder-3b-q8_0.gguf';    ctx = 8192;  sizeGB = 3.4; ttl = 0; pinned = $true; mlock = $true }
+      embed   = @{ repo = 'gpustack/bge-m3-GGUF';                           path = 'bge-m3-Q8_0.gguf';                     gguf = 'bge-m3-q8_0.gguf';           sizeGB = 0.6; embedding = $true; ttl = 0; pinned = $true; mlock = $true }
+    }
+
+    # Near-lossless quants for 32+ GB cards (RTX 5090, A6000, etc.). Still swaps big models
+    # — planner alone is 24.2 GB; all three = 54 GB. True no-swap requires 48GB+ VRAM.
+    # UNVALIDATED: verify with llm bench. If planner OOMs, lower ctx or add '-ngl' flag.
+    # Repo/path URLs need verification on huggingface.co before first use (llm fetch --list 32gb).
+    '32gb' = @{
+      _targetVRAM = '~32GB (RTX 5090 / A6000 / high-VRAM cards) — NEEDS on-card validation'
+      _notes      = 'Near-lossless quants (Q6_K planner ~24 GB, Q8_0 coder/chat ~15 GB). Swaps big models. 48GB+ for true no-swap.'
+      planner = @{ repo = 'bartowski/Qwen3-30B-A3B-GGUF';                   path = 'Qwen3-30B-A3B-Q6_K.gguf';              gguf = 'qwen3-30b-a3b-q6_k.gguf';    ctx = 32768; kv = $true; sizeGB = 24.2; flags = @('--temp', '0.3') }
+      coder   = @{ repo = 'bartowski/Qwen2.5-Coder-14B-Instruct-GGUF';      path = 'Qwen2.5-Coder-14B-Instruct-Q8_0.gguf'; gguf = 'qwen-coder-14b-q8_0.gguf';   ctx = 32768; kv = $true; sizeGB = 15.0; draftRole = 'fim' }
+      chat    = @{ repo = 'bartowski/Qwen3-14B-GGUF';                       path = 'Qwen3-14B-Q8_0.gguf';                  gguf = 'qwen3-14b-q8_0.gguf';        ctx = 32768; kv = $true; sizeGB = 15.0; setParams = @{ temperature = 0.7; top_p = 0.9 } }
+      fim     = @{ repo = 'bartowski/Qwen2.5-Coder-3B-Instruct-GGUF';       path = 'Qwen2.5-Coder-3B-Instruct-Q8_0.gguf';  gguf = 'qwen-coder-3b-q8_0.gguf';    ctx = 8192;  sizeGB = 3.4; ttl = 0; pinned = $true; mlock = $true }
+      embed   = @{ repo = 'gpustack/bge-m3-GGUF';                           path = 'bge-m3-Q8_0.gguf';                     gguf = 'bge-m3-q8_0.gguf';           sizeGB = 0.6; embedding = $true; ttl = 0; pinned = $true; mlock = $true }
     }
 
     # Tight fit for ~8GB cards (RTX 3070, 4060, etc.). One big model at a time alongside
@@ -90,10 +116,10 @@
     '8gb' = @{
       _targetVRAM = '~8GB (ctx 4096, smaller quants) — NEEDS on-card validation'
       planner = @{ repo = 'Qwen/Qwen3-8B-GGUF';                       path = 'Qwen3-8B-Q4_K_M.gguf';                  gguf = 'qwen3-8b-q4_k_m.gguf';       ctx = 4096; kv = $true; sizeGB = 5.0; flags = @('--temp', '0.3') }
-      coder   = @{ repo = 'bartowski/Qwen2.5-Coder-7B-Instruct-GGUF'; path = 'Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf'; gguf = 'qwen-coder-7b-q4_k_m.gguf';  ctx = 4096; kv = $true; sizeGB = 4.7 }
+      coder   = @{ repo = 'bartowski/Qwen2.5-Coder-7B-Instruct-GGUF'; path = 'Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf'; gguf = 'qwen-coder-7b-q4_k_m.gguf';  ctx = 4096; kv = $true; sizeGB = 4.7; draftRole = 'fim' }
       chat    = @{ repo = 'Qwen/Qwen3-4B-GGUF';                       path = 'Qwen3-4B-Q4_K_M.gguf';                  gguf = 'qwen3-4b-q4_k_m.gguf';       ctx = 4096; kv = $true; sizeGB = 2.6; setParams = @{ temperature = 0.7; top_p = 0.9 } }
-      fim     = @{ repo = 'Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF';   path = 'qwen2.5-coder-1.5b-instruct-q8_0.gguf'; gguf = 'qwen-coder-1.5b-q8_0.gguf'; ctx = 2048; sizeGB = 1.9; ttl = 0; pinned = $true }
-      embed   = @{ repo = 'gpustack/bge-m3-GGUF';                     path = 'bge-m3-Q8_0.gguf';                      gguf = 'bge-m3-q8_0.gguf';           sizeGB = 0.6; embedding = $true; ttl = 0; pinned = $true }
+      fim     = @{ repo = 'Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF';   path = 'qwen2.5-coder-1.5b-instruct-q8_0.gguf'; gguf = 'qwen-coder-1.5b-q8_0.gguf'; ctx = 2048; sizeGB = 1.9; ttl = 0; pinned = $true; mlock = $true }
+      embed   = @{ repo = 'gpustack/bge-m3-GGUF';                     path = 'bge-m3-Q8_0.gguf';                      gguf = 'bge-m3-q8_0.gguf';           sizeGB = 0.6; embedding = $true; ttl = 0; pinned = $true; mlock = $true }
     }
 
     # Smaller quants + shorter context for ~12GB cards.
@@ -103,10 +129,10 @@
     '12gb' = @{
       _targetVRAM = '~12GB (smaller quants, ctx 8192/4096) — NEEDS on-card validation'
       planner = @{ repo = 'Qwen/Qwen3-14B-GGUF';                      path = 'Qwen3-14B-Q4_K_M.gguf';                 gguf = 'qwen3-14b-q4_k_m.gguf';      ctx = 8192; kv = $true; sizeGB = 8.4; flags = @('--temp', '0.3') }
-      coder   = @{ repo = 'bartowski/Qwen2.5-Coder-7B-Instruct-GGUF'; path = 'Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf'; gguf = 'qwen-coder-7b-q4_k_m.gguf';  ctx = 8192; kv = $true; sizeGB = 4.7 }
+      coder   = @{ repo = 'bartowski/Qwen2.5-Coder-7B-Instruct-GGUF'; path = 'Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf'; gguf = 'qwen-coder-7b-q4_k_m.gguf';  ctx = 8192; kv = $true; sizeGB = 4.7; draftRole = 'fim' }
       chat    = @{ repo = 'Qwen/Qwen3-8B-GGUF';                       path = 'Qwen3-8B-Q4_K_M.gguf';                  gguf = 'qwen3-8b-q4_k_m.gguf';       ctx = 8192; kv = $true; sizeGB = 5.0; setParams = @{ temperature = 0.7; top_p = 0.9 } }
-      fim     = @{ repo = 'Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF';    path = 'qwen2.5-coder-1.5b-instruct-q8_0.gguf'; gguf = 'qwen-coder-1.5b-q8_0.gguf'; ctx = 4096; sizeGB = 1.9; ttl = 0; pinned = $true }
-      embed   = @{ repo = 'gpustack/bge-m3-GGUF';                      path = 'bge-m3-Q8_0.gguf';                      gguf = 'bge-m3-q8_0.gguf';           sizeGB = 0.6; embedding = $true; ttl = 0; pinned = $true }
+      fim     = @{ repo = 'Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF';    path = 'qwen2.5-coder-1.5b-instruct-q8_0.gguf'; gguf = 'qwen-coder-1.5b-q8_0.gguf'; ctx = 4096; sizeGB = 1.9; ttl = 0; pinned = $true; mlock = $true }
+      embed   = @{ repo = 'gpustack/bge-m3-GGUF';                      path = 'bge-m3-Q8_0.gguf';                      gguf = 'bge-m3-q8_0.gguf';           sizeGB = 0.6; embedding = $true; ttl = 0; pinned = $true; mlock = $true }
     }
   }
 }

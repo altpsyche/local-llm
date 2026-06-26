@@ -57,6 +57,18 @@ foreach ($m in $models) {
   if ($m.kv)                         { $parts += '${kv}' }
   if ($m.embedding)                  { $parts += '--embedding' }
   if ($m.flags) { foreach ($f in $m.flags) { Assert-NoQuote $f "model '$($m.role)' flag"; $parts += [string]$f } }
+  if ($m.mlock -eq $true) { $parts += '--mlock' }
+  if ($m.draftRole) {
+    $draftModel = $models | Where-Object { $_.role -eq $m.draftRole } | Select-Object -First 1
+    if (-not $draftModel) {
+      Write-Warning "[$($m.role)] draftRole '$($m.draftRole)' not found in profile — speculative decoding disabled."
+    } elseif ($draftModel.pinned -ne $true) {
+      Write-Warning "[$($m.role)] draftRole '$($m.draftRole)' is not pinned — draft must be in VRAM. Skipping."
+    } else {
+      $parts += "-md `${env.LLAMA_LOCAL_ROOT}/models/$($draftModel.gguf)"
+      $parts += '-ngld 99'
+    }
+  }
   $m | Add-Member -NotePropertyName _cmd -NotePropertyValue ($parts -join ' ')
 }
 

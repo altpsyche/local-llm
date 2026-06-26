@@ -163,7 +163,11 @@ Write-Host "`n[5] Profile suggestion for various VRAM amounts" -ForegroundColor 
   @{ vram = 12; expected = '12gb' }
   @{ vram = 14; expected = '12gb' }   # 14GB fits 12gb but not 16gb
   @{ vram = 16; expected = '16gb' }
-  @{ vram = 24; expected = '16gb' }   # larger than any profile -> biggest available
+  @{ vram = 20; expected = '16gb' }   # 20GB fits 16gb but not 24gb
+  @{ vram = 24; expected = '24gb' }   # 24gb profile now exists
+  @{ vram = 28; expected = '24gb' }   # 28GB fits 24gb but not 32gb
+  @{ vram = 32; expected = '32gb' }   # 32gb profile now exists
+  @{ vram = 48; expected = '32gb' }   # larger than any profile -> biggest available
 ) | ForEach-Object {
   $sug = Get-SuggestedProfile -VramGB $_.vram
   Assert "$($_.vram) GB -> suggests '$($_.expected)'" ($sug -eq $_.expected) $sug $_.expected
@@ -239,8 +243,8 @@ Write-Host "`n[8] End-to-end setup scenarios across hardware profiles" -Foregrou
 $scenarios = @(
   @{ name='RTX 5080 (Blackwell, 16GB) + CUDA 12.8';      vram=16; arch=120; cuda=@('v12.8'); expectProfile='16gb'; expectLeaf='v12.8'; cudaOk=$true  }
   @{ name='RTX 5080 (Blackwell, 16GB) + only CUDA 12.1';  vram=16; arch=120; cuda=@('v12.1'); expectProfile='16gb'; expectLeaf=$null;   cudaOk=$false }
-  @{ name='RTX 4090 (Ada, 24GB) + CUDA 12.8';             vram=24; arch=89;  cuda=@('v12.8'); expectProfile='16gb'; expectLeaf='v12.8'; cudaOk=$true  }
-  @{ name='RTX 4090 (Ada, 24GB) + only CUDA 12.1';        vram=24; arch=89;  cuda=@('v12.1'); expectProfile='16gb'; expectLeaf='v12.1'; cudaOk=$true  }
+  @{ name='RTX 4090 (Ada, 24GB) + CUDA 12.8';             vram=24; arch=89;  cuda=@('v12.8'); expectProfile='24gb'; expectLeaf='v12.8'; cudaOk=$true  }
+  @{ name='RTX 4090 (Ada, 24GB) + only CUDA 12.1';        vram=24; arch=89;  cuda=@('v12.1'); expectProfile='24gb'; expectLeaf='v12.1'; cudaOk=$true  }
   @{ name='RTX 3070 (Ampere, 8GB) + CUDA 12.1';           vram=8;  arch=86;  cuda=@('v12.1'); expectProfile='8gb';  expectLeaf='v12.1'; cudaOk=$true  }
   @{ name='RTX 3060 12GB (Ampere) + CUDA 12.1';           vram=12; arch=86;  cuda=@('v12.1'); expectProfile='12gb'; expectLeaf='v12.1'; cudaOk=$true  }
   @{ name='RTX 3060 12GB (Ampere) + only CUDA 11.8';      vram=12; arch=86;  cuda=@('v11.8'); expectProfile='12gb'; expectLeaf='v11.8'; cudaOk=$true  }

@@ -121,3 +121,20 @@ All model configuration lives in `config/models.psd1`. To add a new model or swa
 3. Run `llm fetch` to download the new GGUF, then `llm serve` to pick it up. Use `llm fetch --list` first to preview what will be downloaded.
 
 To add an entirely new VRAM tier, add a new key under `profiles` in the PSD1 file and switch to it with `llm profile <name>`. See [USAGE.md](USAGE.md#managing-model-profiles).
+
+## Speculative decoding
+
+`draftRole = 'fim'` on the `coder` model (enabled by default in all profiles) uses the always-resident `fim` model as a draft: `fim` proposes N tokens, and `coder` verifies them in a single forward pass. When the draft is correct (roughly 70–80% of the time on coding tasks), the large model accepts all N tokens without spending compute on each one individually — effectively multiplying generation throughput.
+
+Expected speedup: **20–40% on generation-heavy tasks** (autocomplete, inline edits, code generation). No quality change — the large model rejects incorrect draft tokens and falls back to its own output.
+
+**Tokenizer constraint:** Only the `coder` → `fim` pairing is safe. Qwen3 (used by `chat` and `planner`) has a different tokenizer vocabulary from Qwen2.5 (used by `coder` and `fim`). Mismatched vocabularies cause the large model to reject nearly all draft tokens, eliminating the speedup and potentially producing garbled output. Do not add `draftRole` to `chat` or `planner`.
+
+**Disable:** Remove `draftRole` from the `coder` entry in `config/models.psd1`, then run `llm gen`.
+
+**Verify it's active:**
+```powershell
+llm gen
+Select-String '\-md ' config\llama-swap.yaml
+```
+The `coder` cmd should contain `-md ${env.LLAMA_LOCAL_ROOT}/models/qwen-coder-*b-q8_0.gguf -ngld 99`. The `planner` and `chat` cmds must not contain `-md`.
