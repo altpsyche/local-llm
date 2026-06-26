@@ -14,9 +14,41 @@ The generated YAML has this structure:
 - `filters.setParams` — enforces sampling settings (temperature, top_p) server-side regardless of what the client sends
 - `groups:` with `swap: true` — models in the same group evict each other, so only one large model is resident at a time
 
+## Tunable defaults and personal overrides
+
+The `defaults` block in `config/models.psd1` controls the server launch flags and port numbers. `scripts/gen-llama-swap.ps1` reads it every time it regenerates the server config.
+
+| Key | Default | Effect |
+|-----|---------|--------|
+| `ngl` | `99` | GPU layers. Lower (e.g. `80`) to CPU-offload if a model overflows VRAM. |
+| `flashAttn` | `$true` | Enable Flash Attention. Required for KV cache quantization. |
+| `kvQuant` | `'q8_0'` | KV cache quantization. `'q4_0'` halves KV VRAM at ~1% quality cost. `''` disables (required for Gemma models). |
+| `batch` | `512` | Logical batch size (`-b`). Higher = faster prefill; uses more VRAM. Max 2048. |
+| `parallel` | `1` | Parallel request slots (`-np`). Set `>1` for multi-user or shared setups. |
+| `threads` | `-1` | CPU threads for BLAS. `-1` = auto. Tune if you're offloading layers to CPU. |
+| `port` | `8080` | llama-swap API port. |
+| `webuiPort` | `3000` | Open WebUI port. |
+| `webuiSecret` | `'local-llm-dev'` | Open WebUI session key. Change before exposing on a LAN. |
+| `maxTokens` | `512` | Default `max_tokens` for `llm chat`. |
+
+**Personal overrides without touching git**: create `config/user.psd1` (gitignored) to shadow any of these values without modifying the tracked file:
+
+```powershell
+# config/user.psd1 — copy from config/user.psd1.example and uncomment what you need
+@{
+    defaults = @{
+        ngl       = 80        # leave VRAM headroom for other GPU apps
+        kvQuant   = 'q4_0'   # halve KV cache VRAM at slight quality cost
+        port      = 8081      # run two stacks side-by-side
+    }
+}
+```
+
+Run `llm gen` after editing either file. Changes take effect on the next `llm serve`.
+
 ## Per-model launch flags (Blackwell / 16GB)
 
-The models run with these flags by default:
+These flags are assembled from the `defaults` block above. The resulting command for a 16 GB profile with default settings is:
 
 ```
 -ngl 99 -c 16384 --flash-attn on --cache-type-k q8_0 --cache-type-v q8_0

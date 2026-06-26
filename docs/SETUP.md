@@ -45,7 +45,7 @@ After setup, open a new terminal to pick up the PATH change, then run `llm up`.
 
 0. `.\scripts\diagnose.ps1` prints a machine summary (GPU, VRAM, CUDA, active profile, model files) before anything is installed. Run `llm diagnose` at any time to see the same report.
 1. `git submodule update --init --recursive` fetches the llama.cpp and llama-swap source trees.
-2. `.\scripts\build-llama.ps1` compiles llama.cpp against CUDA 12.8 and writes the binaries to `bin/`. Skips if the binary already exists; pass `-Force` to rebuild from scratch.
+2. `.\scripts\build-llama.ps1` compiles llama.cpp against CUDA 12.8 and writes the binaries to `bin/`. Skips if the binary already exists; pass `-Force` to rebuild from scratch. Before replacing an existing binary, the script backs it up as `bin/llama-server.exe.bak`. If a rebuild leaves things broken, restore it with `Move-Item bin\llama-server.exe.bak bin\llama-server.exe`.
 3. `.\scripts\build-llama-swap.ps1` compiles the model-swap proxy.
 4. Python virtual environments are created in `tools/venv-aider` and `tools/venv-webui` and their dependencies are installed. These are kept separate on purpose, because their dependency pins conflict and can't be merged into one environment.
 5. `.\scripts\gen-llama-swap.ps1` generates `config/llama-swap.yaml` from `config/models.psd1`.
@@ -71,7 +71,7 @@ See [TUNING.md](TUNING.md#bumping-the-llamacpp-submodule) for bumping to a newer
 ## Verifying the install
 
 ```powershell
-llm serve                 # start the inference endpoint on port 8080
+llm serve                 # start the inference endpoint (default port 8080)
 llm models                # should list: planner, coder, chat, fim, embed
 llm bench                 # performance check (see expected numbers below)
 llm chat coder "hi"       # end-to-end sanity check

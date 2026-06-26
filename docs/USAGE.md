@@ -16,17 +16,18 @@ Run this once per machine. It links the VS Code Continue config and the aider co
 
 ```
 llm diagnose             GPU, VRAM, CUDA, and model file health check
-llm up                   start the endpoint on port 8080 and Open WebUI on port 3000
-llm serve                start the endpoint only (port 8080), without the web UI
+llm up                   start the endpoint + Open WebUI (ports from defaults, default 8080/3000)
+llm serve                start the endpoint only (default port 8080), without the web UI
 llm stop                 stop the endpoint and free VRAM
 llm aider [args]         run aider in architect mode in the current folder
-llm webui                start Open WebUI only (port 3000)
+llm webui                start Open WebUI only (default port 3000)
 llm chat <model> <text>  send a one-shot message, e.g.  llm chat coder "write fizzbuzz"
 llm models               list the available model names
 llm bench [gguf]         run a throughput benchmark
 llm profiles             list VRAM profiles and which one is active
 llm profile <name>       switch profiles (e.g. llm profile 12gb) and regenerate the config
 llm fetch [--list] [p]   download models for a profile; --list previews without downloading
+llm verify-urls [<profile>]  check all HuggingFace download URLs are reachable (needs network)
 llm gen                  regenerate config/llama-swap.yaml from config/models.psd1
 ```
 
@@ -35,13 +36,13 @@ If `llm` isn't found after setup, run `scripts\install-cli.ps1` and open a fresh
 ## Starting the stack each session
 
 ```powershell
-llm up        # endpoint on port 8080 + Open WebUI on port 3000
+llm up        # endpoint on configured port (default 8080) + Open WebUI (default 3000)
 ```
 
 Or, if you only need the API for IDE and terminal tools:
 
 ```powershell
-llm serve     # inference endpoint at http://localhost:8080/v1
+llm serve     # inference endpoint at http://localhost:<port>/v1  (default: 8080)
 ```
 
 The server loads a model into VRAM when it first receives a request, and unloads it when it's been idle for a while. The exception is `fim` (autocomplete) and `embed` (embeddings), which are pinned in VRAM and never unloaded. Only one large model (`planner`, `coder`, or `chat`) is resident at a time; switching between them takes a few seconds.
@@ -70,6 +71,8 @@ The endpoint speaks the OpenAI chat completions API, so any HTTP client works:
 curl http://localhost:8080/v1/chat/completions -H "Content-Type: application/json" -d '{
   "model": "coder", "messages": [{"role":"user","content":"write a fizzbuzz in rust"}] }'
 ```
+
+The port defaults to `8080`. To change it, set `port` in the `defaults` block of `config/models.psd1` or create a `config/user.psd1` override (see [TUNING.md](TUNING.md#tunable-defaults-and-personal-overrides)).
 
 The `chat` and `planner` models (Qwen3) reason in a hidden scratchpad before responding. This can consume your entire `max_tokens` budget if you set it too low, leaving the visible reply empty. Give these models at least 512 tokens, or append `/no_think` to your prompt to skip the reasoning step and get a direct answer. GUI clients like Open WebUI handle this automatically, so it only affects raw API calls with small token limits.
 
@@ -102,13 +105,13 @@ Install the **Cline** extension, start the endpoint, then open Cline settings an
 
 | Field | Value |
 |---|---|
-| Base URL | `http://localhost:8080/v1` |
+| Base URL | `http://localhost:8080/v1` (replace `8080` if you changed `defaults.port`) |
 | API Key | `sk-local` (any non-empty string; the server ignores it) |
 | Model ID | `coder` |
 
 Set the context window to `16384` to match the server's limit. Leaving it higher causes Cline to send requests the server can't handle. Leave image support off; these models are not multimodal.
 
-To use separate models for planning and editing, enable **Use different models for Plan and Act** in Cline settings and set the Plan Model ID to `planner` and the Act Model ID to `coder`. This works correctly on OpenAI-compatible endpoints since Cline 3.43 ([cline#8126](https://github.com/cline/cline/issues/8126) fixed). Switching between modes evicts the other model from VRAM, so there is a brief load pause.
+To use separate models for planning and editing, enable **Use different models for Plan and Act** in Cline settings and set the Plan Model ID to `planner` and the Act Model ID to `coder`. Switching between modes evicts the other model from VRAM, so there is a brief load pause.
 
 Cline burns through its 16k context window quickly on multi-step tasks. Keep tasks focused and start a new task when the history grows large. For tasks that need deeper reasoning, set the Model ID to `planner`; it's slower but handles complex planning better. Switching models evicts the other from VRAM.
 
