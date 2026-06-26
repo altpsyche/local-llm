@@ -218,7 +218,7 @@ The port defaults to `8080`. To change it, set `port` in the `defaults` block of
 
 ### Embeddings API
 
-The `embed` model (bge-m3) exposes an OpenAI-compatible embeddings endpoint:
+The `embed` model (bge-m3) exposes an embeddings endpoint:
 
 ```powershell
 curl http://localhost:8080/v1/embeddings `
@@ -226,7 +226,7 @@ curl http://localhost:8080/v1/embeddings `
   -d '{"model": "embed", "input": "The quick brown fox"}'
 ```
 
-Response shape (standard OpenAI format):
+Response shape:
 ```json
 {
   "object": "list",
@@ -236,7 +236,7 @@ Response shape (standard OpenAI format):
 }
 ```
 
-The vector dimension is 1024. `embed` is pinned in VRAM and never unloads, so embedding calls never trigger a model swap. Use this endpoint to build your own RAG pipeline, or point any tool that accepts an OpenAI-compatible embeddings API at `http://localhost:8080/v1`.
+The vector dimension is 1024. `embed` is pinned in VRAM and never unloads, so embedding calls never trigger a model swap. Use this endpoint to build your own RAG pipeline, or point any tool that accepts an embeddings endpoint at `http://localhost:8080/v1`.
 
 **From Python (openai SDK):**
 ```python
@@ -291,7 +291,7 @@ aider auto-adjusts context size; no special configuration needed.
 
 ## Function Calling (Tool Use)
 
-The `coder` model supports the OpenAI tools API. Define functions the model can request,
+The `coder` model supports function calling. Define functions the model can request,
 then execute them in your application:
 
 ```powershell
@@ -416,7 +416,7 @@ Useful in-session commands:
 | `/undo` | revert aider's last committed edit |
 | `/drop` | remove files from context when it gets large |
 
-aider commits each accepted edit to git automatically. Work on a branch so `/undo` can roll back cleanly. Both models use a 16k context window; on large repos, prefer `/read` over `/add` for files you're only referencing, and use `/drop` to remove files you no longer need. The `openai/` prefix in the config (`openai/planner`, `openai/coder`) is required for aider to route through a local OpenAI-compatible endpoint and is already set correctly.
+aider commits each accepted edit to git automatically. Work on a branch so `/undo` can roll back cleanly. Both models use a 16k context window; on large repos, prefer `/read` over `/add` for files you're only referencing, and use `/drop` to remove files you no longer need. The `openai/` prefix in the config (`openai/planner`, `openai/coder`) is required for aider to route through a local endpoint and is already set correctly.
 
 ## Shell AI Patterns: fabric
 
@@ -638,7 +638,7 @@ Persistent data in `tools/langfuse-data/` and `tools/n8n-data/` is preserved acr
 
 ### Model quality benchmarks
 
-`llm eval` uses [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness), an open-source benchmarking framework that runs standardized tasks against any OpenAI-compatible endpoint and returns a reproducible accuracy score. This is separate from `llm bench`, which measures throughput (tokens/sec); `llm eval` measures *answer quality*.
+`llm eval` uses [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness), an open-source benchmarking framework that runs standardized tasks against any compatible endpoint and returns a reproducible accuracy score. This is separate from `llm bench`, which measures throughput (tokens/sec); `llm eval` measures *answer quality*.
 
 **Why run it:** VRAM savings from lower quant levels come at an accuracy cost. Speed and VRAM are easy to measure; `llm eval` closes the loop on whether a model or quant change actually degraded the answers.
 
