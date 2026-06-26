@@ -90,6 +90,46 @@ If prefill is around 1000 t/s, you're on the cuBLAS fallback. This happens when 
 
 The `-Force` flag wipes the `build/` directory before compiling. Without it, the script sees the existing binary and skips the build entirely. Confirm CUDA 12.8 is the active toolkit before running.
 
+## Quality benchmarking (lm-eval)
+
+`llm bench` measures *speed* — tokens per second. It tells you nothing about whether the model's answers are correct. `llm eval` fills that gap using [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness), an open-source harness that runs standardized tasks against any OpenAI-compatible endpoint and returns a reproducible accuracy score.
+
+**When to run:** after changing a model, switching quant levels (e.g. Q8_0 → Q4_K_M to reclaim VRAM), or after bumping llama.cpp. A score drop reveals whether the configuration change hurt answer quality, not just speed.
+
+```powershell
+llm serve               # endpoint must be running
+
+# Quick smoke test first (~8 min, 100 samples)
+llm eval coder gsm8k --limit 100
+
+# Full benchmarks (sequential, parallel=1 server default)
+llm eval coder gsm8k             # ~90 min, 1319 samples
+llm eval coder humaneval         # ~3 hr
+```
+
+Results land in `results/eval-coder-gsm8k-<timestamp>/coder/results_<timestamp>.json`. Look for `exact_match,flexible-extract` (0.0–1.0) — the flexible extractor finds the final number in the model's response, which is the right metric for generative math tasks.
+
+**Baseline scores for 14B Q4_K_M (16gb profile):**
+
+| Task | What it measures | 5-shot | 0-shot |
+|------|-----------------|--------|--------|
+| `gsm8k` | math word problems | 0.72–0.82 | 0.60–0.72 |
+| `humaneval` | code generation pass@1 | 0.60–0.72 | 0.50–0.65 |
+| `mmlu` | general knowledge | 0.62–0.70 | 0.55–0.65 |
+
+**Quant tradeoffs for the coder role:**
+
+| Quant | Disk / VRAM | Accuracy vs Q8_0 | Notes |
+|-------|------------|-----------------|-------|
+| Q8_0 | 15 GB | baseline | Best quality; only fits on 24 GB+ cards |
+| Q6_K | 11 GB | ~0.5% drop | Good balance for 24 GB cards |
+| Q4_K_M | 8.4 GB | ~1–2% drop | Default for 16 GB; good quality/VRAM tradeoff |
+| Q4_0 | 7.9 GB | ~4–6% drop | Not recommended — savings small, quality loss noticeable |
+
+If gsm8k score is well below 0.72: verify `--apply_chat_template` is in the lm-eval call (it is, in `scripts/eval.ps1`). The score collapses without it because the model never sees its expected prompt format.
+
+**Shot count:** `--shots 0` (zero-shot) is the default and runs faster. `--shots 5` gives 3–5% higher scores but takes longer and only makes sense if you're comparing against published 5-shot benchmarks.
+
 ## Updating the llama.cpp engine
 
 New llama.cpp versions can add support for new models, fix bugs, or improve performance. Blackwell MMQ support can regress between commits, so always re-run the benchmark after a bump to confirm performance before committing the new pin.

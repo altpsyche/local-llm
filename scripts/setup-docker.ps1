@@ -11,17 +11,22 @@
 $ErrorActionPreference = "Stop"
 $repo = Split-Path $PSScriptRoot -Parent
 
-# 1. Install Docker Desktop if not present
-$docker = Get-Command docker -ErrorAction SilentlyContinue
-if (-not $docker) {
-    Write-Host "Installing Docker Desktop via winget..." -ForegroundColor Cyan
-    winget install Docker.DockerDesktop --accept-package-agreements --accept-source-agreements
-    Write-Warning @"
+# 1. Install Docker Desktop if not present; add to PATH if installed but session not refreshed
+$dockerBin = 'C:\Program Files\Docker\Docker\resources\bin'
+if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+    if (Test-Path "$dockerBin\docker.exe") {
+        $env:PATH = "$dockerBin;$env:PATH"
+        Write-Host "  Added Docker to PATH for this session." -ForegroundColor DarkGray
+    } else {
+        Write-Host "Installing Docker Desktop via winget..." -ForegroundColor Cyan
+        winget install Docker.DockerDesktop --accept-package-agreements --accept-source-agreements
+        Write-Warning @"
 Docker Desktop installed.
 ACTION REQUIRED: Log out and back in (or restart), then re-run:
     .\scripts\setup-docker.ps1
 "@
-    return
+        return
+    }
 }
 
 # 2. Wait for Docker daemon

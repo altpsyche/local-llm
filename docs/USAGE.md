@@ -134,9 +134,10 @@ llm litellm stop
 **6 — Model quality benchmark:**
 ```powershell
 llm serve
-llm eval coder humaneval           # ~20 min; measures code generation accuracy
-llm eval planner mmlu --shots 5    # general knowledge, 5-shot
-# Results in results/eval-coder-humaneval-<timestamp>/
+llm eval coder gsm8k --limit 100   # quick smoke test (~8 min); math word problems
+llm eval coder gsm8k               # full benchmark (~90 min)
+llm eval planner mmlu --shots 5    # general knowledge, 5-shot (~90 min)
+# Results in results/eval-coder-gsm8k-<timestamp>/
 ```
 
 **7 — Docker services (Langfuse + SearXNG + n8n):**
@@ -144,7 +145,7 @@ llm eval planner mmlu --shots 5    # general knowledge, 5-shot
 .\scripts\setup-docker.ps1   # first time only — installs Docker Desktop if needed
 llm services start
 llm services status          # verify all three containers are Up
-# Langfuse: http://localhost:3001  (admin@localhost / admin)
+# Langfuse: http://localhost:3001  (admin@local.dev / admin123)
 # SearXNG:  http://localhost:8888
 # n8n:      http://localhost:5678
 # In Continue chat: @web what is the latest llama.cpp release?
@@ -452,59 +453,170 @@ To point Cline at LiteLLM: change its Base URL from `http://localhost:8080/v1` t
 
 ### Docker services (Langfuse + SearXNG + n8n)
 
-CPU-only services run in Docker Desktop. GPU tools stay native.
+CPU-only services run in Docker Desktop. GPU tools (llama.cpp, Open WebUI) stay native for maximum performance.
 
 ```powershell
-# One-time setup (installs Docker Desktop if needed, pulls images, starts services)
+# One-time setup — see SETUP.md for the full install walkthrough
 .\scripts\setup-docker.ps1
 
 # After setup, manage with:
-llm services start    # regenerates .env from models.psd1 then starts
-llm services stop
-llm services status
-llm services logs
-
-# Start alongside the inference stack:
-llm up -WithServices
+llm services start    # writes .env from models.psd1 then starts all containers
+llm services stop     # stops containers (data is preserved)
+llm services status   # show container names, state, and uptime
+llm services logs     # tail all container logs (Ctrl+C to stop)
 ```
 
-| Service | Default port | What it does |
-|---------|-------------|-------------|
-| Langfuse | 3001 | LLM observability — every prompt, latency, token count |
-| SearXNG | 8888 | Private web search — used by Continue.dev MCP `@web` |
-| n8n | 5678 | Workflow automation — trigger LLM on git push, PR events |
-
-Override ports in `config/user.psd1`:
+Override ports in `config/user.psd1` (file is gitignored — safe for per-machine settings):
 ```powershell
 @{ defaults = @{ langfusePort = 3001; searxngPort = 8888; n8nPort = 5678 } }
 ```
+After changing ports, re-run `.\scripts\setup-docker.ps1` to regenerate `.env` and restart containers.
 
-**Langfuse (observability):** Open `http://localhost:3001` and log in with `admin@localhost / admin`. The dashboard shows every request routed through LiteLLM: prompt, response, latency, token count, and retry events. Use it to compare generation speed across quant levels after a profile switch, or to see exactly what prompts aider and Cline send. Tracing requires LiteLLM as the intermediary — see the LiteLLM proxy section above.
+**Persistent data** lives in gitignored directories under `tools/`:
+- `tools/langfuse-data/` — Postgres database: all Langfuse traces, projects, API keys
+- `tools/n8n-data/` — n8n workflows, credentials, execution history
 
-**SearXNG (private web search):** A self-hosted meta-search engine that queries multiple search providers without sending queries to Google or Bing directly. Used by the Continue.dev `@web` context provider — when Docker is running, typing `@web <query>` in Continue chat returns live search results as context. Also accessible directly at `http://localhost:8888`; add it as a browser custom search engine with URL `http://localhost:8888/search?q=%s`.
+These survive `llm services stop` and `llm services start`. They are deleted if you run `docker system prune -af` (used for fixing corrupted images — see Troubleshooting below). Back them up if you have valuable Langfuse history or n8n workflows.
 
-**n8n (workflow automation):** Open `http://localhost:5678` to build visual automation workflows. Connect it to the local LLM endpoint to automate tasks without scripts: summarize PRs when they open, generate commit messages on push, or run a daily digest. The inference endpoint is reachable from inside the n8n container as `http://host.docker.internal:8080/v1/chat/completions`. Use an **HTTP Request** node (POST, Content-Type: application/json) with `Authorization: Bearer sk-local`.
+---
+
+#### Langfuse — LLM observability
+
+Open `http://localhost:3001`. Default login: `admin@local.dev` / `admin123`.
+
+Langfuse records every LLM request routed through LiteLLM: the full prompt, response, model name, latency (time to first token + total), token counts, and any retry events. Use it to:
+
+- **Debug unexpected answers** — see the exact system prompt and user message the model received, not what your code sent before transformation
+- **Compare quant levels** — run `llm eval` before and after a profile switch, then look at Langfuse to see if latency changed alongside accuracy
+- **Audit agentic tools** — see every turn aider or Cline makes, including tool calls and their results
+- **Track token burn** — spot which workflows are expensive before they become a problem
+
+**Enabling tracing (required — Langfuse doesn't auto-capture requests):**
+
+Tracing only works through LiteLLM. Direct `:8080` requests are invisible to Langfuse.
+
+1. Start Docker services: `llm services start`
+2. Open `http://localhost:3001` → **Settings → API Keys** → create a key pair — copy the **Secret Key** and **Public Key**
+3. Open `config/litellm.yaml` and uncomment the `success_callback` block:
+   ```yaml
+   litellm_settings:
+     success_callback: ["langfuse"]
+     failure_callback: ["langfuse"]
+
+   environment_variables:
+     LANGFUSE_PUBLIC_KEY: "pk-lf-..."   # paste your public key
+     LANGFUSE_SECRET_KEY: "sk-lf-..."   # paste your secret key
+     LANGFUSE_HOST: "http://localhost:3001"
+   ```
+4. Start LiteLLM: `llm litellm -NoWindow`
+5. Point your client at `:8081` instead of `:8080` (or use `llm chat` which goes through LiteLLM automatically)
+6. Requests appear in the Langfuse dashboard under **Traces** within a few seconds
+
+---
+
+#### SearXNG — private web search
+
+Open `http://localhost:8888` for a search UI. Queries go to Google, Bing, DuckDuckGo, and others in parallel — SearXNG aggregates the results. Your IP talks to SearXNG locally; SearXNG talks to search providers on your behalf.
+
+**Using `@web` in Continue.dev:**
+
+When Docker services are running, the Continue MCP server `searxng-search` becomes active. In any Continue chat message, prefix your query:
+
+```
+@web what is the latest llama.cpp release?
+@web python asyncio best practices 2025
+@web site:github.com llama.cpp quantization
+```
+
+Continue sends the query to SearXNG, fetches the top results, and includes them as context before sending to the model. If Docker is stopped, `@web` returns nothing silently — start services first.
+
+**As a browser search engine:** Go to browser settings → Search engines → Add:
+- Name: `local`
+- URL: `http://localhost:8888/search?q=%s`
+- Shortcut: `s`
+
+Type `s <query>` in the address bar to search privately.
+
+Config lives at `config/searxng/settings.yml` (created on first run, committed to the repo). Edit it to enable/disable specific search engines or change safe-search level.
+
+---
+
+#### n8n — workflow automation
+
+Open `http://localhost:5678`. No login required on first run — set up an account on first visit (credentials stay local in `tools/n8n-data/`).
+
+n8n is a visual workflow builder. Each workflow is a graph of nodes: triggers (webhook, schedule, file watch) connected to actions (HTTP request, email, code). Build without writing scripts.
+
+**Connecting to the local LLM:**
+
+Inside n8n containers, the host machine is reachable at `host.docker.internal`. The inference endpoint is:
+```
+http://host.docker.internal:8080/v1/chat/completions
+```
+
+Add an **HTTP Request** node:
+- Method: `POST`
+- URL: `http://host.docker.internal:8080/v1/chat/completions`
+- Header: `Authorization: Bearer sk-local` (any non-empty string)
+- Body (JSON):
+  ```json
+  {
+    "model": "coder",
+    "messages": [{"role": "user", "content": "{{ $json.text }}"}]
+  }
+  ```
+
+The response is `choices[0].message.content` — wire that to whatever you want (Slack, email, file, another LLM call).
+
+**Example workflows:**
+- **PR summarizer** — GitHub webhook trigger → fetch PR diff → HTTP Request to `coder` → post summary comment
+- **Daily digest** — Schedule trigger → fetch RSS feed → HTTP Request to `planner` → email summary
+- **Commit message generator** — Webhook from git hook → send staged diff → return message to terminal
+
+---
+
+#### Troubleshooting Docker
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `exec /bin/sh: exec format error` on any container | Image layers corrupted by interrupted download (e.g. daemon crashed mid-pull) | `docker system prune -af` then re-run `.\scripts\setup-docker.ps1` — this deletes all cached images and re-downloads clean copies (~3 GB) |
+| `langfuse-postgres unhealthy`, `dependency failed to start` | Postgres container failed to start — almost always the corrupted-layer issue above | Same: `docker system prune -af` + re-run setup |
+| `500 Internal Server Error` on all `docker` commands | WSL2 backend not started or crashed | Restart Docker Desktop from system tray → wait for whale icon to go solid (60–90 s) |
+| `@web` in Continue returns nothing | Docker services not running, or SearXNG container stopped | `llm services status` — if any container is not `Up`, run `llm services start` |
+| Langfuse dashboard shows no traces | Tracing not enabled — LiteLLM not configured or not running | Follow the "Enabling tracing" steps above; confirm `llm litellm status` shows running |
+| Port already in use | Another process on 3001, 8888, or 5678 | Set override ports in `config/user.psd1`, re-run `.\scripts\setup-docker.ps1` |
+| Containers stop after reboot | `restart: unless-stopped` is set but Docker Desktop didn't start | Enable Docker Desktop → Settings → General → "Start Docker Desktop when you log in" |
+| Lost n8n workflows or Langfuse history | `docker system prune -af` deleted `tools/langfuse-data` and `tools/n8n-data` | These are not recoverable without a backup — back them up before running prune |
 
 ### Model quality benchmarks
 
+`llm eval` uses [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness), an open-source benchmarking framework that runs standardized tasks against any OpenAI-compatible endpoint and returns a reproducible accuracy score. This is separate from `llm bench`, which measures throughput (tokens/sec) — `llm eval` measures *answer quality*.
+
+**Why run it:** VRAM savings from lower quant levels come at an accuracy cost. Speed and VRAM are easy to measure; `llm eval` closes the loop on whether a model or quant change actually degraded the answers.
+
+Requires `llm serve` running first. One-time bootstrap installs lm-eval into a dedicated venv:
+
 ```powershell
-# One-time bootstrap
+# One-time bootstrap (Python 3.12 required)
 .\scripts\bootstrap-eval.ps1
 
-# Run a benchmark (results saved to results/)
-llm eval coder humaneval        # code generation
-llm eval planner mmlu           # general knowledge
-llm eval coder gsm8k            # math word problems
-llm eval coder humaneval --shots 5
+# Quick smoke test (recommended first run — ~8 min)
+llm eval coder gsm8k --limit 100
+
+# Full benchmarks (saved to results/)
+llm eval coder gsm8k            # math word problems (~90 min)
+llm eval coder humaneval        # code generation (~3 hr)
+llm eval planner mmlu           # general knowledge (~90 min)
+llm eval coder gsm8k --shots 5  # 5-shot variant (slightly higher scores, longer)
 ```
 
-Results are saved as JSON under `results/eval-<role>-<task>-<timestamp>/`. The primary metric is `acc` (accuracy, 0.0–1.0). Reference points for 14B Q4 quant models:
+Results are saved as JSON under `results/eval-<role>-<task>-<timestamp>/<role>/results_<timestamp>.json`. The primary metric is `exact_match,flexible-extract` (accuracy 0.0–1.0 — the flexible extractor finds the final number in the response). Reference points for 14B Q4 quant models at **5-shot**:
 
-| Task | Measures | Expected range |
-|------|---------|----------------|
-| `humaneval` | code generation pass@1 | 0.60–0.72 |
-| `mmlu` | general knowledge (5-shot) | 0.62–0.70 |
-| `gsm8k` | math word problems | 0.72–0.82 |
+| Task | Measures | Expected (5-shot) | Expected (0-shot) |
+|------|---------|-------------------|-------------------|
+| `gsm8k` | math word problems | 0.72–0.82 | 0.60–0.72 |
+| `humaneval` | code generation pass@1 | 0.60–0.72 | 0.50–0.65 |
+| `mmlu` | general knowledge | 0.62–0.70 | 0.55–0.65 |
 
 Scores well below these ranges usually mean the chat template wasn't applied correctly. Run the same task before and after a quant change or profile switch to measure quality delta.
 

@@ -26,7 +26,7 @@ services:
       retries: 10
 
   langfuse:
-    image: langfuse/langfuse:3
+    image: langfuse/langfuse:2
     restart: unless-stopped
     ports:
       - "${LANGFUSE_PORT}:3000"
@@ -41,8 +41,8 @@ services:
       TELEMETRY_ENABLED: "false"
       LANGFUSE_INIT_ORG_ID: local
       LANGFUSE_INIT_ORG_NAME: local-llm
-      LANGFUSE_INIT_USER_EMAIL: admin@localhost
-      LANGFUSE_INIT_USER_PASSWORD: admin
+      LANGFUSE_INIT_USER_EMAIL: admin@local.dev
+      LANGFUSE_INIT_USER_PASSWORD: admin123
       LANGFUSE_INIT_PROJECT_ID: main
       LANGFUSE_INIT_PROJECT_NAME: local-llm
 
@@ -61,7 +61,7 @@ services:
       driver: none
 
   n8n:
-    image: n8nio/n8n:2
+    image: n8nio/n8n:latest
     restart: unless-stopped
     ports:
       - "${N8N_PORT}:5678"

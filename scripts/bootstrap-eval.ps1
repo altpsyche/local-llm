@@ -18,9 +18,10 @@ Write-Host "Creating eval venv..." -ForegroundColor Cyan
 python -m venv $venv
 if ($LASTEXITCODE -ne 0) { throw "python -m venv failed. Is Python 3.12 installed?" }
 
-Write-Host "Installing lm-eval (this may take a minute)..." -ForegroundColor Cyan
+Write-Host "Installing lm-eval (this may take a few minutes)..." -ForegroundColor Cyan
 & "$venv\Scripts\pip.exe" install -r "$repo\tools\eval-requirements.txt" --quiet
 if ($LASTEXITCODE -ne 0) { throw "pip install failed." }
 
 Write-Host "lm-eval installed at tools/venv-eval/" -ForegroundColor Green
-Write-Host "Usage: llm eval coder humaneval   llm eval planner mmlu" -ForegroundColor DarkGray
+Write-Host "Quick smoke test:  llm eval coder gsm8k --limit 100  (~8 min)" -ForegroundColor DarkGray
+Write-Host "Full benchmark:    llm eval coder gsm8k               (~90 min)" -ForegroundColor DarkGray

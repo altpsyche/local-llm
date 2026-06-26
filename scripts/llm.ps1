@@ -346,6 +346,7 @@ N8N_PORT=$($dp.n8nPort ?? 5678)
     $pos = @()
     for ($i = 0; $i -lt $rest.Count; $i++) {
       if ($rest[$i] -eq '--shots' -and $i+1 -lt $rest.Count) { $eArgs['Shots'] = [int]$rest[++$i] }
+      elseif ($rest[$i] -eq '--limit' -and $i+1 -lt $rest.Count) { $eArgs['Limit'] = [int]$rest[++$i] }
       else { $pos += $rest[$i] }
     }
     if ($pos.Count -ge 1) { $eArgs['Role'] = $pos[0] }
