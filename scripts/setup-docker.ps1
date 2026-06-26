@@ -53,6 +53,7 @@ $d = (Get-ModelsConfig).defaults
 $langfusePort = $d.langfusePort ?? 3001
 $searxngPort  = $d.searxngPort  ?? 8888
 $n8nPort      = $d.n8nPort      ?? 5678
+$n8nTimezone  = $d.n8nTimezone  ?? 'UTC'
 
 # 4. Write .env for docker-compose
 $envFile = "$repo\tools\compose\.env"
@@ -61,8 +62,9 @@ REPO_PATH=$repo
 LANGFUSE_PORT=$langfusePort
 SEARXNG_PORT=$searxngPort
 N8N_PORT=$n8nPort
+N8N_TIMEZONE=$n8nTimezone
 "@ | Set-Content $envFile -Encoding utf8
-Write-Host "  Ports: Langfuse=$langfusePort  SearXNG=$searxngPort  n8n=$n8nPort" -ForegroundColor DarkGray
+Write-Host "  Ports: Langfuse=$langfusePort  SearXNG=$searxngPort  n8n=$n8nPort  Timezone=$n8nTimezone" -ForegroundColor DarkGray
 
 # 5. Create data directories (gitignored)
 @('langfuse-data', 'n8n-data') | ForEach-Object {
@@ -95,7 +97,7 @@ docker compose -f $compose up -d
 
 Write-Host ""
 Write-Host "Services running:" -ForegroundColor Green
-Write-Host "  Langfuse:  http://localhost:$langfusePort  (login: admin@localhost / admin)" -ForegroundColor Green
+Write-Host "  Langfuse:  http://localhost:$langfusePort  (login: admin@local.dev / admin123)" -ForegroundColor Green
 Write-Host "  SearXNG:   http://localhost:$searxngPort" -ForegroundColor Green
 Write-Host "  n8n:       http://localhost:$n8nPort" -ForegroundColor Green
 Write-Host ""

@@ -466,11 +466,13 @@ llm services status   # show container names, state, and uptime
 llm services logs     # tail all container logs (Ctrl+C to stop)
 ```
 
-Override ports in `config/user.psd1` (file is gitignored — safe for per-machine settings):
+Docker Desktop must be running before `llm services start` — it does not auto-launch. Start it from the Start menu or system tray (look for the whale icon) if needed.
+
+Override ports or timezone in `config/user.psd1` (file is gitignored — safe for per-machine settings):
 ```powershell
-@{ defaults = @{ langfusePort = 3001; searxngPort = 8888; n8nPort = 5678 } }
+@{ defaults = @{ langfusePort = 3001; searxngPort = 8888; n8nPort = 5678; n8nTimezone = 'UTC' } }
 ```
-After changing ports, re-run `.\scripts\setup-docker.ps1` to regenerate `.env` and restart containers.
+After changing any of these, re-run `.\scripts\setup-docker.ps1` to regenerate `.env` and restart containers.
 
 **Persistent data** lives in gitignored directories under `tools/`:
 - `tools/langfuse-data/` — Postgres database: all Langfuse traces, projects, API keys
@@ -508,7 +510,7 @@ Tracing only works through LiteLLM. Direct `:8080` requests are invisible to Lan
      LANGFUSE_SECRET_KEY: "sk-lf-..."   # paste your secret key
      LANGFUSE_HOST: "http://localhost:3001"
    ```
-4. Start LiteLLM: `llm litellm -NoWindow`
+4. If LiteLLM is running, stop it first: `llm litellm stop`. Then start it: `llm litellm -NoWindow`
 5. Point your client at `:8081` instead of `:8080` (or use `llm chat` which goes through LiteLLM automatically)
 6. Requests appear in the Langfuse dashboard under **Traces** within a few seconds
 
@@ -537,7 +539,7 @@ Continue sends the query to SearXNG, fetches the top results, and includes them 
 
 Type `s <query>` in the address bar to search privately.
 
-Config lives at `config/searxng/settings.yml` (created on first run, committed to the repo). Edit it to enable/disable specific search engines or change safe-search level.
+Config lives at `config/searxng/settings.yml` (committed to the repo — edit it to enable or disable specific search engines or change safe-search level).
 
 ---
 
@@ -573,6 +575,8 @@ The response is `choices[0].message.content` — wire that to whatever you want 
 - **Daily digest** — Schedule trigger → fetch RSS feed → HTTP Request to `planner` → email summary
 - **Commit message generator** — Webhook from git hook → send staged diff → return message to terminal
 
+n8n schedules run in UTC by default. To use local time, set `n8nTimezone` in `config/user.psd1` (e.g. `'America/New_York'`) and re-run `.\scripts\setup-docker.ps1`.
+
 ---
 
 #### Troubleshooting Docker
@@ -587,6 +591,7 @@ The response is `choices[0].message.content` — wire that to whatever you want 
 | Port already in use | Another process on 3001, 8888, or 5678 | Set override ports in `config/user.psd1`, re-run `.\scripts\setup-docker.ps1` |
 | Containers stop after reboot | `restart: unless-stopped` is set but Docker Desktop didn't start | Enable Docker Desktop → Settings → General → "Start Docker Desktop when you log in" |
 | Lost n8n workflows or Langfuse history | `docker system prune -af` deleted `tools/langfuse-data` and `tools/n8n-data` | These are not recoverable without a backup — back them up before running prune |
+| `llm services logs` shows nothing for SearXNG | SearXNG logs are suppressed by design (noisy access logs) | To debug, temporarily change `logging.driver: none` to `logging.driver: json-file` in `tools/compose/docker-compose.yml`, re-run `docker compose -f tools/compose/docker-compose.yml up -d` |
 
 ### Model quality benchmarks
 

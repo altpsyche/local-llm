@@ -4,37 +4,39 @@
 
 The verified configuration is Windows 11 with an NVIDIA RTX 5080 (16 GB VRAM, Blackwell sm_120), a Ryzen 9 7950X3D, and 64 GB of system RAM. RTX 4000-series (Ada Lovelace) and RTX 3000-series (Ampere) cards are supported with the same scripts; setup detects the GPU and adapts the build automatically. Profiles for 16 GB, 12 GB, and 8 GB VRAM are included.
 
+> **Advanced users:** [MANUAL-INSTALL.md](MANUAL-INSTALL.md) covers every step in detail — exact cmake commands, Go builds, venv creation, and client wiring — for when you want full control or need to debug a partial install.
+
 ## Prerequisites
 
-`setup.bat` installs these automatically, so you normally don't need to handle them by hand. They're listed here in case you're troubleshooting a partial build or want to understand what's being installed.
+Three tools you must provide manually — `install_prereqs.bat` cannot bootstrap these:
 
-| Tool | Install command |
+| Tool | Notes |
 |---|---|
-| **CUDA Toolkit** | Auto-detected. Blackwell (RTX 5000): requires 12.8 exactly (`winget install Nvidia.CUDA --version 12.8`). Ada (RTX 4000) / Ampere (RTX 3000): any CUDA 12.x. |
-| Python 3.12 | `scoop install python312` |
-| Go | `scoop install go` |
-| Node.js | `winget install OpenJS.NodeJS` — for Continue MCP servers (`@fetch`, `@filesystem`, `@github`) |
-| uv | `winget install astral-sh.uv` — for `mcp-server-fetch` via `uvx` |
-| **Docker Desktop** | `winget install Docker.DockerDesktop` — optional; required for Langfuse, SearXNG, n8n (see [USAGE.md § Docker services](USAGE.md#docker-services-langfuse--searxng--n8n)) |
-| Git, VS 2022 with C++ x64 | Install manually. `setup.bat` checks for VS2022 with the 'Desktop development with C++' workload on start and throws a clear error with install instructions if missing: `winget install Microsoft.VisualStudio.2022.Community`. cmake 3.x is located automatically (via VS or PATH) and installed via winget if absent. |
+| **Git** | Required to clone the repo |
+| **Scoop** | Package manager used to install Python 3.12 and Go (`irm get.scoop.sh \| iex`) |
+| **PowerShell 7** | `winget install Microsoft.PowerShell` |
 
-You need to supply Git, Scoop, and PowerShell 7 yourself before running setup. Those are the only tools setup can't install.
-
-### CUDA and the MSVC compiler version
-
-Some CUDA versions reject the newest VS 2022 toolset with an `unsupported Microsoft Visual Studio version` error during the build. If this happens, either add `-DCMAKE_CUDA_FLAGS="-allow-unsupported-compiler"` to the cmake line in `scripts/build-llama.ps1`, or install an MSVC toolset that matches your CUDA version through the VS Installer (v14.4x for CUDA 12.8).
+`install_prereqs.bat` handles everything else: Node.js, uv, Go, Python 3.12, CUDA Toolkit, cmake, and Docker Desktop. For exact install commands, version requirements, and troubleshooting, see [MANUAL-INSTALL.md § 1 Prerequisites](MANUAL-INSTALL.md#1-prerequisites).
 
 ## Installing
 
+On a fresh machine, installation is two commands with a possible logout in between:
+
+**Step 1 — install all prerequisites:**
+```powershell
+.\install_prereqs.bat
+```
+Installs Node.js, uv, Go, Python 3.12, CUDA Toolkit, cmake, and Docker Desktop. If Docker Desktop was just installed, log out of Windows and back in before continuing. If Docker was already installed, proceed directly to step 2.
+
+**Step 2 — build, configure, and start everything:**
 ```powershell
 git clone --recurse-submodules <your-remote> C:\local-llm
 cd C:\local-llm
 .\setup.bat
 ```
+Fully automated from here. Builds the inference engine, downloads models, wires clients, and starts Docker services automatically.
 
-`setup.bat` takes the repository from a fresh clone to a fully working stack. In order, it installs prerequisites, builds the inference engine and proxy from source, creates isolated Python environments for the web UI and terminal tools, downloads the model files, wires the VS Code and terminal clients, and puts the `llm` command on your PATH.
-
-The script is idempotent. If something fails partway through, fix the issue and re-run it; completed steps are skipped.
+`setup.bat` is idempotent. If something fails partway through, fix the issue and re-run it; completed steps are skipped.
 
 - `setup.bat -SkipModels` builds and configures everything but skips the downloads
 - `setup.bat -Launch` starts the stack automatically when setup finishes
@@ -56,8 +58,11 @@ After setup, open a new terminal to pick up the PATH change, then run `llm up`.
 7. `.\scripts\setup-clients.ps1` symlinks `config/continue/config.yaml` to `~/.continue/config.yaml` and checks VS Code extension status.
 8. `.\scripts\setup-fabric.ps1` installs the fabric CLI and configures it to use the local endpoint.
 9. `.\scripts\install-cli.ps1` puts the `llm` command on PATH.
+10. `.\scripts\setup-docker.ps1` pulls and starts the Docker services stack (Langfuse, SearXNG, n8n). Runs automatically if Docker Desktop is installed; skipped gracefully if not.
 
-**Optional — Docker services** (Langfuse, SearXNG, n8n) are not part of `setup.bat` because Docker Desktop requires a logout/restart mid-install. These three services extend the stack with observability, private web search, and automation:
+To pin llama.cpp to a specific commit or bump to a newer version, see [MANUAL-INSTALL.md § 4](MANUAL-INSTALL.md#4-build-llamacpp) and [TUNING.md](TUNING.md#bumping-the-llamacpp-submodule).
+
+**Docker services** (Langfuse, SearXNG, n8n) extend the stack with observability, private web search, and automation:
 
 | Service | Port | What it does | Why you'd want it |
 |---|---|---|---|
@@ -65,98 +70,30 @@ After setup, open a new terminal to pick up the PATH change, then run `llm up`.
 | **SearXNG** | 8888 | Self-hosted meta-search (queries Google/Bing without sending your searches to the cloud) | Powers Continue.dev `@web` — type `@web <query>` in Continue chat and the model gets live search results |
 | **n8n** | 5678 | Visual workflow automation (like Zapier, local) — chains LLM calls, webhooks, and APIs | Automate tasks without scripts: summarize PRs on open, generate commit messages, run daily digests |
 
-None are required for core inference. Run separately after `setup.bat`.
+None are required for core inference. They start automatically at the end of `setup.bat` if Docker Desktop is installed.
 
 ### Installing Docker services
 
-The setup runs in two passes if Docker Desktop isn't already installed:
+Docker services start automatically at the end of `setup.bat` — no separate step needed.
 
-**Pass 1 — installs Docker Desktop:**
-```powershell
-.\scripts\setup-docker.ps1
-# Installs Docker Desktop via winget, then exits with:
-#   ACTION REQUIRED: Log out and back in, then re-run: .\scripts\setup-docker.ps1
-```
-Log out of Windows and back in. This is required because Docker Desktop adds your user to the `docker-users` Windows group, and group membership changes only take effect at login.
+> **Before `setup.bat` finishes:** Docker Desktop → Settings → General → uncheck
+> **"Use containerd for pulling and storing images"** → Apply & Restart.
+> If this setting is on, SearXNG fails with `exec /bin/sh: exec format error`. Only needs to be changed once.
 
-**Pass 2 — pulls images and starts services:**
-```powershell
-.\scripts\setup-docker.ps1
-```
-
-What this does, in order:
-1. Checks Docker is on PATH; adds it if Docker Desktop is installed but this session predates it
-2. Waits up to 90 seconds for the Docker daemon; starts Docker Desktop automatically if it's not running
-3. Reads port config from `config/models.psd1` (overridable via `config/user.psd1`)
-4. Writes `tools/compose/.env` with `REPO_PATH`, `LANGFUSE_PORT`, `SEARXNG_PORT`, `N8N_PORT`
-5. Creates `tools/langfuse-data/` and `tools/n8n-data/` (gitignored — this is where persistent data lives)
-6. Writes `config/searxng/settings.yml` if it doesn't exist
-7. Pulls all four images from Docker Hub (~3 GB total on first run):
-   - `postgres:16-alpine` (~80 MB) — database for Langfuse
-   - `langfuse/langfuse:3` (~200 MB) — observability UI
-   - `searxng/searxng:<date>` (~100 MB) — search engine
-   - `n8nio/n8n:latest` (~2.5 GB) — workflow automation
-8. Starts all four containers with `docker compose up -d`
-
-Expected output on success:
-```
-Checking Docker daemon...
-  Docker ready.
-  Ports: Langfuse=3001  SearXNG=8888  n8n=5678
-Pulling images (first run may take a few minutes)...
- Image postgres:16-alpine Pulled
- Image langfuse/langfuse:3 Pulled
- Image searxng/searxng:... Pulled
- Image n8nio/n8n:latest Pulled
-Starting services...
- Container compose-langfuse-postgres-1 Started
- Container compose-langfuse-postgres-1 Healthy
- Container compose-langfuse-1 Started
- Container compose-searxng-1 Started
- Container compose-n8n-1 Started
-
-Services running:
-  Langfuse:  http://localhost:3001  (login: admin@local.dev / admin123)
-  SearXNG:   http://localhost:8888
-  n8n:       http://localhost:5678
-```
-
-Verify the containers are all up:
+Verify the containers started:
 ```powershell
 llm services status
 # Expected: four rows, all "Up" — compose-langfuse-postgres-1, compose-langfuse-1, compose-searxng-1, compose-n8n-1
 ```
 
-Day-to-day management: `llm services start|stop|status|logs`. The full `setup-docker.ps1` only needs to run once; use `llm services start` afterward.
+URLs after first run:
+- Langfuse: http://localhost:3001 — login: `admin@local.dev` / `admin123`
+- SearXNG: http://localhost:8888
+- n8n: http://localhost:5678
 
-### Troubleshooting Docker setup
+Day-to-day management: `llm services start|stop|status|logs`.
 
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| Script exits with "ACTION REQUIRED: Log out and back in" | Docker Desktop just installed — group change needs login | Log out of Windows, log back in, re-run |
-| `docker info` returns 500 Internal Server Error | WSL2 backend crashed or still initializing after restart | Wait 60 s for Docker Desktop to fully start; or Restart Docker Desktop from system tray |
-| `exec /bin/sh: exec format error` on any container | Image layers corrupted by an interrupted download | `docker system prune -af` then re-run `.\scripts\setup-docker.ps1` |
-| `langfuse-postgres unhealthy` / `dependency failed to start` | Postgres container failed — almost always the exec format error above | Same fix: `docker system prune -af`, re-run |
-| Port conflict — address already in use | Another process using 3001, 8888, or 5678 | Set `langfusePort`, `searxngPort`, or `n8nPort` in `config/user.psd1`, re-run `.\scripts\setup-docker.ps1` |
-| `exec /bin/sh: exec format error` only on SearXNG, other images work | Docker Desktop "containerd snapshotter" mishandles SearXNG's merged `/bin→usr/bin` filesystem | Docker Desktop → Settings → General → uncheck **"Use containerd for pulling and storing images"** → Apply & Restart → re-run setup |
-| `docker: command not found` after Docker Desktop install | PATH not refreshed in this session | Open a new terminal, or add `C:\Program Files\Docker\Docker\resources\bin` to PATH manually |
-| Daemon timeout (90 s) | Docker Desktop not installed, or very slow to start | Launch Docker Desktop manually from Start menu, wait for whale icon, re-run |
-
-Running `.\scripts\bootstrap.ps1` directly does steps 1 through 6 without the client wiring. Add `-SkipModels` to skip the downloads.
-
-## Pinning the llama.cpp version
-
-The repository records the exact llama.cpp commit that is verified to work on Blackwell. To pin a different commit:
-
-```powershell
-cd external\llama.cpp
-git checkout <commit-or-tag>
-cd ..\..
-git add external/llama.cpp
-git commit -m "pin llama.cpp to <commit>"
-```
-
-See [TUNING.md](TUNING.md#bumping-the-llamacpp-submodule) for bumping to a newer version and re-verifying performance afterward.
+For a detailed walkthrough of what `setup-docker.ps1` does internally, including troubleshooting, see [MANUAL-INSTALL.md § Docker services](MANUAL-INSTALL.md#12-docker-services).
 
 ## Verifying the install
 

@@ -61,7 +61,7 @@ services:
       driver: none
 
   n8n:
-    image: n8nio/n8n:latest
+    image: n8nio/n8n:1.100.1
     restart: unless-stopped
     ports:
       - "${N8N_PORT}:5678"
@@ -72,4 +72,4 @@ services:
       N8N_PROTOCOL: http
       WEBHOOK_URL: http://localhost:${N8N_PORT}
       N8N_ENCRYPTION_KEY: local-llm-n8n-key
-      GENERIC_TIMEZONE: America/New_York
+      GENERIC_TIMEZONE: ${N8N_TIMEZONE:-UTC}
