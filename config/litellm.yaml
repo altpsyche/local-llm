@@ -1,0 +1,43 @@
+# LiteLLM proxy config — routes all model names through llama-swap.
+# Start: llm litellm   (listens on port 8081)
+# Clients point to http://localhost:8081/v1 instead of :8080 to get retry + logging.
+
+model_list:
+  - model_name: coder
+    litellm_params:
+      model: openai/coder
+      api_base: http://localhost:8080/v1
+      api_key: sk-local
+  - model_name: planner
+    litellm_params:
+      model: openai/planner
+      api_base: http://localhost:8080/v1
+      api_key: sk-local
+  - model_name: chat
+    litellm_params:
+      model: openai/chat
+      api_base: http://localhost:8080/v1
+      api_key: sk-local
+  - model_name: fim
+    litellm_params:
+      model: openai/fim
+      api_base: http://localhost:8080/v1
+      api_key: sk-local
+  - model_name: embed
+    litellm_params:
+      model: openai/embed
+      api_base: http://localhost:8080/v1
+      api_key: sk-local
+
+litellm_settings:
+  num_retries: 3
+  request_timeout: 120
+  # Uncomment after Langfuse is running (llm services start):
+  # success_callback: ["langfuse"]
+  # failure_callback: ["langfuse"]
+  # langfuse_host: http://localhost:3001
+  # langfuse_public_key: pk-lf-...   # Settings → API Keys in Langfuse UI
+  # langfuse_secret_key: sk-lf-...
+
+general_settings:
+  master_key: sk-local   # dummy — proxy is local-only, no real auth needed

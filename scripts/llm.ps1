@@ -66,7 +66,7 @@ switch ($cmd) {
     Write-Host ""
   }
   'diagnose' { & "$repo\scripts\diagnose.ps1" }
-  'up'     { & "$repo\scripts\up.ps1" -NoOpen:($rest -contains '-NoOpen') }
+  'up'     { & "$repo\scripts\up.ps1" -NoOpen:($rest -contains '-NoOpen') -WithServices:($rest -contains '-WithServices') }
   'serve'  { & "$repo\scripts\start.ps1" }                    # endpoint only (:8080), interactive
   'restart' {
     Write-Host "Stopping endpoint..."
@@ -191,8 +191,14 @@ switch ($cmd) {
     }
   }
   'bench'  {
-    $default = Join-Path $repo "models\$((Get-Models).models | Where-Object role -eq 'coder' | ForEach-Object gguf)"
-    $m = if ($rest.Count) { $rest[0] } else { $default }
+    $allModels = Get-Models
+    $resolveModel = {
+      param($name)
+      $byRole = $allModels.models | Where-Object role -eq $name
+      if ($byRole) { Join-Path $repo "models\$($byRole.gguf)" } else { $name }
+    }
+    $default = & $resolveModel 'coder'
+    $m = if ($rest.Count) { & $resolveModel $rest[0] } else { $default }
     & "$repo\bin\llama-bench.exe" -m $m -ngl 99 -fa 1 -p 512 -n 128
   }
   'chat' {
@@ -281,6 +287,71 @@ switch ($cmd) {
     if ($rest.Count) { $vArgs['Profile'] = $rest[0] }
     & "$repo\scripts\verify-urls.ps1" @vArgs
   }
+  'fabric-setup' { & "$repo\scripts\setup-fabric.ps1" }
+  'fabric'       { & "$repo\bin\fabric.exe" @rest }
+  'litellm' {
+    $subCmd  = if ($rest.Count -and $rest[0] -in 'stop','status','start') { $rest[0] } else { '' }
+    $fwdArgs = if ($subCmd) { @($rest | Select-Object -Skip 1) } else { @($rest) }
+    $pidFile = Join-Path $repo 'logs\litellm.pid'
+    $lPort   = $d.litellmPort ?? 8081
+    switch ($subCmd) {
+      'stop' {
+        if (Test-Path $pidFile) {
+          $wPid = [int](Get-Content $pidFile -Raw)
+          Get-Process -Id $wPid -ErrorAction SilentlyContinue | Stop-Process -Force
+          Remove-Item $pidFile -ErrorAction SilentlyContinue
+          Write-Host "LiteLLM stopped." -ForegroundColor Green
+        } else { Write-Host "LiteLLM not running." -ForegroundColor DarkGray }
+      }
+      'status' {
+        if (Test-Path $pidFile) {
+          $wPid = [int](Get-Content $pidFile -Raw)
+          $proc = Get-Process -Id $wPid -ErrorAction SilentlyContinue
+          if ($proc) {
+            $uptime = ([DateTime]::Now - $proc.StartTime).ToString('hh\:mm\:ss')
+            Write-Host "LiteLLM running  PID=$wPid  uptime=$uptime  http://localhost:$lPort/v1" -ForegroundColor Green
+          } else { Write-Host "LiteLLM dead (stale PID $wPid)." -ForegroundColor Red }
+        } else { Write-Host "LiteLLM not running." -ForegroundColor DarkGray }
+      }
+      default { & "$repo\scripts\start-litellm.ps1" @fwdArgs }
+    }
+  }
+  'services' {
+    $action  = if ($rest.Count) { $rest[0] } else { '' }
+    $compose = "$repo\tools\compose\docker-compose.yml"
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+      Write-Host "Docker not found. Run: .\scripts\setup-docker.ps1" -ForegroundColor Yellow; break
+    }
+    $envFile = "$repo\tools\compose\.env"
+    switch ($action) {
+      'start'  {
+        # Regenerate .env from current models.psd1 values before starting
+        $dp = (Get-ModelsConfig).defaults
+        @"
+REPO_PATH=$repo
+LANGFUSE_PORT=$($dp.langfusePort ?? 3001)
+SEARXNG_PORT=$($dp.searxngPort ?? 8888)
+N8N_PORT=$($dp.n8nPort ?? 5678)
+"@ | Set-Content $envFile -Encoding utf8
+        docker compose -f $compose up -d
+      }
+      'stop'   { docker compose -f $compose down }
+      'status' { docker compose -f $compose ps }
+      'logs'   { docker compose -f $compose logs --tail=50 -f }
+      default  { Write-Host "Usage: llm services start|stop|status|logs" }
+    }
+  }
+  'eval' {
+    $eArgs = @{}
+    $pos = @()
+    for ($i = 0; $i -lt $rest.Count; $i++) {
+      if ($rest[$i] -eq '--shots' -and $i+1 -lt $rest.Count) { $eArgs['Shots'] = [int]$rest[++$i] }
+      else { $pos += $rest[$i] }
+    }
+    if ($pos.Count -ge 1) { $eArgs['Role'] = $pos[0] }
+    if ($pos.Count -ge 2) { $eArgs['Task'] = $pos[1] }
+    & "$repo\scripts\eval.ps1" @eArgs
+  }
   default {
     $wp = $d.webuiPort ?? 3000
 @"
@@ -315,6 +386,14 @@ Tools:
   llm webui                            Launch Open WebUI only (:$wp)
   llm diagnose                         System and model health check
   llm version                          Show binary versions and submodule commits
+
+Ecosystem:
+  llm fabric-setup                     Install fabric and configure it for the local endpoint
+  llm litellm [start]                  Start LiteLLM proxy (:8081) — API gateway + retry layer
+  llm litellm stop                     Stop LiteLLM proxy
+  llm litellm status                   Check if LiteLLM proxy is running
+  llm services start|stop|status|logs  Docker services: Langfuse (:3001) SearXNG (:8888) n8n (:5678)
+  llm eval <role> [task]               Benchmark model quality (mmlu, humaneval, gsm8k)
 "@
   }
 }

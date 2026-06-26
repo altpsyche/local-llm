@@ -11,22 +11,25 @@ models:
     model: coder                 # -> llama-swap "coder"
     apiBase: http://localhost:8080/v1
     apiKey: sk-local
+    contextLength: 16384
     roles: [chat, edit, apply]
-    defaultCompletionOptions: { temperature: 0.2 }
+    defaultCompletionOptions: { temperature: 0.2, maxTokens: 4096 }
 
   - name: planner
     provider: openai
     model: planner               # -> llama-swap "planner" (use for heavy reasoning chats)
     apiBase: http://localhost:8080/v1
     apiKey: sk-local
+    contextLength: 16384
     roles: [chat, edit]
-    defaultCompletionOptions: { temperature: 0.3 }
+    defaultCompletionOptions: { temperature: 0.3, maxTokens: 8192 }
 
   - name: autocomplete
     provider: openai
     model: fim                   # -> llama-swap "fim"
     apiBase: http://localhost:8080/v1
     apiKey: sk-local
+    contextLength: 8192
     roles: [autocomplete]
 
   - name: embeddings
@@ -35,3 +38,29 @@ models:
     apiBase: http://localhost:8080/v1
     apiKey: sk-local
     roles: [embed]
+
+mcpServers:
+  - name: filesystem
+    command: npx
+    args:
+      - "-y"
+      - "@modelcontextprotocol/server-filesystem"
+      - "C:\\"
+  - name: fetch
+    command: uvx
+    args:
+      - "mcp-server-fetch"
+  - name: github
+    command: npx
+    args:
+      - "-y"
+      - "@modelcontextprotocol/server-github"
+    env:
+      GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
+  - name: searxng-search
+    command: npx
+    args:
+      - "-y"
+      - "mcp-searxng"
+    env:
+      SEARXNG_URL: "http://localhost:8888"

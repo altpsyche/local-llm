@@ -1,7 +1,7 @@
 #requires -Version 7
 # Start endpoint + Open WebUI silently in the background (no terminal popups).
 # Use 'llm serve' for interactive/foreground mode with live log output.
-param([switch]$NoOpen)
+param([switch]$NoOpen, [switch]$WithServices)
 $ErrorActionPreference = "Stop"
 $repo  = Split-Path $PSScriptRoot -Parent
 $webui = Join-Path $repo "tools\venv-webui\Scripts\open-webui.exe"
@@ -52,5 +52,25 @@ if (Test-Path $webui) {
   }
 } else {
   Write-Warning "open-webui not found — run scripts\bootstrap.ps1 first. Skipping Open WebUI."
+}
+if ($WithServices) {
+  if (Get-Command docker -ErrorAction SilentlyContinue) {
+    Write-Host "Starting Docker services..." -ForegroundColor Cyan
+    $compose  = "$repo\tools\compose\docker-compose.yml"
+    $envFile  = "$repo\tools\compose\.env"
+    @"
+REPO_PATH=$repo
+LANGFUSE_PORT=$($cfg.defaults.langfusePort ?? 3001)
+SEARXNG_PORT=$($cfg.defaults.searxngPort ?? 8888)
+N8N_PORT=$($cfg.defaults.n8nPort ?? 5678)
+"@ | Set-Content $envFile -Encoding utf8
+    docker compose -f $compose up -d 2>$null
+    $lp = $cfg.defaults.langfusePort ?? 3001
+    $sp = $cfg.defaults.searxngPort  ?? 8888
+    $np = $cfg.defaults.n8nPort      ?? 5678
+    Write-Host "Langfuse: http://localhost:$lp   SearXNG: http://localhost:$sp   n8n: http://localhost:$np" -ForegroundColor DarkGray
+  } else {
+    Write-Warning "-WithServices: Docker not found. Run .\scripts\setup-docker.ps1 first."
+  }
 }
 Write-Host "aider: llm aider   stop: llm stop   status: llm status   logs: llm logs" -ForegroundColor DarkGray

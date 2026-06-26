@@ -53,6 +53,10 @@
     parallel    = 1                 # Parallel request slots (-np). >1 for multi-user setups.
     port        = 8080              # llama-swap API endpoint port.
     webuiPort   = 3000              # Open WebUI port.
+    litellmPort = 8081              # LiteLLM proxy port (Module H).
+    langfusePort = 3001             # Langfuse observability port (Module H).
+    searxngPort = 8888              # SearXNG private search port (Module H).
+    n8nPort     = 5678              # n8n workflow automation port (Module H).
     maxTokens   = 512               # Default max_tokens for `llm chat`.
     webuiSecret = 'local-llm-dev'   # Change before exposing WebUI on LAN.
   }

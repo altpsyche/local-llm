@@ -64,18 +64,55 @@ $cudaMajor = if ((Split-Path $CudaRoot -Leaf) -match '^v(\d+)') { $Matches[1] } 
 $build = Join-Path $src "build"
 if (Test-Path $build) { Remove-Item -Recurse -Force $build }
 
+# llama.cpp's cmake_minimum_required(3.14...3.28) excludes cmake 4.x, causing CUDA architecture
+# validation failures. Check PATH cmake version first; only fall back to VS's bundled cmake if
+# PATH cmake is 4.x (e.g. the Python scoop package installs cmake 4.x).
+$cmakeExe = $null
+$pathCmake = Get-Command cmake -ErrorAction SilentlyContinue
+if ($pathCmake) {
+    $cmakeVer = (& cmake --version 2>&1 | Select-Object -First 1) -replace 'cmake version\s+', ''
+    if ([version]$cmakeVer -lt [version]'4.0') {
+        $cmakeExe = 'cmake'
+    } else {
+        Write-Warning "PATH cmake is $cmakeVer (4.x) — incompatible with llama.cpp. Looking for VS bundled cmake..."
+    }
+}
+if (-not $cmakeExe) {
+    $vswhere = 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe'
+    if (Test-Path $vswhere) {
+        $vsInstall = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.CMake.Project -property installationPath 2>$null
+        if ($vsInstall) {
+            $candidate = Join-Path $vsInstall 'Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe'
+            if (Test-Path $candidate) { $cmakeExe = $candidate }
+        }
+    }
+}
+if (-not $cmakeExe) {
+    # scoop cmake tracks latest (4.x) — use winget to install a pinned 3.x build instead
+    Write-Host "Installing cmake 3.31.7 via winget..." -ForegroundColor Cyan
+    winget install Kitware.CMake --version 3.31.7 --silent --accept-package-agreements --accept-source-agreements
+    if ($LASTEXITCODE -ne 0) {
+        throw "cmake install failed. Fix manually: winget install Kitware.CMake --version 3.31.7"
+    }
+    # Refresh PATH so the newly installed cmake is visible in this process
+    $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' +
+                [System.Environment]::GetEnvironmentVariable('PATH', 'User')
+    $cmakeExe = (Get-Command cmake -ErrorAction SilentlyContinue)?.Source
+    if (-not $cmakeExe) { throw "cmake still not found after install — open a new terminal and retry." }
+}
+Write-Host "cmake       : $cmakeExe" -ForegroundColor DarkGray
+
 # Add -DCMAKE_CUDA_FLAGS="-allow-unsupported-compiler" below if nvcc rejects your MSVC version.
-# Add -DCMAKE_POLICY_VERSION_MINIMUM=3.5 (as ONE quoted token) if CMake 4.x rejects cmake_minimum_required.
 Push-Location $src
 try {
-  cmake -B build -G "Visual Studio 17 2022" -T "cuda=$CudaRoot" `
+  & $cmakeExe -B build -G "Visual Studio 17 2022" -T "cuda=$CudaRoot" `
     -DGGML_CUDA=ON `
-    -DCMAKE_CUDA_ARCHITECTURES=$Arch `
+    -DCMAKE_CUDA_ARCHITECTURES="$Arch" `
     -DGGML_CUDA_FORCE_CUBLAS=OFF `
     -DCUDAToolkit_ROOT="$CudaRoot"
   if ($LASTEXITCODE -ne 0) { throw "cmake configure failed" }
 
-  cmake --build build --config Release -j
+  & $cmakeExe --build build --config Release -j
   if ($LASTEXITCODE -ne 0) { throw "cmake build failed" }
 } finally { Pop-Location }
 

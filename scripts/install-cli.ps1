@@ -21,9 +21,26 @@ $cmdPath = Join-Path $shimDir "llm.cmd"
 
 Write-Host "'llm' installed -> $cmdPath" -ForegroundColor Green
 
+# Shim for fabric so 'git diff | fabric --pattern X' works directly in any shell.
+$fabricExe = Join-Path $repo "bin\fabric.exe"
+$fabricCmd = Join-Path $shimDir "fabric.cmd"
+if (Test-Path $fabricExe) {
+    @"
+@echo off
+"$fabricExe" %*
+"@ | Set-Content -Path $fabricCmd -Encoding ascii
+    Write-Host "'fabric' installed -> $fabricCmd" -ForegroundColor Green
+} else {
+    Write-Host "'fabric' shim skipped — bin\fabric.exe not built yet. Run: llm fabric-setup" -ForegroundColor DarkGray
+}
+
 # Register tab completions in the user's PowerShell profile (idempotent)
-$profilePath  = $PROFILE.CurrentUserAllHosts
-$modelsFile   = Join-Path $repo 'config\models.psd1'
+$profilePath = $PROFILE.CurrentUserAllHosts
+if (-not $profilePath) {
+    # $PROFILE is null in non-interactive batch contexts — derive the standard path manually
+    $profilePath = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'PowerShell\profile.ps1'
+}
+$modelsFile = Join-Path $repo 'config\models.psd1'
 if (-not (Test-Path $profilePath)) { New-Item -Path $profilePath -Force | Out-Null }
 
 $completerBlock = @"

@@ -4,3 +4,6 @@
 [submodule "external/llama-swap"]
 	path = external/llama-swap
 	url = https://github.com/mostlygeek/llama-swap
+[submodule "external/fabric"]
+	path = external/fabric
+	url = https://github.com/danielmiessler/fabric

@@ -44,9 +44,111 @@ Tools:
   llm webui                            Start Open WebUI only
   llm diagnose                         GPU, VRAM, CUDA, and model file health check
   llm version                          Show binary versions and submodule commits
+
+Ecosystem:
+  llm fabric-setup                     Build fabric from source and configure it for the local endpoint
+  llm litellm [-NoWindow]              Start LiteLLM proxy (:8081) — foreground or background
+  llm litellm stop                     Stop the background LiteLLM proxy
+  llm litellm status                   Show PID and uptime of the background LiteLLM proxy
+  llm services start|stop|status|logs  Docker services: Langfuse (:3001) SearXNG (:8888) n8n (:5678)
+  llm eval <role> [task] [--shots N]   Benchmark model quality (humaneval, mmlu, gsm8k)
 ```
 
 If `llm` isn't found after setup, run `scripts\install-cli.ps1` and open a fresh terminal. That script also registers tab completions in your PowerShell profile (`llm <TAB>` completes subcommands, model roles, and profile names).
+
+## What's ready after setup
+
+Everything in this table works after `setup.bat` completes and the endpoint is running.
+No extra steps.
+
+| Feature | Entry point |
+|---------|------------|
+| Inference endpoint (API + streaming) | `llm serve` or `llm up` |
+| Open WebUI browser chat | `llm up` (auto-opens `:3000`) |
+| VS Code autocomplete + chat | Install Continue extension, then `llm serve` |
+| VS Code agentic edits | Install Cline extension, configure Base URL `:8080` once |
+| Terminal AI coding | `llm aider` from any project folder |
+| Shell pattern pipes | `llm fabric-setup` once, then `git diff \| fabric --pattern write_git_commit` |
+| LiteLLM proxy (retry + logging) | `llm litellm` |
+| Model quality benchmarks | `llm eval coder humaneval` (needs endpoint running) |
+| Continue MCP: read files (`@filesystem`) | Wired automatically — use `@filesystem` in Continue chat |
+| Continue MCP: fetch URLs (`@url`) | Wired automatically — use `@url https://...` in Continue chat |
+
+**Not ready without extra steps** (all require Docker Desktop, which setup.bat cannot install in one pass):
+
+| Feature | What to run |
+|---------|------------|
+| Langfuse observability | `.\scripts\setup-docker.ps1` (one-time), then `llm services start` |
+| SearXNG private web search | Same as above — SearXNG starts as part of the Docker stack |
+| n8n workflow automation | Same as above |
+| Continue MCP `@web` search | Requires SearXNG running (see above) |
+| Continue MCP `@github` | Set `GITHUB_TOKEN` environment variable (GitHub PAT with `repo` scope) |
+| Langfuse tracing via LiteLLM | After Docker setup: get API keys from Langfuse UI → uncomment callback block in `config/litellm.yaml` → `llm litellm` |
+
+### Quick test scenarios
+
+**1 — Verify the endpoint is up and serving all models:**
+```powershell
+llm up -NoOpen
+llm status          # should show: planner, coder, chat, fim, embed
+llm chat coder "write a PowerShell one-liner that lists the 5 largest files in the current folder"
+```
+
+**2 — Continue.dev autocomplete and inline edit:**
+```
+llm serve
+# Open VS Code, open any source file
+# Start typing a function — ghost text should appear within 1–2 seconds
+# Select a block of code, press Ctrl+I, type "add error handling"
+# Accept or reject the diff that appears
+```
+
+**3 — aider plan-then-edit workflow:**
+```powershell
+cd C:\my-project
+llm up -NoOpen
+llm aider
+# In aider: /add src/parser.py
+# Type: "add input validation — raise ValueError if the input string is empty or contains only whitespace"
+# Review the plan, press Enter to apply edits
+# /undo   — rolls back if you don't like the result
+```
+
+**4 — fabric for quick prompt patterns:**
+```powershell
+llm up -NoOpen
+git diff --staged | fabric --pattern write_git_commit
+cat meeting-notes.txt | fabric --pattern extract_wisdom
+cat error.log | fabric --pattern explain_code
+fabric -l    # see all 254 patterns
+```
+
+**5 — LiteLLM proxy with stop/status:**
+```powershell
+llm litellm -NoWindow    # starts proxy in background on :8081, logs to logs/litellm.log
+llm litellm status       # shows PID and uptime
+# Point Cline at http://localhost:8081/v1 to get retry-on-failure
+llm litellm stop
+```
+
+**6 — Model quality benchmark:**
+```powershell
+llm serve
+llm eval coder humaneval           # ~20 min; measures code generation accuracy
+llm eval planner mmlu --shots 5    # general knowledge, 5-shot
+# Results in results/eval-coder-humaneval-<timestamp>/
+```
+
+**7 — Docker services (Langfuse + SearXNG + n8n):**
+```powershell
+.\scripts\setup-docker.ps1   # first time only — installs Docker Desktop if needed
+llm services start
+llm services status          # verify all three containers are Up
+# Langfuse: http://localhost:3001  (admin@localhost / admin)
+# SearXNG:  http://localhost:8888
+# n8n:      http://localhost:5678
+# In Continue chat: @web what is the latest llama.cpp release?
+```
 
 ## Starting the stack each session
 
@@ -111,7 +213,93 @@ llm chat planner "design a caching layer" --sys "Be concise." --max 1024
 
 The port defaults to `8080`. To change it, set `port` in the `defaults` block of `config/models.psd1` or create a `config/user.psd1` override (see [TUNING.md](TUNING.md#tunable-defaults-and-personal-overrides)).
 
-The `chat` and `planner` models (Qwen3) reason in a hidden scratchpad before responding. This can consume your entire `max_tokens` budget if you set it too low, leaving the visible reply empty. Give these models at least 512 tokens, or append `/no_think` to your prompt to skip the reasoning step and get a direct answer. GUI clients like Open WebUI handle this automatically, so it only affects raw API calls with small token limits.
+## Qwen3 Thinking Mode
+
+Qwen3 models (`planner`, `chat`) use a reasoning scratchpad by default. Before responding,
+the model internally reasons through the problem — this produces better answers but:
+
+- **Consumes `max_tokens` silently.** The scratchpad counts toward your token limit.
+  For complex tasks, set `max_tokens` to at least 2000 (or 8192 for deep planning).
+- **Increases first-token latency.** The scratchpad runs before any visible output.
+  For quick questions, use `/no_think` to skip it.
+
+### Disabling the scratchpad
+
+Append `/no_think` to your prompt:
+
+```bash
+curl http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "chat",
+    "max_tokens": 512,
+    "messages": [{"role": "user", "content": "What is 2+2? /no_think"}]
+  }'
+```
+
+Or via `llm chat`:
+
+```powershell
+llm chat chat "What is 2+2? /no_think" --max 128
+```
+
+### When to use each mode
+
+| Mode | When to use | `max_tokens` |
+|------|------------|-------------|
+| Default (thinking on) | Complex reasoning, code architecture, planning | 2000–8192 |
+| `/no_think` | Quick Q&A, simple edits, autocomplete-like tasks | 128–512 |
+
+**In Continue.dev:** Add `/no_think` to the end of your message in the chat box.
+Continue always uses the configured `maxTokens` — make sure it's large enough for planning tasks.
+
+**In aider:** The planner model is used for architecture; thinking mode is appropriate.
+aider auto-adjusts context size; no special configuration needed.
+
+## Function Calling (Tool Use)
+
+The `coder` model supports the OpenAI tools API. Define functions the model can request,
+then execute them in your application:
+
+```powershell
+$tools = @(
+    @{
+        type = 'function'
+        function = @{
+            name = 'read_file'
+            description = 'Read the contents of a file'
+            parameters = @{
+                type = 'object'
+                properties = @{ path = @{ type = 'string'; description = 'Path to the file' } }
+                required = @('path')
+            }
+        }
+    }
+)
+
+$body = @{
+    model    = 'coder'
+    messages = @(@{ role = 'user'; content = 'What is in the file README.md?' })
+    tools    = $tools
+    tool_choice = 'auto'
+} | ConvertTo-Json -Depth 10
+
+$response = Invoke-RestMethod http://localhost:8080/v1/chat/completions `
+    -Method POST -ContentType 'application/json' -Body $body
+
+$choice = $response.choices[0]
+if ($choice.finish_reason -eq 'tool_calls') {
+    foreach ($tc in $choice.message.tool_calls) {
+        $args = $tc.function.arguments | ConvertFrom-Json
+        Write-Host "Model calls: $($tc.function.name)($($args | ConvertTo-Json -Compress))"
+        # Execute the function, add result to messages, continue conversation...
+    }
+}
+```
+
+**Supported:** `coder` (Qwen2.5-Coder-14B). **Not supported:** `planner`, `chat` — Qwen3 tool-use quality varies; use `coder` for agentic tasks.
+
+**In aider:** Tool use handled internally. **In Cline:** Point at `coder` for best results.
 
 ## VS Code — Continue.dev (autocomplete and chat)
 
@@ -133,6 +321,25 @@ To get started, run `.\scripts\setup-clients.ps1` once, install the **Continue**
 Context is 16384 tokens for `coder` and `planner`. Large `@codebase` queries get truncated to fit; use `@file` when you need to be precise about what's included. The first message to a large model is slower while it loads into VRAM. `fim` and `embed` stay pinned so autocomplete and RAG never trigger a reload.
 
 If you used a copied config rather than a symlink and later edited the repo's config, re-run `setup-clients.ps1` after deleting the copy, or edit `~/.continue/config.yaml` directly.
+
+### Continue.dev MCP Servers
+
+Four MCP servers are wired into Continue automatically via `config/continue/config.yaml`. They activate in the Continue chat panel as context providers after `setup-clients.ps1` runs.
+
+| Server | How to invoke | What it does |
+|--------|--------------|-------------|
+| `filesystem` | `@filesystem` then a path | Read local files without copy-pasting |
+| `fetch` | `@url https://...` | Fetch any URL and include its text as context |
+| `github` | `@github` then a query | Search GitHub issues, PRs, and code |
+| `searxng-search` | `@web` then a query | Private web search via local SearXNG |
+
+**Prerequisites:**
+- `filesystem`, `github` require Node.js (installed by `setup.bat`).
+- `fetch` requires uv / `uvx` (installed by `setup.bat`).
+- `github` requires `GITHUB_TOKEN` set as a user or system environment variable. Without it the server loads but all queries return auth errors. Create a token at GitHub → Settings → Developer Settings → Personal access tokens (classic) with `repo` scope.
+- `searxng-search` requires the Docker stack running (`llm services start`). If Docker is stopped, `@web` queries return nothing silently.
+
+If a server fails to load, Continue shows a warning badge on its name in the chat panel. Click it to see the error. Most failures are a missing `node`, `uvx`, or `GITHUB_TOKEN`.
 
 ## VS Code — Cline (agentic)
 
@@ -177,6 +384,129 @@ Useful in-session commands:
 | `/drop` | remove files from context when it gets large |
 
 aider commits each accepted edit to git automatically. Work on a branch so `/undo` can roll back cleanly. Both models use a 16k context window; on large repos, prefer `/read` over `/add` for files you're only referencing, and use `/drop` to remove files you no longer need. The `openai/` prefix in the config (`openai/planner`, `openai/coder`) is required for aider to route through a local OpenAI-compatible endpoint and is already set correctly.
+
+## Shell AI Patterns — fabric
+
+fabric transforms piped text through a named prompt pattern — a structured prompt with a
+specific output format baked in. Where `llm chat` is a blank canvas, fabric patterns encode
+the _format_ of the answer (commit message, executive summary, code review checklist) so you
+don't rewrite the same prompt structure every time. Patterns live in
+`~/.config/fabric/patterns/`, each a directory with a `system.md` you can inspect or copy to
+build your own.
+
+It ships as a Go binary built from the `external/fabric` submodule — no winget, no download.
+Run `llm fabric-setup` once to build and configure it:
+
+```powershell
+llm fabric-setup
+```
+
+This builds `bin/fabric.exe` from `external/fabric/cmd/fabric/` and copies the 254 patterns
+from `external/fabric/data/patterns/` to `~/.config/fabric/patterns/`. Then pipe any text:
+
+```powershell
+# Write a commit message from the staged diff
+git diff --staged | fabric --pattern write_git_commit
+
+# Summarize a document or log
+cat notes.txt | fabric --pattern summarize
+
+# Explain an error
+cat error.log | fabric --pattern explain
+
+# Code review
+cat myfile.py | fabric --pattern code_review
+
+# Extract action items from meeting notes
+cat meeting.txt | fabric --pattern extract_wisdom
+```
+
+fabric uses the `coder` model by default. Pass `--model planner` for complex analysis tasks.
+Run `fabric -l` to see all 254 available patterns.
+
+To update patterns after a submodule bump: re-run `llm fabric-setup` (patterns re-copied,
+binary rebuilt only if `bin/fabric.exe` is missing — delete it first to force a rebuild).
+
+## Ecosystem Services
+
+### LiteLLM proxy
+
+LiteLLM sits between clients and llama-swap, adding retry logic and structured request logging.
+
+```powershell
+# One-time bootstrap
+.\scripts\bootstrap-litellm.ps1
+
+# Start proxy on port 8081 — foreground (Ctrl+C to stop)
+llm litellm
+
+# Start in background — PID tracked, stop/status commands work
+llm litellm -NoWindow
+```
+
+Point any client at `http://localhost:8081/v1` instead of `:8080` to route through the proxy. The proxy exposes the same model names (`coder`, `planner`, `chat`, `fim`, `embed`). Direct `:8080` access continues to work unchanged.
+
+**When to use `:8081` vs `:8080`:** Direct `:8080` access works for most use. Route through `:8081` (LiteLLM) when you want retry-on-failure or Langfuse request tracing. To enable tracing: start Docker services, open `http://localhost:3001`, go to **Settings → API Keys**, create a key pair, then uncomment and fill the `success_callback` block in `config/litellm.yaml` and restart with `llm litellm`.
+
+To point Cline at LiteLLM: change its Base URL from `http://localhost:8080/v1` to `http://localhost:8081/v1`. For aider: set `openai-api-base: http://localhost:8081/v1` in `config/aider/.aider.conf.yml`.
+
+### Docker services (Langfuse + SearXNG + n8n)
+
+CPU-only services run in Docker Desktop. GPU tools stay native.
+
+```powershell
+# One-time setup (installs Docker Desktop if needed, pulls images, starts services)
+.\scripts\setup-docker.ps1
+
+# After setup, manage with:
+llm services start    # regenerates .env from models.psd1 then starts
+llm services stop
+llm services status
+llm services logs
+
+# Start alongside the inference stack:
+llm up -WithServices
+```
+
+| Service | Default port | What it does |
+|---------|-------------|-------------|
+| Langfuse | 3001 | LLM observability — every prompt, latency, token count |
+| SearXNG | 8888 | Private web search — used by Continue.dev MCP `@web` |
+| n8n | 5678 | Workflow automation — trigger LLM on git push, PR events |
+
+Override ports in `config/user.psd1`:
+```powershell
+@{ defaults = @{ langfusePort = 3001; searxngPort = 8888; n8nPort = 5678 } }
+```
+
+**Langfuse (observability):** Open `http://localhost:3001` and log in with `admin@localhost / admin`. The dashboard shows every request routed through LiteLLM: prompt, response, latency, token count, and retry events. Use it to compare generation speed across quant levels after a profile switch, or to see exactly what prompts aider and Cline send. Tracing requires LiteLLM as the intermediary — see the LiteLLM proxy section above.
+
+**SearXNG (private web search):** A self-hosted meta-search engine that queries multiple search providers without sending queries to Google or Bing directly. Used by the Continue.dev `@web` context provider — when Docker is running, typing `@web <query>` in Continue chat returns live search results as context. Also accessible directly at `http://localhost:8888`; add it as a browser custom search engine with URL `http://localhost:8888/search?q=%s`.
+
+**n8n (workflow automation):** Open `http://localhost:5678` to build visual automation workflows. Connect it to the local LLM endpoint to automate tasks without scripts: summarize PRs when they open, generate commit messages on push, or run a daily digest. The inference endpoint is reachable from inside the n8n container as `http://host.docker.internal:8080/v1/chat/completions`. Use an **HTTP Request** node (POST, Content-Type: application/json) with `Authorization: Bearer sk-local`.
+
+### Model quality benchmarks
+
+```powershell
+# One-time bootstrap
+.\scripts\bootstrap-eval.ps1
+
+# Run a benchmark (results saved to results/)
+llm eval coder humaneval        # code generation
+llm eval planner mmlu           # general knowledge
+llm eval coder gsm8k            # math word problems
+llm eval coder humaneval --shots 5
+```
+
+Results are saved as JSON under `results/eval-<role>-<task>-<timestamp>/`. The primary metric is `acc` (accuracy, 0.0–1.0). Reference points for 14B Q4 quant models:
+
+| Task | Measures | Expected range |
+|------|---------|----------------|
+| `humaneval` | code generation pass@1 | 0.60–0.72 |
+| `mmlu` | general knowledge (5-shot) | 0.62–0.70 |
+| `gsm8k` | math word problems | 0.72–0.82 |
+
+Scores well below these ranges usually mean the chat template wasn't applied correctly. Run the same task before and after a quant change or profile switch to measure quality delta.
 
 ## Browser chat and RAG — Open WebUI
 

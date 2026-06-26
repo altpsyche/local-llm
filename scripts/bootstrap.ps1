@@ -33,18 +33,34 @@ $cudaRoot = if ($gpuArch) { Get-BestCudaRoot -CudaArch $gpuArch.CudaArch } else 
 
 # --- prereq report ---
 Step "Prereqs"
-if (-not (Have git))   { throw "git missing" }
-if (-not (Have cmake)) { throw "cmake missing" }
+if (-not (Have git)) { throw "git missing" }
 "git    : ok"
-"cmake  : ok"
+if (Have cmake) { "cmake  : ok" } else { "cmake  : not on PATH (VS cmake or auto-install handles this)" }
 if ($gpuArch) { "GPU    : $($gpuArch.Gen) (sm_$($gpuArch.CudaArch))" }
 "CUDA   : $(if ($cudaRoot) { "ok — $cudaRoot" } else { 'MISSING — install CUDA 12.x before building' })"
 "go     : $(if (Have go) { 'ok' } else { 'missing — will need llama-swap release binary instead' })"
 
-# locate Python 3.12 (scoop)
+# locate Python 3.12 — scoop (preferred), then Windows py launcher, then PATH python
 $py = $null
+# 1. scoop python312 — isolated from system Python, preferred
 try { $p = (scoop prefix python312) 2>$null; if ($p) { $py = Join-Path $p "python.exe" } } catch {}
-if (-not $py -or -not (Test-Path $py)) { if (Have python3.12) { $py = "python3.12" } }
+if ($py -and -not (Test-Path $py)) { $py = $null }
+# 2. Windows py launcher (python.org installer) — resolves actual exe so & $py works
+if (-not $py -and (Have py)) {
+    try {
+        $resolved = & py -3.12 -c "import sys; print(sys.executable)" 2>&1
+        if ($resolved -and (Test-Path $resolved)) { $py = $resolved }
+    } catch {}
+}
+# 3. python / python3 on PATH — accept only 3.12.x
+if (-not $py) {
+    foreach ($cand in 'python', 'python3', 'python3.12') {
+        if (Have $cand) {
+            $ver = (& $cand --version 2>&1) -replace 'Python\s+', ''
+            if ($ver -match '^3\.12') { $py = $cand; break }
+        }
+    }
+}
 "python : $(if ($py) { $py } else { 'MISSING — scoop install python312' })"
 
 # --- submodules ---
@@ -57,8 +73,8 @@ if (-not $SkipBuild) {
   if ($cudaRoot) {
     $label = if ($gpuArch) { "$($gpuArch.Gen) sm_$($gpuArch.CudaArch)" } else { 'sm_120 (default)' }
     Step "Build llama.cpp ($label)"
-    $buildArgs = @('-CudaRoot', $cudaRoot)
-    if ($gpuArch) { $buildArgs += @('-Arch', $gpuArch.CudaArch) }
+    $buildArgs = @{ CudaRoot = $cudaRoot }
+    if ($gpuArch) { $buildArgs['Arch'] = $gpuArch.CudaArch }
     & "$PSScriptRoot\build-llama.ps1" @buildArgs
   } else {
     Write-Warning "Skipping llama.cpp build — no compatible CUDA toolkit found. Install CUDA 12.x, or drop a prebuilt llama-server.exe into bin\."
@@ -67,12 +83,21 @@ if (-not $SkipBuild) {
   Step "Build llama-swap"
   if (Have go) { & "$PSScriptRoot\build-llama-swap.ps1" }
   else { Write-Warning "Skipping llama-swap build — Go missing. Download the release binary into bin\llama-swap.exe." }
+
+  Step "Build fabric"
+  if (Have go) { & "$PSScriptRoot\setup-fabric.ps1" }
+  else { Write-Warning "Skipping fabric build — Go missing." }
 } else { Write-Host "Skipping builds (-SkipBuild)" -ForegroundColor DarkGray }
 
 # --- Python tools: ISOLATED venvs (open-webui & aider have conflicting dep pins) ---
 Step "Python venvs (3.12) + tools"
 if ($py) {
-  foreach ($t in @(@{n='venv-webui'; base='webui-requirements'}, @{n='venv-aider'; base='aider-requirements'})) {
+  foreach ($t in @(
+    @{n='venv-webui';   base='webui-requirements'},
+    @{n='venv-aider';   base='aider-requirements'},
+    @{n='venv-litellm'; base='litellm-requirements'},
+    @{n='venv-eval';    base='eval-requirements'}
+  )) {
     $venv = Join-Path $repo "tools\$($t.n)"
     if (-not (Test-Path $venv)) { & $py -m venv $venv }
     $venvPy = Join-Path $venv "Scripts\python.exe"
