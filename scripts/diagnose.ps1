@@ -101,6 +101,23 @@ if ($bad.Count -gt 0) {
   Row "Models" "none downloaded yet  (profile: $pname)  — setup will fetch" 'DarkGray'
 }
 
+# Manifest coverage (D8) — presence only, no re-hashing
+$manifestPath = Join-Path $mdir 'manifest.json'
+$manifest = if (Test-Path $manifestPath) {
+  Get-Content $manifestPath -Raw | ConvertFrom-Json -AsHashtable
+} else { @{} }
+$mCovered = 0; $mTotal = 0
+foreach ($role in @('planner','coder','chat','fim','embed')) {
+  $m = $prof[$role]; if (-not $m) { continue }
+  if (-not (Test-Path (Join-Path $mdir $m['gguf']))) { continue }
+  $mTotal++
+  if ($manifest[$m['gguf']]) { $mCovered++ }
+}
+if ($mTotal -gt 0) {
+  $mColor = if ($mCovered -eq $mTotal) { 'Green' } elseif ($mCovered -gt 0) { 'Yellow' } else { 'DarkGray' }
+  Row "Manifest" "$mCovered / $mTotal SHA256 recorded  (llm fetch to populate)" $mColor
+}
+
 Write-Host ('-' * 52)
 if ($issues -gt 0) {
   Write-Host "  $issues issue(s) noted above. Setup will attempt to resolve them." -ForegroundColor Yellow

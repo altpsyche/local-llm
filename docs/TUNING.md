@@ -94,6 +94,21 @@ The `-Force` flag wipes the `build/` directory before compiling. Without it, the
 
 New llama.cpp versions can add support for new models, fix bugs, or improve performance. Blackwell MMQ support can regress between commits, so always re-run the benchmark after a bump to confirm performance before committing the new pin.
 
+The easiest path is the built-in update command, which pulls the latest submodule commit, rebuilds, and benchmarks in one step:
+
+```powershell
+llm update
+```
+
+If the benchmark numbers look good, commit the updated submodule pointer:
+
+```powershell
+git add external/llama.cpp
+git commit -m "bump llama.cpp to <commit>"
+```
+
+To pin a specific commit or tag instead of latest, do it manually:
+
 ```powershell
 cd external\llama.cpp
 git fetch origin
@@ -101,13 +116,6 @@ git checkout <new-commit-or-tag>
 cd ..\..
 .\scripts\build-llama.ps1 -Force
 llm bench
-```
-
-If the numbers look good, pin the commit:
-
-```powershell
-git add external/llama.cpp
-git commit -m "bump llama.cpp to <commit>"
 ```
 
 If performance regressed, check back to the previous known-good commit.

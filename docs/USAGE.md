@@ -15,23 +15,38 @@ Run this once per machine. It links the VS Code Continue config and the aider co
 `setup.bat` puts `llm` on your PATH. Open a terminal and these commands are available:
 
 ```
-llm diagnose             GPU, VRAM, CUDA, and model file health check
-llm up                   start the endpoint + Open WebUI (ports from defaults, default 8080/3000)
-llm serve                start the endpoint only (default port 8080), without the web UI
-llm stop                 stop the endpoint and free VRAM
-llm aider [args]         run aider in architect mode in the current folder
-llm webui                start Open WebUI only (default port 3000)
-llm chat <model> <text>  send a one-shot message, e.g.  llm chat coder "write fizzbuzz"
-llm models               list the available model names
-llm bench [gguf]         run a throughput benchmark
-llm profiles             list VRAM profiles and which one is active
-llm profile <name>       switch profiles (e.g. llm profile 12gb) and regenerate the config
-llm fetch [--list] [p]   download models for a profile; --list previews without downloading
-llm verify-urls [<profile>]  check all HuggingFace download URLs are reachable (needs network)
-llm gen                  regenerate config/llama-swap.yaml from config/models.psd1
+Inference:
+  llm serve                            Start API endpoint — interactive, Ctrl+C to stop
+  llm up [-NoOpen]                     Start endpoint + Open WebUI silently (no popup windows) [+ browser]
+  llm stop                             Stop all services and free VRAM
+  llm restart                          Stop then start endpoint (interactive, shows logs)
+  llm status                           Show which models are loaded and VRAM usage
+  llm ps                               Show daemon processes with PID, RAM, and uptime
+  llm logs [-n N]                      Tail the server log (default: last 50 lines)
+
+Models:
+  llm models                           List models with backing names and load state
+  llm show <role>                      Model details: file, VRAM, SHA256, disk status
+  llm chat <model> <prompt>            Streaming chat (tokens appear as they generate)
+    [--sys <system>] [--max <tokens>]
+  llm bench [gguf]                     Throughput benchmark
+
+Management:
+  llm profiles                         List VRAM profiles with sizes and active marker
+  llm profile <name|auto>              Switch profile (auto = detect from GPU VRAM)
+  llm fetch [--list] [profile]         Download models for active/specified profile
+  llm verify-urls [<profile>]          Check all HuggingFace download URLs (needs network)
+  llm update                           Pull latest llama.cpp and rebuild
+  llm gen                              Regenerate config/llama-swap.yaml
+
+Tools:
+  llm aider [args]                     Run aider in architect mode in the current folder
+  llm webui                            Start Open WebUI only
+  llm diagnose                         GPU, VRAM, CUDA, and model file health check
+  llm version                          Show binary versions and submodule commits
 ```
 
-If `llm` isn't found after setup, run `scripts\install-cli.ps1` and open a fresh terminal.
+If `llm` isn't found after setup, run `scripts\install-cli.ps1` and open a fresh terminal. That script also registers tab completions in your PowerShell profile (`llm <TAB>` completes subcommands, model roles, and profile names).
 
 ## Starting the stack each session
 
@@ -39,7 +54,20 @@ If `llm` isn't found after setup, run `scripts\install-cli.ps1` and open a fresh
 llm up        # endpoint on configured port (default 8080) + Open WebUI (default 3000)
 ```
 
-Or, if you only need the API for IDE and terminal tools:
+`llm up` runs both services silently in the background — no terminal windows pop up. The endpoint logs go to `logs/llama-swap.log`; tail them live with `llm logs`. Pass `-NoOpen` to suppress the browser auto-open:
+
+```powershell
+llm up -NoOpen    # start services but don't open the browser
+```
+
+Check what's running and how much RAM each service is using:
+
+```powershell
+llm status    # which models are loaded in VRAM
+llm ps        # daemon PIDs, RAM, and uptime
+```
+
+If you only need the API for IDE and terminal tools, use interactive mode instead — it stays in your terminal, shows output directly, and stops with Ctrl+C:
 
 ```powershell
 llm serve     # inference endpoint at http://localhost:<port>/v1  (default: 8080)
@@ -49,7 +77,7 @@ The server loads a model into VRAM when it first receives a request, and unloads
 
 **mlock:** `fim` and `embed` are also pinned in physical RAM with `--mlock`, preventing the OS from paging their weights to disk under memory pressure (e.g. simultaneous VS Code autocomplete, chat, and Open WebUI load). This locks approximately 4 GB of physical RAM permanently. On systems with less than 32 GB of RAM, disable it by setting `mlock = $false` on the `fim` and `embed` entries in `config/user.psd1` (gitignored per-machine override; re-run `llm gen` after editing).
 
-To start automatically at login, put a shortcut to `up.ps1` in `shell:startup`, or create a Task Scheduler task set to "At log on" running `pwsh -File C:\local-llm\scripts\up.ps1`.
+To start automatically at login, put a shortcut to `up.ps1` in `shell:startup`, or create a Task Scheduler task set to "At log on" running `pwsh -File C:\local-llm\scripts\up.ps1 -NoOpen`.
 
 ## Available models (16gb profile)
 
@@ -72,6 +100,13 @@ The endpoint speaks the OpenAI chat completions API, so any HTTP client works:
 ```powershell
 curl http://localhost:8080/v1/chat/completions -H "Content-Type: application/json" -d '{
   "model": "coder", "messages": [{"role":"user","content":"write a fizzbuzz in rust"}] }'
+```
+
+Or use the built-in streaming CLI (tokens appear as they generate):
+
+```powershell
+llm chat coder "write fizzbuzz in rust"
+llm chat planner "design a caching layer" --sys "Be concise." --max 1024
 ```
 
 The port defaults to `8080`. To change it, set `port` in the `defaults` block of `config/models.psd1` or create a `config/user.psd1` override (see [TUNING.md](TUNING.md#tunable-defaults-and-personal-overrides)).
@@ -156,8 +191,10 @@ Open WebUI uses the `embed` model for document search automatically. Add documen
 ```powershell
 llm profiles             # list all profiles with VRAM footprints and current selection
 llm profile 12gb         # switch profiles and regenerate the server config
+llm profile auto         # detect GPU VRAM and switch to the best-fit profile automatically
 llm fetch --list 12gb    # preview what the 12gb profile would download, without downloading
 llm fetch                # download any models the current profile is missing
+llm show coder           # file path, size, SHA256, and disk status for a specific role
 ```
 
 Switching profiles does not delete models from previous profiles; they stay in `models/`. Run `llm fetch` after switching to pull any files the new profile needs that aren't already there.

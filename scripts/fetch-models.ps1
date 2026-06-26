@@ -10,6 +10,19 @@ param([string]$Profile, [switch]$ListOnly)
 $ErrorActionPreference = "Stop"
 . "$PSScriptRoot\_models.ps1"
 
+function Update-Manifest {
+    param([string]$ModelsDir, [string]$Gguf, [string]$Url, [double]$SizeGB)
+    $manifestPath = Join-Path $ModelsDir 'manifest.json'
+    $manifest = if (Test-Path $manifestPath) {
+        Get-Content $manifestPath -Raw | ConvertFrom-Json -AsHashtable
+    } else { @{} }
+    Write-Host "  Computing SHA256 for $Gguf (large files ~15s)..."
+    $hash = (Get-FileHash (Join-Path $ModelsDir $Gguf) -Algorithm SHA256).Hash.ToLower()
+    $manifest[$Gguf] = @{ sha256=$hash; sizeGB=$SizeGB; url=$Url; verifiedAt=(Get-Date -Format 'o') }
+    $manifest | ConvertTo-Json -Depth 3 | Set-Content $manifestPath -Encoding utf8
+    Write-Host "  SHA256: $($hash.Substring(0,16))... -> models/manifest.json" -ForegroundColor DarkGray
+}
+
 $repo   = Split-Path $PSScriptRoot -Parent
 $outDir = Join-Path $repo "models"
 
@@ -66,6 +79,7 @@ foreach ($m in $models) {
     continue
   }
   Move-Item "$dest.part" $dest -Force
+  Update-Manifest -ModelsDir $outDir -Gguf $m.gguf -Url $url -SizeGB $m.sizeGB
   Write-Host "done    $($m.gguf)" -ForegroundColor Green
 }
 

@@ -18,5 +18,12 @@ if (Test-PortInUse -Port $port) {
 # Expose the repo root to the config so model paths relocate with the clone (see config\llama-swap.yaml).
 $env:LLAMA_LOCAL_ROOT = ($repo -replace '\\','/')
 
+$logsDir = Join-Path $repo 'logs'
+if (-not (Test-Path $logsDir)) { New-Item -ItemType Directory $logsDir | Out-Null }
+$logFile = Join-Path $logsDir 'llama-swap.log'
+
 Write-Host "Endpoint: http://localhost:$port/v1   (loopback only; Ctrl+C to stop)" -ForegroundColor Green
-& $swap --config $config --listen "127.0.0.1:$port"
+Write-Host "Log: $logFile"
+
+# Tee-Object without -Append truncates on each start (one clean log per run)
+& $swap --config $config --listen "127.0.0.1:$port" 2>&1 | Tee-Object -FilePath $logFile

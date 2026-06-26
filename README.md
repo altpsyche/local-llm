@@ -19,7 +19,7 @@ llm up
 
 `setup.bat` handles everything in one shot. It installs the required prerequisites (CUDA 12.8, Python, Go), builds the inference engine and proxy from source, downloads the model files (about 38 GB for the default 16 GB profile), and wires the VS Code and terminal clients. It's safe to re-run if something fails partway through.
 
-After setup, open a new terminal so the PATH update takes effect, then run `llm up`. This starts the API endpoint on port 8080 and the web chat interface on port 3000.
+After setup, open a new terminal so the PATH update takes effect, then run `llm up`. This starts the API endpoint on port 8080 and the web chat interface on port 3000, both silently in the background with no popup windows. Logs go to `logs/llama-swap.log`; tail them with `llm logs`. Use `llm status` to see which models are loaded.
 
 Pass `-Profile 12gb` if your GPU has less than 16 GB of VRAM (about 21 GB download instead of 38). Pass `-SkipModels` to build everything but defer the downloads. Pass `-Launch` to start the stack automatically when setup finishes.
 

@@ -25,3 +25,5 @@
 
 # misc
 *.log
+/logs/
+/models/manifest.json
