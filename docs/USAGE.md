@@ -159,10 +159,12 @@ llm services status          # verify all three containers are Up
 llm up        # endpoint on configured port (default 8080) + Open WebUI (default 3000)
 ```
 
-`llm up` runs both services silently in the background; no terminal windows pop up. The endpoint logs go to `logs/llama-swap.log`; tail them live with `llm logs`. Pass `-NoOpen` to suppress the browser auto-open:
+`llm up` starts both services silently in the background (no terminal windows pop up), then waits inline for each to be ready: a spinner resolves to a green "ready (Ns)" line for the endpoint, then again for Open WebUI, then the browser opens. Typical wait: 5–15 s for the endpoint, 10–25 s for Open WebUI. If either doesn't respond within its timeout (60 s / 120 s) a warning is printed with a fallback URL.
+
+The endpoint logs go to `logs/llama-swap.log`; tail them live with `llm logs`. Pass `-NoOpen` to skip the WebUI wait and browser open entirely:
 
 ```powershell
-llm up -NoOpen    # start services but don't open the browser
+llm up -NoOpen    # start services, wait for endpoint only, don't open the browser
 ```
 
 Check what's running and how much RAM each service is using:
@@ -489,7 +491,7 @@ CPU-only services run in Docker Desktop. GPU tools (llama.cpp, Open WebUI) stay 
 .\scripts\setup-docker.ps1
 
 # After setup, manage with:
-llm services start    # writes .env from models.psd1 then starts all containers
+llm services start    # writes .env from models.psd1, starts containers, prints state table
 llm services stop     # stops containers (data is preserved)
 llm services status   # show container names, state, and uptime
 llm services logs     # tail all container logs (Ctrl+C to stop)

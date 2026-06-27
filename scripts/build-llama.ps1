@@ -112,8 +112,10 @@ try {
     -DCUDAToolkit_ROOT="$CudaRoot"
   if ($LASTEXITCODE -ne 0) { throw "cmake configure failed" }
 
+  $bsw = [Diagnostics.Stopwatch]::StartNew()
   & $cmakeExe --build build --config Release -j
   if ($LASTEXITCODE -ne 0) { throw "cmake build failed" }
+  Write-Host "Build succeeded in $([int]$bsw.Elapsed.TotalMinutes)m$($bsw.Elapsed.Seconds)s." -ForegroundColor Green
 } finally { Pop-Location }
 
 # --- stage into _build_tmp\, then atomic-swap into bin/ on success ---

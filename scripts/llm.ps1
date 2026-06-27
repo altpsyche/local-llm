@@ -70,7 +70,7 @@ switch ($cmd) {
   'serve'  { & "$repo\scripts\start.ps1" }                    # endpoint only (:8080), interactive
   'restart' {
     Write-Host "Stopping endpoint..."
-    Get-Process -Name 'llama-swap','llama-server' -ErrorAction SilentlyContinue | Stop-Process -Force
+    Get-Process -Name 'llama-swap','llama-server','open-webui' -ErrorAction SilentlyContinue | Stop-Process -Force
     foreach ($svc in 'llama-swap','open-webui') {
       $pf = Join-Path $repo "logs\$svc.pid"
       if (Test-Path $pf) {
@@ -226,7 +226,17 @@ switch ($cmd) {
     if (-not (Get-Command curl.exe -ErrorAction SilentlyContinue)) {
       throw "curl.exe not found (requires Windows 10 1803+). Check: where.exe curl.exe"
     }
+    $spinRs = $null; $spinPs = $null
     try {
+      $spinRs = [runspacefactory]::CreateRunspace(); $spinRs.Open()
+      $spinPs = [powershell]::Create(); $spinPs.Runspace = $spinRs
+      $spinPs.AddScript({
+          $spin = [char[]]@('|','/','-','\'); $i = 0
+          while ($true) { [Console]::Write("`r  $($spin[$i++ % 4]) Generating..."); [System.Threading.Thread]::Sleep(120) }
+      }) | Out-Null
+      $spinPs.BeginInvoke() | Out-Null
+      $script:chatSpinDone = $false
+
       curl.exe --no-buffer --silent -X POST "$base/chat/completions" `
           -H 'Content-Type: application/json' -d $body |
       ForEach-Object {
@@ -235,7 +245,14 @@ switch ($cmd) {
           if ($data -ne '[DONE]') {
             try {
               $t = ($data | ConvertFrom-Json).choices[0].delta.content
-              if ($t) { Write-Host -NoNewline $t }
+              if ($t) {
+                if (-not $script:chatSpinDone) {
+                    $spinPs.Stop(); $spinRs.Close()
+                    [Console]::Write("`r                    `r")
+                    $script:chatSpinDone = $true
+                }
+                Write-Host -NoNewline $t
+              }
             } catch {}
           }
         }
@@ -244,10 +261,16 @@ switch ($cmd) {
     } catch {
       Write-Host "Chat failed: $_" -ForegroundColor Red
       Write-Host "Is endpoint up? llm serve"
+    } finally {
+      if (-not $script:chatSpinDone -and $spinPs) {
+          $spinPs.Stop()
+          if ($spinRs) { $spinRs.Close() }
+          [Console]::Write("`r                    `r")
+      }
     }
   }
   'stop' {
-    Get-Process llama-swap,llama-server -ErrorAction SilentlyContinue | Stop-Process -Force
+    Get-Process llama-swap,llama-server,open-webui -ErrorAction SilentlyContinue | Stop-Process -Force
     foreach ($svc in 'llama-swap','open-webui') {
       $pf = Join-Path $repo "logs\$svc.pid"
       if (Test-Path $pf) {
@@ -334,6 +357,12 @@ SEARXNG_PORT=$($dp.searxngPort ?? 8888)
 N8N_PORT=$($dp.n8nPort ?? 5678)
 "@ | Set-Content $envFile -Encoding utf8
         docker compose -f $compose up -d
+        Write-Host "Services started:" -ForegroundColor Green
+        docker compose -f $compose ps --format json 2>$null | ConvertFrom-Json | ForEach-Object {
+            $state = if ($_.Health) { $_.Health } else { $_.State }
+            $color = if ($state -eq 'healthy') { 'Green' } else { 'DarkGray' }
+            Write-Host ("  {0,-40} {1}" -f $_.Name, $state) -ForegroundColor $color
+        }
       }
       'stop'   { docker compose -f $compose down }
       'status' { docker compose -f $compose ps }

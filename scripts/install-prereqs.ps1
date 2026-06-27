@@ -10,7 +10,20 @@ $repo = Split-Path $PSScriptRoot -Parent
 . "$PSScriptRoot\_common.ps1"   # Have, Install-WithWinget
 . "$PSScriptRoot\_models.ps1"   # Get-GpuArch, Get-BestCudaRoot
 
-function Step($m) { Write-Host "`n==== $m ====" -ForegroundColor Cyan }
+$script:stepTotal   = 7
+$script:stepCurrent = 0
+$script:stepSw      = $null
+
+function Step {
+    param([string]$Name, [string]$Hint = '')
+    if ($script:stepCurrent -gt 0 -and $script:stepSw) {
+        Write-Host "    done in $([int]$script:stepSw.Elapsed.TotalSeconds)s" -ForegroundColor DarkGray
+    }
+    $script:stepCurrent++
+    $script:stepSw = [Diagnostics.Stopwatch]::StartNew()
+    Write-Host "`n=== Step $script:stepCurrent/$script:stepTotal: $Name ===" -ForegroundColor Cyan
+    if ($Hint) { Write-Host "  ($Hint)" -ForegroundColor DarkGray }
+}
 
 # ---------------------------------------------------------------------------
 # 1. Manual prereqs — must exist before this script can help
@@ -139,6 +152,7 @@ if ($alreadyHad) {
 # ---------------------------------------------------------------------------
 # 8. Refresh PATH so shims from packages just installed are visible
 # ---------------------------------------------------------------------------
+if ($script:stepSw) { Write-Host "    done in $([int]$script:stepSw.Elapsed.TotalSeconds)s" -ForegroundColor DarkGray }
 $env:PATH = [Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('PATH', 'User')
 
 # ---------------------------------------------------------------------------

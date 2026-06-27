@@ -73,14 +73,15 @@ foreach ($m in $models) {
 
   $url = "https://huggingface.co/$($m.repo)/resolve/main/$($m.path)"
   Write-Host "fetch   $($m.gguf)  <-  $($m.repo) / $($m.path)" -ForegroundColor Cyan
-  curl.exe -L -C - --fail-with-body @hdr -o "$dest.part" $url
+  $dlSw = [Diagnostics.Stopwatch]::StartNew()
+  curl.exe -L -C - --fail-with-body --progress-bar @hdr -o "$dest.part" $url
   if ($LASTEXITCODE -ne 0) {
     Write-Warning "FAILED $url  (verify repo/filename on huggingface.co)"; $fail++
     continue
   }
   Move-Item "$dest.part" $dest -Force
   Update-Manifest -ModelsDir $outDir -Gguf $m.gguf -Url $url -SizeGB $m.sizeGB
-  Write-Host "done    $($m.gguf)" -ForegroundColor Green
+  Write-Host "done    $($m.gguf)  ($($m.sizeGB) GB in $([int]$dlSw.Elapsed.TotalMinutes)m$($dlSw.Elapsed.Seconds)s)" -ForegroundColor Green
 }
 
 Write-Host "`nModels in $outDir :" -ForegroundColor Green

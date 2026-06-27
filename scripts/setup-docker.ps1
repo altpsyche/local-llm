@@ -95,6 +95,19 @@ docker compose -f $compose pull
 Write-Host "Starting services..." -ForegroundColor Cyan
 docker compose -f $compose up -d
 
+Write-Host "Waiting for containers to start..." -NoNewline -ForegroundColor DarkGray
+$hcTimeout = 60; $hcElapsed = 0
+while ($hcElapsed -lt $hcTimeout) {
+    # State is always populated; Health is only set when HEALTHCHECK is defined
+    $containers = docker compose -f $compose ps --format json 2>$null | ConvertFrom-Json
+    $notRunning  = @($containers | Where-Object { $_.State -notin 'running','exited' })
+    $unhealthy   = @($containers | Where-Object { $_.Health -eq 'starting' })
+    if ($notRunning.Count -eq 0 -and $unhealthy.Count -eq 0) { break }
+    Write-Host '.' -NoNewline -ForegroundColor DarkGray
+    Start-Sleep -Seconds 3; $hcElapsed += 3
+}
+Write-Host " done" -ForegroundColor DarkGray
+
 Write-Host ""
 Write-Host "Services running:" -ForegroundColor Green
 Write-Host "  Langfuse:  http://localhost:$langfusePort  (login: admin@local.dev / admin123)" -ForegroundColor Green

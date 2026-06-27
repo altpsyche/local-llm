@@ -25,6 +25,19 @@ $swapProc.Id | Set-Content (Join-Path $logsDir 'llama-swap.pid') -Encoding utf8
 Write-Host "Endpoint:   http://localhost:$port/v1   (PID $($swapProc.Id))" -ForegroundColor Green
 Write-Host "            logs: llm logs" -ForegroundColor DarkGray
 
+$spin = [char[]]@('|','/','-','\')
+$sw   = [Diagnostics.Stopwatch]::StartNew()
+$i    = 0; $up = $false
+while ($sw.Elapsed.TotalSeconds -lt 60) {
+    try { Invoke-RestMethod "http://localhost:$port/v1/models" -ErrorAction Stop | Out-Null; $up = $true; break }
+    catch {}
+    if ($swapProc.HasExited) { Write-Warning "Endpoint process exited. Check: llm logs"; break }
+    Write-Host "`r  $($spin[$i++ % 4]) Starting endpoint..." -NoNewline -ForegroundColor DarkGray
+    Start-Sleep -Milliseconds 200
+}
+if ($up) { Write-Host "`r  Endpoint ready ($([int]$sw.Elapsed.TotalSeconds)s)              " -ForegroundColor Green }
+else      { Write-Warning "Endpoint did not respond in 60s. Check: llm logs" }
+
 # 2) Open WebUI — hidden window, log to logs/open-webui.log
 if (Test-Path $webui) {
   $owEnv = @(
@@ -44,11 +57,28 @@ if (Test-Path $webui) {
       -ArgumentList @("-NonInteractive", "-Command", $uiCmd) `
       -WindowStyle Hidden -PassThru
   $uiProc.Id | Set-Content (Join-Path $logsDir 'open-webui.pid') -Encoding utf8
-  Write-Host "Open WebUI: http://localhost:$webuiPort   (PID $($uiProc.Id), first launch ~20s)" -ForegroundColor Green
+  Write-Host "Open WebUI: http://localhost:$webuiPort   (PID $($uiProc.Id))" -ForegroundColor Green
   if (-not $NoOpen) {
-    Start-Sleep -Seconds 2
-    Start-Process "http://localhost:$webuiPort"
-    Write-Host "Browser opened." -ForegroundColor DarkGray
+    $sw2 = [Diagnostics.Stopwatch]::StartNew(); $j = 0; $uiUp = $false
+    while ($sw2.Elapsed.TotalSeconds -lt 120) {
+        # TCP check: just verify the port is listening (avoids HTTP status-code false failures)
+        try {
+            $tcp = [System.Net.Sockets.TcpClient]::new()
+            $tcp.Connect('127.0.0.1', $webuiPort)
+            $tcp.Close()
+            $uiUp = $true; break
+        } catch {}
+        # Bail early if the host process died
+        if ($uiProc.HasExited) {
+            Write-Warning "Open WebUI process exited. Check: llm logs"; break
+        }
+        Write-Host "`r  $($spin[$j++ % 4]) Starting Open WebUI..." -NoNewline -ForegroundColor DarkGray
+        Start-Sleep -Milliseconds 500
+    }
+    if ($uiUp) {
+        Write-Host "`r  Open WebUI ready ($([int]$sw2.Elapsed.TotalSeconds)s)           " -ForegroundColor Green
+        Start-Process "http://localhost:$webuiPort"
+    } else { Write-Warning "Open WebUI didn't respond. Open manually: http://localhost:$webuiPort" }
   }
 } else {
   Write-Warning "open-webui not found — run scripts\bootstrap.ps1 first. Skipping Open WebUI."
@@ -65,10 +95,12 @@ SEARXNG_PORT=$($cfg.defaults.searxngPort ?? 8888)
 N8N_PORT=$($cfg.defaults.n8nPort ?? 5678)
 "@ | Set-Content $envFile -Encoding utf8
     docker compose -f $compose up -d 2>$null
-    $lp = $cfg.defaults.langfusePort ?? 3001
-    $sp = $cfg.defaults.searxngPort  ?? 8888
-    $np = $cfg.defaults.n8nPort      ?? 5678
-    Write-Host "Langfuse: http://localhost:$lp   SearXNG: http://localhost:$sp   n8n: http://localhost:$np" -ForegroundColor DarkGray
+    Write-Host "Services started:" -ForegroundColor Green
+    docker compose -f $compose ps --format json 2>$null | ConvertFrom-Json | ForEach-Object {
+        $state = if ($_.Health) { $_.Health } else { $_.State }
+        $color = if ($state -eq 'healthy') { 'Green' } else { 'DarkGray' }
+        Write-Host ("  {0,-40} {1}" -f $_.Name, $state) -ForegroundColor $color
+    }
   } else {
     Write-Warning "-WithServices: Docker not found. Run .\scripts\setup-docker.ps1 first."
   }

@@ -12,7 +12,22 @@ $ErrorActionPreference = "Stop"
 $repo = Split-Path $PSScriptRoot -Parent
 . "$PSScriptRoot\_models.ps1"
 . "$PSScriptRoot\_common.ps1"   # Have, Install-WithWinget
-function Step($m) { Write-Host "`n==== $m ====" -ForegroundColor Cyan }
+
+$script:stepTotal   = 10
+$script:stepCurrent = 0
+$script:stepSw      = $null
+$setupStart         = [Diagnostics.Stopwatch]::StartNew()
+
+function Step {
+    param([string]$Name, [string]$Hint = '')
+    if ($script:stepCurrent -gt 0 -and $script:stepSw) {
+        Write-Host "    done in $([int]$script:stepSw.Elapsed.TotalSeconds)s" -ForegroundColor DarkGray
+    }
+    $script:stepCurrent++
+    $script:stepSw = [Diagnostics.Stopwatch]::StartNew()
+    Write-Host "`n=== Step $script:stepCurrent/$script:stepTotal: $Name ===" -ForegroundColor Cyan
+    if ($Hint) { Write-Host "  ($Hint)" -ForegroundColor DarkGray }
+}
 
 Step "System check"
 & "$PSScriptRoot\diagnose.ps1"
@@ -85,7 +100,7 @@ if (-not $cmakeOk) {
     Install-WithWinget 'Kitware.CMake' @('--version', '3.31.7')
 }
 
-Step "Bootstrap: submodules -> build engine+proxy -> venvs+tools -> models"
+Step "Bootstrap: submodules -> build engine+proxy -> venvs+tools -> models" "first build takes 5-15 min"
 $ba = @{}
 if ($SkipModels) { $ba['SkipModels'] = $true }
 if ($SkipBuild)  { $ba['SkipBuild']  = $true }
@@ -110,6 +125,7 @@ if ((Have 'docker') -or (Test-Path $dockerExe)) {
     Write-Host "  To add later: run install_prereqs.bat, then re-run setup.bat." -ForegroundColor DarkGray
 }
 
-Step "All set"
+if ($script:stepSw) { Write-Host "    done in $([int]$script:stepSw.Elapsed.TotalSeconds)s" -ForegroundColor DarkGray }
+Write-Host "`nSetup complete in $([int]$setupStart.Elapsed.TotalMinutes)m$($setupStart.Elapsed.Seconds)s." -ForegroundColor Green
 Write-Host "Open a new terminal, then:  llm up   (or  llm help  for all commands)" -ForegroundColor Green
 if ($Launch) { & "$PSScriptRoot\up.ps1" }
