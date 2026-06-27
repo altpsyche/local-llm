@@ -45,6 +45,7 @@ Tools:
   llm aider [args]                     Run aider in architect mode in the current folder
   llm webui                            Start Open WebUI only
   llm diagnose                         GPU, VRAM, CUDA, and model file health check
+  llm mlock                            Check or grant SeLockMemoryPrivilege (needed for --mlock)
   llm version                          Show binary versions and submodule commits
 
 Ecosystem:
@@ -182,7 +183,9 @@ llm serve     # inference endpoint at http://localhost:<port>/v1  (default: 8080
 
 The server loads a model into VRAM when it first receives a request, and unloads it when it's been idle for a while. The exception is `fim` (autocomplete) and `embed` (embeddings), which are pinned in VRAM and never unloaded. Only one large model (`planner`, `coder`, or `chat`) is resident at a time; switching between them takes a few seconds.
 
-**mlock:** `fim` and `embed` are also pinned in physical RAM with `--mlock`, preventing the OS from paging their weights to disk under memory pressure (e.g. simultaneous VS Code autocomplete, chat, and Open WebUI load). This locks approximately 4 GB of physical RAM permanently. On systems with less than 32 GB of RAM, disable it by setting `mlock = $false` on the `fim` and `embed` entries in `config/user.psd1` (gitignored per-machine override; re-run `llm gen` after editing).
+**mlock:** `fim` and `embed` are pinned in physical RAM with `--mlock`, preventing the OS from paging their weights to disk under memory pressure (e.g. simultaneous VS Code autocomplete, chat, and Open WebUI load). This locks approximately 4 GB of physical RAM permanently. On systems with less than 32 GB of RAM, disable it by setting `mlock = $false` on the `fim` and `embed` entries in `config/user.psd1` (gitignored per-machine override; re-run `llm gen` after editing).
+
+Setting `mlockBig = $true` in `config/user.psd1` extends mlock to the swap-group models (planner, coder, chat), pinning CPU-offloaded weight pages against pagefile eviction. This requires `SeLockMemoryPrivilege` on Windows — run `llm mlock` to check status and grant the privilege automatically (UAC prompt; restart terminal after).
 
 To start automatically at login, put a shortcut to `up.ps1` in `shell:startup`, or create a Task Scheduler task set to "At log on" running `pwsh -File C:\local-llm\scripts\up.ps1 -NoOpen`.
 
@@ -353,7 +356,7 @@ To get started, run `.\scripts\setup-clients.ps1` once, install the **Continue**
 
 `Ctrl+L` opens a new chat with any selected code attached as context. `Ctrl+I` opens an inline edit on the selected lines and shows a diff for you to accept or reject. Autocomplete fires as ghost text; `Tab` accepts it. Use the model dropdown at the bottom of the chat panel to switch between `coder` (everyday edits) and `planner` (design and architecture questions).
 
-Context is 16384 tokens for `coder` and `planner`. Large `@codebase` queries get truncated to fit; use `@file` when you need to be precise about what's included. The first message to a large model is slower while it loads into VRAM. `fim` and `embed` stay pinned so autocomplete and RAG never trigger a reload.
+Context is 32768 tokens for `coder` and `chat`, 16384 for `planner`. Large `@codebase` queries get truncated to fit; use `@file` when you need to be precise about what's included. The first message to a large model is slower while it loads into VRAM. `fim` and `embed` stay pinned so autocomplete and RAG never trigger a reload.
 
 If you used a copied config rather than a symlink and later edited the repo's config, re-run `setup-clients.ps1` after deleting the copy, or edit `~/.continue/config.yaml` directly.
 

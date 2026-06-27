@@ -28,6 +28,21 @@ function Get-ModelsConfig {
       if (-not $base.defaults) { $base.defaults = @{} }
       foreach ($k in $user.defaults.Keys) { $base.defaults[$k] = $user.defaults[$k] }
     }
+    if ($user.profiles) {
+      foreach ($profName in $user.profiles.Keys) {
+        if (-not $base.profiles.Contains($profName)) {
+          Write-Warning "user.psd1: profile '$profName' not in models.psd1 — skipped"; continue
+        }
+        foreach ($roleName in $user.profiles[$profName].Keys) {
+          if (-not $base.profiles[$profName].Contains($roleName)) {
+            Write-Warning "user.psd1: role '$roleName' in profile '$profName' not found — skipped"; continue
+          }
+          foreach ($key in $user.profiles[$profName][$roleName].Keys) {
+            $base.profiles[$profName][$roleName][$key] = $user.profiles[$profName][$roleName][$key]
+          }
+        }
+      }
+    }
   }
   return $base
 }
@@ -137,6 +152,27 @@ function Get-BestCudaRoot {
   } | Where-Object { $_ -and $_.Major -ge $minMajor } | Sort-Object Major, Minor -Descending
   if ($installed) { return $installed[0].Path }
   return $null
+}
+
+function Get-SystemRamGB {
+  # Returns @{ TotalGB; FreeGB } for physical RAM via CIM. FreeGB = currently available pages.
+  # Returns $null if the query fails (no WMI/CIM access).
+  try {
+    $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+    return @{
+      TotalGB = [int][math]::Round($os.TotalVisibleMemorySize / 1MB)
+      FreeGB  = [int][math]::Round($os.FreePhysicalMemory   / 1MB)
+    }
+  } catch { return $null }
+}
+
+function Get-NumaNodeCount {
+  # Returns the number of NUMA nodes reported by Windows.
+  # AM5 (7950X3D) exposes 1 node on Windows regardless of CCD count.
+  try {
+    $nodes = @(Get-CimInstance -ClassName Win32_NumaNode -ErrorAction Stop)
+    return if ($nodes.Count -gt 0) { $nodes.Count } else { 1 }
+  } catch { return 1 }
 }
 
 function Test-PortInUse {

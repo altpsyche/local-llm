@@ -22,18 +22,29 @@ if (-not $d) { throw 'models.psd1 is missing the defaults block. Add it per MODU
 $ngl   = if ($null -ne $d.ngl)   { $d.ngl }   else { 99 }
 $fa    = if ($d.flashAttn -ne $false) { '--flash-attn on' } else { '' }
 $batch = if ($d.batch -and $d.batch -ne 512)  { "-b $($d.batch)" }   else { '' }
+$ub    = if ($d.ubatch -and $d.ubatch -ne 512) { "-ub $($d.ubatch)" } else { '' }
 $par   = if ($d.parallel -and $d.parallel -gt 1) { "-np $($d.parallel)" } else { '' }
 $thr   = if ($d.threads -and $d.threads -gt 0)   { "-t $($d.threads)" }   else { '' }
+$numa  = if ($d.numa -and $d.numa -ne '')  { "--numa $($d.numa)" }   else { '' }
 $srvParts = @(
     '${env.LLAMA_LOCAL_ROOT}/bin/llama-server.exe',
     '--port ${PORT}',
     "-ngl $ngl",
-    $fa, $batch, $par, $thr
+    $fa, $batch, $ub, $numa, $par, $thr
 ) | Where-Object { $_ -ne '' }
 $cfg.macros['srv'] = $srvParts -join ' '
 
-$kvQuant = if ($null -ne $d.kvQuant) { $d.kvQuant } else { 'q8_0' }
-$cfg.macros['kv'] = if ($kvQuant) { "--cache-type-k $kvQuant --cache-type-v $kvQuant" } else { '' }
+# kvQuant (legacy) overrides both axes when non-empty; kvQuantK/kvQuantV allow asymmetric control.
+$legacyKv = if ($null -ne $d.kvQuant -and $d.kvQuant -ne '') { $d.kvQuant } else { $null }
+$kvQuantK = if ($legacyKv)              { $legacyKv } `
+             elseif ($null -ne $d.kvQuantK) { $d.kvQuantK } `
+             else                           { 'q8_0' }
+$kvQuantV = if ($legacyKv)              { $legacyKv } `
+             elseif ($null -ne $d.kvQuantV) { $d.kvQuantV } `
+             else                           { 'q8_0' }
+$cfg.macros['kv'] = if ($kvQuantK -or $kvQuantV) {
+    "--cache-type-k $kvQuantK --cache-type-v $kvQuantV"
+} else { '' }
 
 # --- format helpers (InvariantCulture so 0.7 never becomes "0,7" on EU locales) ---
 $inv = [System.Globalization.CultureInfo]::InvariantCulture
@@ -46,6 +57,7 @@ function Fmt($v) {
 function Assert-NoQuote($s, $what) { if ($s -match '"') { throw "value for $what contains a double-quote, which would break the generated YAML: $s" } }
 
 # --- build each model's cmd string (order matters; mirrors the hand-written config) ---
+$members   = @($cfg.group.members)
 $roleNames = $models.role
 foreach ($m in $models) {
   Assert-NoQuote $m.gguf "model '$($m.role)' gguf"
@@ -57,7 +69,15 @@ foreach ($m in $models) {
   if ($m.kv)                         { $parts += '${kv}' }
   if ($m.embedding)                  { $parts += '--embedding' }
   if ($m.flags) { foreach ($f in $m.flags) { Assert-NoQuote $f "model '$($m.role)' flag"; $parts += [string]$f } }
-  if ($m.mlock -eq $true) { $parts += '--mlock' }
+  # mlock: per-model flag OR global mlockBig applied to swap-group members.
+  $globalMlockBig = ($d.mlockBig -eq $true)
+  $isSwapMember   = $members -contains $m.role
+  $applyMlock     = ($m.mlock -eq $true) -or ($globalMlockBig -and $isSwapMember)
+  if ($applyMlock) { $parts += '--mlock' }
+  # no-mmap: per-model flag overrides global default.
+  $globalNoMmap = ($d.noMmap -eq $true)
+  $modelNoMmap  = if ($null -ne $m.noMmap) { $m.noMmap -eq $true } else { $globalNoMmap }
+  if ($modelNoMmap) { $parts += '--no-mmap' }
   if ($m.draftRole) {
     $draftModel = $models | Where-Object { $_.role -eq $m.draftRole } | Select-Object -First 1
     if (-not $draftModel) {
@@ -73,7 +93,6 @@ foreach ($m in $models) {
 }
 
 # --- group assertions (catch hand-edit mistakes in the PSD1) ---
-$members = @($cfg.group.members)
 foreach ($mem in $members) {
   if ($roleNames -notcontains $mem) { throw "group member '$mem' is not a model in profile '$name'" }
   $mObj = $models | Where-Object role -eq $mem

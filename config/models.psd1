@@ -47,10 +47,37 @@
   defaults = @{
     ngl         = 99                # GPU layers. Lower (e.g. 80) to CPU-offload if OOM.
     flashAttn   = $true             # Required for KV-cache quant. Set false for CPU-only.
-    kvQuant     = 'q8_0'            # KV cache quant. 'q4_0' = ~50% less KV VRAM. '' = disabled (Gemma).
+    kvQuantK    = 'q8_0'            # Key cache quant (--cache-type-k). Works with flash-attn on all GPU generations.
+                                    #   Pre-Blackwell (sm_75–89, RTX 20/30/40): q5_1 saves ~30% more VRAM, good fidelity.
+                                    #   Blackwell (sm_120+, RTX 50): sub-q8_0 types regress with flash-attn; keep q8_0.
+                                    #   Options: f16, bf16, q8_0, q5_1, q5_0, q4_1, q4_0, iq4_nl
+    kvQuantV    = 'q8_0'            # Value cache quant (--cache-type-v). ~50% VRAM savings vs f16.
+                                    #   Pre-Blackwell: q4_0 saves ~75% vs f16 with acceptable quality.
+                                    #   Options: f16, bf16, q8_0, q5_1, q5_0, q4_1, q4_0, iq4_nl
+    kvQuant     = ''                # Legacy: when non-empty, overrides kvQuantK and kvQuantV with same type.
+                                    #   To disable KV quant entirely (required for Gemma models):
+                                    #     set kvQuantK = '' AND kvQuantV = '' in user.psd1 instead.
     threads     = -1                # CPU threads for BLAS/prompt. -1 = auto.
-    batch       = 512               # Logical batch size (-b). Higher = faster prefill. Max 2048.
+    batch       = 512               # Logical batch size (-b). NOTE: value 512 emits no flag; llama.cpp
+                                    #   then uses its own default of 2048. Set > 512 to override explicitly.
+    ubatch      = 512               # Physical GPU batch size (-ub). Raise to 1024/2048 to reduce
+                                    #   kernel-launch overhead on long prompts. Must be <= effective batch.
     parallel    = 1                 # Parallel request slots (-np). >1 for multi-user setups.
+    noMmap      = $false            # Load model into heap RAM at startup (--no-mmap). Eliminates page
+                                    #   faults on CPU-offloaded layers. Slower startup; smoother inference.
+                                    #   WARNING: with llama-swap, startup cost is paid on EVERY eviction+reload
+                                    #   (not just once). A 17 GB model = 3-30 s per swap depending on storage.
+                                    #   Recommended when system RAM >= 2x largest model. Per-model override
+                                    #   also supported (set noMmap = $true on individual model entries).
+    mlockBig    = $false            # Apply --mlock to swap-group models (planner/coder/chat).
+                                    #   Pins CPU-resident pages in physical RAM, preventing OS eviction.
+                                    #   Windows: needs SeLockMemoryPrivilege (secpol.msc). Without it: no-op.
+                                    #   Recommended only with noMmap = $true and 32+ GB free RAM.
+    numa        = ''                # NUMA thread/memory strategy (--numa). Options:
+                                    #   '' (disabled), 'isolate' (pin to starting NUMA node),
+                                    #   'distribute' (spread across all nodes), 'numactl' (use numactl map).
+                                    #   On 7950X3D: try 'isolate' (keeps threads on V-Cache CCD).
+                                    #   Benchmark 'isolate' vs 'distribute' with llm bench.
     port        = 8080              # llama-swap API endpoint port.
     webuiPort   = 3000              # Open WebUI port.
     litellmPort = 8081              # LiteLLM proxy port (Module H).
@@ -80,7 +107,8 @@
     # time; the 30B-A3B planner uses light RAM offload (fast — only 3B active).
     '16gb' = @{
       _targetVRAM = '16GB+ (tested RTX 5080; 30B planner uses light RAM offload)'
-      planner = @{ repo = 'Qwen/Qwen3-30B-A3B-GGUF';                   path = 'Qwen3-30B-A3B-Q4_K_M.gguf';             gguf = 'qwen3-30b-a3b-q4.gguf';      ctx = 16384; kv = $true; sizeGB = 17.3; flags = @('--temp', '0.3'); tokenizer = 'Qwen/Qwen3-30B-A3B' }
+      # noMmap=$true: eliminates CPU-offload page faults but costs a full 17.3 GB disk read on every llama-swap eviction+reload.
+      planner = @{ repo = 'Qwen/Qwen3-30B-A3B-GGUF';                   path = 'Qwen3-30B-A3B-Q4_K_M.gguf';             gguf = 'qwen3-30b-a3b-q4.gguf';      ctx = 16384; kv = $true; sizeGB = 17.3; flags = @('--temp', '0.3'); tokenizer = 'Qwen/Qwen3-30B-A3B'; noMmap = $true }
       coder   = @{ repo = 'bartowski/Qwen2.5-Coder-14B-Instruct-GGUF'; path = 'Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf'; gguf = 'qwen-coder-14b-q4_k_m.gguf'; ctx = 16384; kv = $true; sizeGB = 8.4; draftRole = 'fim'; tokenizer = 'Qwen/Qwen2.5-Coder-14B-Instruct' }
       chat    = @{ repo = 'Qwen/Qwen3-14B-GGUF';                       path = 'Qwen3-14B-Q4_K_M.gguf';                 gguf = 'qwen3-14b-q4_k_m.gguf';      ctx = 16384; kv = $true; sizeGB = 8.4; setParams = @{ temperature = 0.7; top_p = 0.9 }; tokenizer = 'Qwen/Qwen3-14B' }
       fim     = @{ repo = 'Qwen/Qwen2.5-Coder-3B-Instruct-GGUF';       path = 'qwen2.5-coder-3b-instruct-q8_0.gguf';   gguf = 'qwen-coder-3b-q8_0.gguf';    ctx = 8192;  sizeGB = 3.4; ttl = 0; pinned = $true; mlock = $true }

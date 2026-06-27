@@ -18,11 +18,21 @@ Write-Host ('-' * 52)
 $gpu  = Get-GpuArch
 $vram = Get-GpuVramGB
 if ($gpu) {
-  Row "GPU"  "$($gpu.Gen)  (sm_$($gpu.CudaArch))"
+  $faNote = if ($gpu.CudaArch -lt 75) { '  (WARNING: flash-attn requires sm_75+; disable flashAttn in user.psd1)' } else { '' }
+  Row "GPU"  "$($gpu.Gen)  (sm_$($gpu.CudaArch))$faNote" $(if ($gpu.CudaArch -lt 75) { 'Yellow' } else { 'White' })
   Row "VRAM" "$vram GB"
 } else {
   Row "GPU"  "not detected  (nvidia-smi not found or no NVIDIA GPU)" 'DarkGray'
   Row "VRAM" "unknown" 'DarkGray'
+}
+
+# System RAM
+$ram = Get-SystemRamGB
+if ($ram) {
+  $ramColor = if ($ram.FreeGB -ge 32) { 'Green' } elseif ($ram.FreeGB -ge 16) { 'White' } else { 'Yellow' }
+  Row "RAM" "$($ram.TotalGB) GB total  ($($ram.FreeGB) GB free)" $ramColor
+} else {
+  Row "RAM" "unknown" 'DarkGray'
 }
 
 # Profile
@@ -66,6 +76,39 @@ if ($gpu) {
 } else {
   $label = if ($installed.Count -gt 0) { ($installed | ForEach-Object { $_.Name } | Sort-Object | Select-Object -Last 1) + '  (no GPU detected)' } else { 'not installed  (no GPU detected — skipping)' }
   Row "CUDA" $label 'DarkGray'
+}
+
+# mlock privilege
+$mlockGranted = $false
+try {
+    $mlockResult = & "$PSScriptRoot\grant-mlock.ps1" -Check 2>&1
+    $mlockGranted = ($LASTEXITCODE -eq 0)
+} catch {}
+$d = $cfg.defaults
+$mlockEnabled = ($d.mlockBig -eq $true)
+if ($mlockEnabled -and -not $mlockGranted) {
+    Row "mlock" "mlockBig=true but SeLockMemoryPrivilege NOT granted — run: llm mlock" 'Yellow'
+    $issues++
+} elseif ($mlockEnabled -and $mlockGranted) {
+    Row "mlock" "SeLockMemoryPrivilege granted  (--mlock active)" 'Green'
+} else {
+    $mlockRamHint = if ($ram -and $ram.FreeGB -ge 32) { "  — $($ram.FreeGB) GB free RAM; eligible" } else { '' }
+    Row "mlock" "not enabled$mlockRamHint  (set mlockBig=true in user.psd1 + run: llm mlock)" 'DarkGray'
+}
+
+# NUMA topology vs config
+$numaNodes = Get-NumaNodeCount
+$numaConfig = $cfg.defaults.numa
+if ($numaConfig -and $numaConfig -ne '') {
+    if ($numaNodes -le 1) {
+        Row "NUMA" "config: '--numa $numaConfig' but Windows reports $numaNodes node — flag is a no-op; set numa='' in user.psd1" 'Yellow'
+        $issues++
+    } else {
+        Row "NUMA" "$numaNodes nodes  — '--numa $numaConfig' active" 'Green'
+    }
+} else {
+    $numaNote = if ($numaNodes -gt 1) { "$numaNodes nodes detected — consider numa='isolate' in user.psd1 for CPU-offload gains" } else { "$numaNodes NUMA node  (disabled, correct for this topology)" }
+    Row "NUMA" $numaNote 'DarkGray'
 }
 
 # Models

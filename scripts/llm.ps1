@@ -310,6 +310,22 @@ switch ($cmd) {
     if ($rest.Count) { $vArgs['Profile'] = $rest[0] }
     & "$repo\scripts\verify-urls.ps1" @vArgs
   }
+  'mlock' {
+    # Check current status first (no admin needed)
+    $mlockStatus = & "$repo\scripts\grant-mlock.ps1" -Check 2>&1
+    Write-Host $mlockStatus
+    if ($LASTEXITCODE -ne 0) {
+      Write-Host ""
+      Write-Host "This grants the Windows SeLockMemoryPrivilege to your user account." -ForegroundColor DarkGray
+      Write-Host "Required for --mlock to actually pin model weights in RAM." -ForegroundColor DarkGray
+      Write-Host "A UAC prompt will appear. After granting, restart this terminal." -ForegroundColor DarkGray
+      Write-Host ""
+      $ans = Read-Host "Grant now? [y/N]"
+      if ($ans -match '^[Yy]') {
+        & "$repo\scripts\grant-mlock.ps1"
+      }
+    }
+  }
   'fabric-setup' { & "$repo\scripts\setup-fabric.ps1" }
   'fabric'       { & "$repo\bin\fabric.exe" @rest }
   'litellm' {
@@ -415,6 +431,7 @@ Tools:
   llm aider [args]                     Start aider in current folder
   llm webui                            Launch Open WebUI only (:$wp)
   llm diagnose                         System and model health check
+  llm mlock                            Check/grant SeLockMemoryPrivilege (needed for --mlock)
   llm version                          Show binary versions and submodule commits
 
 Ecosystem:

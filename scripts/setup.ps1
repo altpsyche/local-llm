@@ -13,7 +13,7 @@ $repo = Split-Path $PSScriptRoot -Parent
 . "$PSScriptRoot\_models.ps1"
 . "$PSScriptRoot\_common.ps1"   # Have, Install-WithWinget
 
-$script:stepTotal   = 10
+$script:stepTotal   = 11
 $script:stepCurrent = 0
 $script:stepSw      = $null
 $setupStart         = [Diagnostics.Stopwatch]::StartNew()
@@ -115,6 +115,34 @@ Step "fabric (shell AI patterns)"
 
 Step "Install 'llm' CLI command"
 & "$PSScriptRoot\install-cli.ps1"
+
+Step "Memory lock (mlock)"
+$cfgForMlock = Get-ModelsConfig
+$mlockBigEnabled = ($cfgForMlock.defaults.mlockBig -eq $true)
+$ram = Get-SystemRamGB
+$mlockGranted = $false
+try { & "$PSScriptRoot\grant-mlock.ps1" -Check 2>&1 | Out-Null; $mlockGranted = ($LASTEXITCODE -eq 0) } catch {}
+
+if ($mlockBigEnabled) {
+    if ($mlockGranted) {
+        Write-Host "  SeLockMemoryPrivilege: already granted  (mlockBig = true)." -ForegroundColor Green
+    } else {
+        Write-Host "  mlockBig = true in config — granting SeLockMemoryPrivilege (UAC prompt)..." -ForegroundColor Cyan
+        & "$PSScriptRoot\grant-mlock.ps1"
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "  mlock skipped — grant cancelled or failed. Run: llm mlock" -ForegroundColor Yellow
+        } else {
+            Write-Host "  NOTE: open a new terminal after setup completes for mlock to take effect." -ForegroundColor Yellow
+        }
+    }
+} elseif ($ram -and $ram.FreeGB -ge 32) {
+    Write-Host "  $($ram.TotalGB) GB RAM detected ($($ram.FreeGB) GB free) — mlockBig not enabled." -ForegroundColor DarkGray
+    Write-Host "  Tip: add  mlockBig = `$true  to config/user.psd1, then run: llm mlock" -ForegroundColor DarkGray
+    Write-Host "  This pins the planner's CPU-offloaded layers in RAM, preventing pagefile eviction." -ForegroundColor DarkGray
+} else {
+    $reason = if ($ram) { "$($ram.FreeGB) GB free RAM (need 32+)" } else { "RAM detection unavailable" }
+    Write-Host "  mlock skipped — $reason.  Enable manually with: llm mlock" -ForegroundColor DarkGray
+}
 
 Step "Docker services (Langfuse + SearXNG + n8n)"
 $dockerExe = 'C:\Program Files\Docker\Docker\Docker Desktop.exe'

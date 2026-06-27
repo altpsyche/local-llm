@@ -48,7 +48,7 @@ After setup, open a new terminal to pick up the PATH change, then run `llm up`.
 
 `setup.bat` calls `scripts\setup.ps1`, which runs these steps in order. You can run any of them individually if you need to redo a specific part:
 
-0. `.\scripts\diagnose.ps1` prints a machine summary (GPU, VRAM, CUDA, active profile, model files) before anything is installed. Run `llm diagnose` at any time to see the same report.
+0. `.\scripts\diagnose.ps1` prints a machine summary (GPU, VRAM, RAM, CUDA, NUMA topology, mlock privilege, active profile, model files) before anything is installed. Run `llm diagnose` at any time to see the same report.
 1. `git submodule update --init --recursive` fetches the llama.cpp and llama-swap source trees.
 2. `.\scripts\build-llama.ps1` compiles llama.cpp against CUDA 12.8 and writes the binaries to `bin/`. Skips if the binary already exists; pass `-Force` to rebuild from scratch. Before replacing an existing binary, the script backs it up as `bin/llama-server.exe.bak`. If a rebuild leaves things broken, restore it with `Move-Item bin\llama-server.exe.bak bin\llama-server.exe`.
 3. `.\scripts\build-llama-swap.ps1` compiles the model-swap proxy.
@@ -58,7 +58,8 @@ After setup, open a new terminal to pick up the PATH change, then run `llm up`.
 7. `.\scripts\setup-clients.ps1` symlinks `config/continue/config.yaml` to `~/.continue/config.yaml` and checks VS Code extension status.
 8. `.\scripts\setup-fabric.ps1` installs the fabric CLI and configures it to use the local endpoint.
 9. `.\scripts\install-cli.ps1` puts the `llm` command on PATH.
-10. `.\scripts\setup-docker.ps1` pulls and starts the Docker services stack (Langfuse, SearXNG, n8n). Runs automatically if Docker Desktop is installed; skipped gracefully if not.
+10. **Memory lock:** reads `config/user.psd1` to check if `mlockBig = $true` is set. If it is, runs `scripts\grant-mlock.ps1` automatically (UAC prompt; one-time per machine). If `mlockBig` is not set but ≥ 32 GB RAM is free, prints a tip on how to enable it. Otherwise reports why it was skipped. Open a new terminal after setup completes for the privilege to take effect.
+11. `.\scripts\setup-docker.ps1` pulls and starts the Docker services stack (Langfuse, SearXNG, n8n). Runs automatically if Docker Desktop is installed; skipped gracefully if not.
 
 To pin llama.cpp to a specific commit or bump to a newer version, see [MANUAL-INSTALL.md § 4](MANUAL-INSTALL.md#4-build-llamacpp) and [TUNING.md](TUNING.md#bumping-the-llamacpp-submodule).
 
@@ -102,7 +103,10 @@ llm serve                 # start the inference endpoint (default port 8080)
 llm models                # should list: planner, coder, chat, fim, embed
 llm bench                 # performance check (see expected numbers below)
 llm chat coder "hi"       # end-to-end sanity check
+llm diagnose              # re-run hardware summary at any time; flags any unresolved issues
 ```
+
+**Memory lock** is handled automatically during setup (step 10). If you enable `mlockBig = $true` in `config/user.psd1` after setup, run `llm mlock` to grant `SeLockMemoryPrivilege` and restart your terminal.
 
 On an RTX 5080 with the 14B Q4 coder model, expected numbers are **pp512 ≈ 4600 t/s, tg128 ≈ 89 t/s**. These confirm the engine is on the fast Blackwell hardware path. Ada and Ampere cards will show lower numbers; what matters is that prefill is not disproportionately slow relative to generation (see [TUNING.md](TUNING.md#verifying-the-fast-path)).
 

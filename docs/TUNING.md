@@ -22,14 +22,22 @@ The `defaults` block in `config/models.psd1` controls the server launch flags an
 |-----|---------|--------|
 | `ngl` | `99` | GPU layers. Lower (e.g. `80`) to CPU-offload if a model overflows VRAM. |
 | `flashAttn` | `$true` | Enable Flash Attention. Required for KV cache quantization. |
-| `kvQuant` | `'q8_0'` | KV cache quantization. `'q4_0'` halves KV VRAM at ~1% quality cost. `''` disables (required for Gemma models). |
-| `batch` | `512` | Logical batch size (`-b`). Higher = faster prefill; uses more VRAM. Max 2048. |
+| `kvQuantK` | `'q8_0'` | Key cache type (`--cache-type-k`). Safe across all GPU generations with flash-attn. Pre-Blackwell (sm_75–89, RTX 20/30/40): q5_1 saves ~30% more VRAM. Blackwell (sm_120+, RTX 50): sub-q8_0 types regress with flash-attn. |
+| `kvQuantV` | `'q8_0'` | Value cache type (`--cache-type-v`). ~50% VRAM savings vs f16. Pre-Blackwell: q4_0 saves ~75% vs f16. |
+| `kvQuant` | `''` | Legacy single-axis override. When non-empty, overrides both `kvQuantK` and `kvQuantV`. To disable KV quant entirely (Gemma models): set `kvQuantK = ''` and `kvQuantV = ''` instead. |
+| `batch` | `512` | Logical batch size (`-b`). **Note:** value `512` emits no flag; llama.cpp then uses its default of 2048. Set a value > 512 to override explicitly. |
+| `ubatch` | `512` | Physical GPU batch size (`-ub`). Raise to `1024` or `2048` to reduce kernel-launch overhead on long prompts. Must be ≤ effective batch size. Uses more peak VRAM at higher values. |
 | `parallel` | `1` | Parallel request slots (`-np`). Set `>1` for multi-user or shared setups. |
 | `threads` | `-1` | CPU threads for BLAS. `-1` = auto. Tune if you're offloading layers to CPU. |
+| `noMmap` | `$false` | Load model into heap RAM at startup (`--no-mmap`). Eliminates page faults on CPU-offloaded layers. Startup is slower; inference is smoother. Also supported per-model. |
+| `mlockBig` | `$false` | Apply `--mlock` to swap-group models (planner/coder/chat). Pins CPU-resident pages in RAM. Windows: needs `SeLockMemoryPrivilege`. |
+| `numa` | `''` | NUMA strategy (`--numa`). Options: `''` (off), `'isolate'`, `'distribute'`, `'numactl'`. On 7950X3D: try `'isolate'` first. |
 | `port` | `8080` | llama-swap API port. |
 | `webuiPort` | `3000` | Open WebUI port. |
 | `webuiSecret` | `'local-llm-dev'` | Open WebUI session key. Change before exposing on a LAN. |
 | `maxTokens` | `512` | Default `max_tokens` for `llm chat`. |
+
+**KV cache type options** (valid for both `kvQuantK` and `kvQuantV`): `f16`, `bf16`, `q8_0`, `q5_1`, `q5_0`, `q4_1`, `q4_0`, `iq4_nl`.
 
 **Personal overrides without touching git**: create `config/user.psd1` (gitignored) to shadow any of these values without modifying the tracked file:
 
@@ -37,14 +45,18 @@ The `defaults` block in `config/models.psd1` controls the server launch flags an
 # config/user.psd1 — copy from config/user.psd1.example and uncomment what you need
 @{
     defaults = @{
-        ngl       = 80        # leave VRAM headroom for other GPU apps
-        kvQuant   = 'q4_0'   # halve KV cache VRAM at slight quality cost
-        port      = 8081      # run two stacks side-by-side
+        ngl      = 80        # leave VRAM headroom for other GPU apps
+        kvQuantK = 'q8_0'   # default; pre-Blackwell (RTX 20/30/40): try 'q5_1' for more VRAM savings
+        kvQuantV = 'q8_0'   # default; pre-Blackwell: try 'q4_0' for max VRAM savings (~75% vs f16)
+        # kvQuant = 'q8_0'  # legacy: overrides both K and V axes with same type
+        port     = 8081      # run two stacks side-by-side
     }
 }
 ```
 
 Run `llm gen` after editing either file. Changes take effect on the next `llm serve`.
+
+**Personal overrides without touching git**: create `config/user.psd1` (gitignored) to shadow any of these values without modifying the tracked file. See [config/user.psd1.example](../config/user.psd1.example) for all available knobs with examples.
 
 ## Per-model launch flags (Blackwell / 16GB)
 
@@ -58,7 +70,7 @@ These flags are assembled from the `defaults` block above. The resulting command
 
 `--flash-attn on` enables Flash Attention, which is required for KV cache quantization. This build needs the explicit `on`/`off`/`auto` value; a bare `--flash-attn` without a value errors out.
 
-`--cache-type-k q8_0` and `--cache-type-v q8_0` quantize the KV cache to 8-bit, which roughly halves its memory footprint with negligible quality loss. This lets you run a longer context or a larger model in the same VRAM. Exception: Gemma 3 models regress in quality with quantized KV cache; use `f16` (omit both cache-type flags) for any Gemma model.
+`--cache-type-k q8_0 --cache-type-v q8_0` applies KV cache quantization (MODULE J). ~50% VRAM savings versus unquantized f16, with near-zero performance overhead across all GPU generations. On pre-Blackwell GPUs (RTX 20/30/40, sm_75–89), overriding to q5_1 keys and q4_0 values saves ~75% vs f16 — see user.psd1.example. On Blackwell (RTX 50, sm_120+), sub-q8_0 types cause a significant prompt-processing regression with flash attention; q8_0 is the correct choice. Exception: Gemma models regress in quality with any KV quantization — set `kvQuantK = ''` and `kvQuantV = ''` in `config/user.psd1`.
 
 ## VRAM math
 
@@ -66,7 +78,7 @@ When deciding whether a model will fit, start with a rough estimate of weight me
 
 Weight memory is approximately the number of parameters multiplied by the bytes per weight for that quantization level. Common values: Q4_K_M is about 0.56 GB per billion parameters, Q5 about 0.70, and Q8 about 1.0.
 
-KV cache adds roughly 1 to 2 GB at a 4k context window, or 3 to 5 GB at 32k. Quantized KV cache (`q8_0`) cuts these figures in half.
+KV cache adds roughly 1 to 2 GB at a 4k context window, or 3 to 5 GB at 32k. The default q8_0/q8_0 quantization cuts these figures by roughly 50% versus unquantized f16. On pre-Blackwell GPUs, q5_1 keys and q4_0 values cut by ~75% at the cost of minor quality loss.
 
 For the models in this repo on 16 GB VRAM: the 14B Q4_K_M coder is about 9 to 10 GB for weights plus 1 to 2 GB for context, which fits comfortably. The 30B-A3B Q4 planner is about 18 GB for the full weight matrix, so it uses a small amount of RAM offload; but because only 3B parameters are active per token (it's a mixture-of-experts model), generation is still fast.
 
@@ -80,7 +92,7 @@ The most important health check is whether the engine is using Blackwell's optim
 llm bench
 ```
 
-Expected numbers on an RTX 5080 with the 14B Q4 coder model: **pp512 ≈ 4300 t/s, tg128 ≈ 86 t/s**.
+Expected numbers on an RTX 5080 with the 14B Q4 coder model: **pp512 ≈ 4400 t/s, tg128 ≈ 85 t/s**.
 
 If prefill is around 1000 t/s, you're on the cuBLAS fallback. This happens when the build used CUDA 13.x or when there's a stale build cache from a previous compile. Fix it by forcing a clean rebuild:
 
@@ -169,6 +181,123 @@ All model configuration lives in `config/models.psd1`. To add a new model or swa
 3. Run `llm fetch` to download the new GGUF, then `llm serve` to pick it up. Use `llm fetch --list` first to preview what will be downloaded.
 
 To add an entirely new VRAM tier, add a new key under `profiles` in the PSD1 file and switch to it with `llm profile <name>`. See [USAGE.md](USAGE.md#managing-model-profiles).
+
+## KV cache quantization
+
+`--cache-type-k` and `--cache-type-v` control how the key and value tensors of the attention cache are stored. Keys drive attention score computation and are more sensitivity-critical; values are weighted and summed and tolerate more aggressive quantization.
+
+Default (MODULE J): `--cache-type-k q8_0 --cache-type-v q8_0` — ~50% KV VRAM savings versus unquantized f16, with near-zero performance overhead on all GPU generations.
+
+**VRAM impact at ctx=16384, Qwen2.5-Coder-14B (40 layers, 8 KV heads, d_head=128):**
+
+| K type | V type | KV VRAM estimate | Notes |
+|--------|--------|-----------------|-------|
+| f16 | f16 | ~2.7 GB | llama.cpp default (no quant) |
+| q8_0 | q8_0 | ~1.3 GB | **Current default. Safe on all GPUs.** |
+| q5_1 | q4_0 | ~0.75 GB | Pre-Blackwell only (RTX 20/30/40). Regresses on Blackwell + flash-attn. |
+| q4_0 | q4_0 | ~0.65 GB | Maximum savings; same pre-Blackwell caveat. |
+
+Pre-Blackwell users (RTX 20/30/40, sm_75–89) can override for more VRAM savings:
+
+```powershell
+# config/user.psd1
+@{ defaults = @{ kvQuantK = 'q5_1'; kvQuantV = 'q4_0' } }
+```
+
+**Exception:** Gemma models regress in quality with any KV quantization. Set `kvQuantK = ''` and `kvQuantV = ''` for any Gemma model entry.
+
+## RAM preloading (--no-mmap)
+
+`noMmap = $true` on a model entry — or in `defaults` to apply globally — forces llama.cpp to read the full model file into heap memory at startup instead of using memory-mapped I/O (the default).
+
+Under mmap, CPU-offloaded layer weights are read from disk on demand (page faults). For the 30B-A3B planner, which overflows VRAM by ~1.3 GB, every access to those offloaded layers is a potential disk seek during inference. With `--no-mmap`, all weights are in heap RAM after startup — zero disk I/O during inference.
+
+**Trade-off:** startup takes roughly 1 s per GB of model size (a 17 GB planner = ~17 s on first load after a cold start). After that first load, the heap pages can be retained in RAM across swaps if `--mlock` is also set.
+
+Set per-model in `config/models.psd1` (already done for the 16 GB planner):
+
+```powershell
+planner = @{ ...; noMmap = $true }
+```
+
+Or globally in `config/user.psd1`:
+
+```powershell
+@{ defaults = @{ noMmap = $true } }
+```
+
+Verified: `--no-mmap` is fully supported on Windows (via `SetFilePointerEx` + `ReadFile`).
+
+## Memory locking (--mlock)
+
+`--mlock` is already applied to `fim` and `embed` (always-resident models). Setting `mlockBig = $true` in defaults extends locking to swap-group models (planner, coder, chat).
+
+Combined with `--no-mmap`, mlock fully pins model weights in physical RAM: no disk seeks, no OS eviction to the pagefile. Inference latency for CPU-offloaded layers becomes consistent rather than occasionally spiky.
+
+**Windows requirement:** `SeLockMemoryPrivilege` is required. Without it, llama-server logs a warning and continues without locking.
+
+Grant it automatically (UAC prompt, one-time):
+
+```powershell
+llm mlock
+```
+
+After the UAC prompt completes, **restart your terminal**, then `llm serve`. `llm diagnose` will confirm the privilege is active.
+
+Manual fallback: `secpol.msc` → Local Policies → User Rights Assignment → "Lock pages in memory" → add your user account → restart terminal.
+
+Enable in `config/user.psd1`:
+
+```powershell
+@{ defaults = @{ mlockBig = $true } }
+```
+
+**RAM budget:** locking the 17 GB planner on a 64 GB system leaves ~45 GB free — safe. Do not enable on systems with 16 GB RAM.
+
+## NUMA strategy (7950X3D and multi-CCD CPUs)
+
+`--numa` controls how llama.cpp allocates threads and memory when CPU layer offloading is active. The Ryzen 9 7950X3D has two CCDs exposed by Windows as two NUMA nodes: CCD0 has the 96 MB V-Cache; CCD1 has 32 MB L3.
+
+| Strategy | Effect |
+|----------|--------|
+| `''` (off, default) | OS decides thread placement |
+| `'isolate'` | Confine all inference threads to the starting NUMA node (usually CCD0 = V-Cache) |
+| `'distribute'` | Spread threads across all NUMA nodes — more parallelism, more cross-CCD traffic |
+| `'numactl'` | Use numactl CPU map (Linux-specific; no-op on Windows) |
+
+**Recommendation for 7950X3D:** start with `'isolate'`. The 96 MB V-Cache on CCD0 improves data locality for CPU-offloaded layer computation. If prefill throughput matters more than latency, try `'distribute'` and compare with `llm bench`.
+
+Enable in `config/user.psd1`:
+
+```powershell
+@{ defaults = @{ numa = 'isolate' } }
+```
+
+## MoE layer offloading (Qwen3-30B-A3B)
+
+The planner model (30B total parameters, 3B active per forward pass) exceeds 16 GB VRAM at Q4_K_M. At `-ngl 99`, llama.cpp fills GPU VRAM and spills excess layers to CPU RAM automatically — roughly 30–31 layers fit on GPU, with ~17 layers going to CPU.
+
+There is no `-n-cpu-moe` flag in llama-server. MoE expert routing is controlled entirely via `-ngl`. The expert FFN blocks are large but tolerate CPU offload well because only a fraction of experts activate per token.
+
+With KV q8_0 quantization saving ~1.4 GB vs unquantized f16 (at ctx=16384), the auto-fit may shift 3–4 more layers onto GPU compared to a stock unquantized setup. To benchmark the impact:
+
+```powershell
+llm bench   # baseline at ngl=99
+
+# Override planner ngl explicitly in config/user.psd1:
+# @{ profiles = @{ '16gb' = @{ planner = @{ flags = @('--temp','0.3','-ngl','31') } } } }
+# llm gen && llm serve && llm bench  — compare tg128 (generation tokens/s)
+```
+
+**Effect of --no-mmap + --mlock on CPU-offloaded layers:**
+
+| State | CPU layer access latency |
+|-------|--------------------------|
+| Default (mmap, no mlock) | Disk seek on first access per page; OS may evict to pagefile |
+| `noMmap = $true` | Heap RAM from startup; no disk seeks during inference |
+| `noMmap + mlockBig` | Heap RAM, pinned — OS cannot evict; consistent low latency |
+
+The 7950X3D's V-Cache (96 MB L3) reduces main-memory pressure for CPU-resident layer data. Pair with `numa = 'isolate'` to keep those accesses on the V-Cache CCD.
 
 ## Speculative decoding
 
