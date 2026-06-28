@@ -335,29 +335,27 @@ Open http://localhost:5678. On first visit, create a local account.
 
 ### Import the starter workflow
 
-A fully-built workflow is ready to import at `tools/n8n-workflows/daily-research-digest.json`.
+A ready-to-import workflow is at `tools/n8n-workflows/daily-research-digest.json`. It runs daily at 8am, fetches RSS articles, cross-references each one via SearXNG, summarizes them with the local LLM, and posts Discord embeds with clickable links. Articles seen in the last 7 days are skipped automatically.
 
 **Import steps:**
 1. Open http://localhost:5678 → top-right menu (≡) → **Import from file**
 2. Select `tools/n8n-workflows/daily-research-digest.json`
-3. Open the imported workflow → edit the **Config** node:
-   - `discord_url` — paste your Discord webhook URL (Discord → Server Settings → Integrations → Webhooks → New Webhook → Copy URL)
-   - `rss_feed_url` — RSS feed to monitor (default: Hacker News)
-   - `keywords_csv` — optional comma-separated filter (leave empty to see everything)
-4. Click **Save** → toggle **Active**
+3. Open the workflow → click the **Config** node → set:
+   - `discord_url` — your Discord webhook URL (Server Settings > Integrations > Webhooks > New Webhook > Copy URL)
+   - `rss_feed_url` — feed to monitor (default: Hacker News front page)
+   - `keywords_csv` — optional topic filter, comma-separated (empty = all articles)
+   - `model` — which local model to use (`chat` is the default)
+4. Click **Save** → toggle the workflow **Active**
 
-The workflow runs every morning at 8am, fetches RSS articles, verifies each one via SearXNG (cross-checking that multiple independent sources cover the story), summarizes article-by-article with the local LLM, and posts Discord embeds with clickable links. Articles seen in the last 7 days are automatically skipped.
-
-**On-demand research mode** — the same workflow accepts webhook requests:
+**On-demand research mode** — POST a topic to get a one-off digest without waiting for the schedule:
 ```powershell
 Invoke-RestMethod -Method POST `
   -Uri "http://localhost:5678/webhook/research-digest" `
-  -Body '{"topic": "llm quantization"}' `
+  -Body '{"topic": "llm quantization techniques"}' `
   -ContentType "application/json"
 ```
-This skips RSS, searches SearXNG for your topic, and posts a research digest to Discord immediately.
 
-See `tools/n8n-workflows/README.md` for troubleshooting and extension tips.
+See `tools/n8n-workflows/README.md` for troubleshooting and RSS customization tips.
 
 ### Build your own: Commit message generator
 
