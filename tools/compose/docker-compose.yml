@@ -11,7 +11,7 @@
 
 services:
   langfuse-postgres:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: langfuse
@@ -61,7 +61,7 @@ services:
       driver: none
 
   n8n:
-    image: n8nio/n8n:1.100.1
+    image: n8nio/n8n:latest
     restart: unless-stopped
     ports:
       - "${N8N_PORT}:5678"

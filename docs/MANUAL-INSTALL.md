@@ -555,10 +555,10 @@ What it does, in order:
 5. Creates `tools/langfuse-data/` and `tools/n8n-data/` (gitignored — persistent data lives here)
 6. Writes `config/searxng/settings.yml` if it doesn't already exist
 7. Pulls all four images from Docker Hub (~3 GB total on first run):
-   - `postgres:16-alpine` (~80 MB) — database for Langfuse
+   - `postgres:17-alpine` (~80 MB) — database for Langfuse
    - `langfuse/langfuse:2` (~200 MB) — observability UI
    - `searxng/searxng:<date>` (~100 MB) — search engine
-   - `n8nio/n8n:1.100.1` (~2.5 GB) — workflow automation
+   - `n8nio/n8n:latest` (~2.5 GB) — workflow automation
 8. Starts all four containers with `docker compose up -d`
 
 ### 12.2 Expected output
@@ -568,10 +568,10 @@ Checking Docker daemon...
   Docker ready.
   Ports: Langfuse=3001  SearXNG=8888  n8n=5678  Timezone=UTC
 Pulling images (first run may take a few minutes)...
- Image postgres:16-alpine Pulled
+ Image postgres:17-alpine Pulled
  Image langfuse/langfuse:2 Pulled
  Image searxng/searxng:... Pulled
- Image n8nio/n8n:1.100.1 Pulled
+ Image n8nio/n8n:latest Pulled
 Starting services...
  Container compose-langfuse-postgres-1 Started
  Container compose-langfuse-postgres-1 Healthy

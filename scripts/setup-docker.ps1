@@ -85,6 +85,9 @@ server:
 search:
   safe_search: 0
   default_lang: "en"
+  formats:
+    - html
+    - json
 '@ | Set-Content $sxCfg -Encoding utf8
 }
 

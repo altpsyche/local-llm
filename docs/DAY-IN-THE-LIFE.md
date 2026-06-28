@@ -333,53 +333,62 @@ If `@web` returns nothing, check that Docker services are running: `llm services
 
 Open http://localhost:5678. On first visit, create a local account.
 
-### Your first workflow: Commit message generator
+### Import the starter workflow
 
-Let's build a workflow that generates a commit message when you call a webhook.
+A fully-built workflow is ready to import at `tools/n8n-workflows/daily-research-digest.json`.
+
+**Import steps:**
+1. Open http://localhost:5678 → top-right menu (≡) → **Import from file**
+2. Select `tools/n8n-workflows/daily-research-digest.json`
+3. Open the imported workflow → edit the **Config** node:
+   - `discord_url` — paste your Discord webhook URL (Discord → Server Settings → Integrations → Webhooks → New Webhook → Copy URL)
+   - `rss_feed_url` — RSS feed to monitor (default: Hacker News)
+   - `keywords_csv` — optional comma-separated filter (leave empty to see everything)
+4. Click **Save** → toggle **Active**
+
+The workflow runs every morning at 8am, fetches RSS articles, verifies each one via SearXNG (cross-checking that multiple independent sources cover the story), summarizes article-by-article with the local LLM, and posts Discord embeds with clickable links. Articles seen in the last 7 days are automatically skipped.
+
+**On-demand research mode** — the same workflow accepts webhook requests:
+```powershell
+Invoke-RestMethod -Method POST `
+  -Uri "http://localhost:5678/webhook/research-digest" `
+  -Body '{"topic": "llm quantization"}' `
+  -ContentType "application/json"
+```
+This skips RSS, searches SearXNG for your topic, and posts a research digest to Discord immediately.
+
+See `tools/n8n-workflows/README.md` for troubleshooting and extension tips.
+
+### Build your own: Commit message generator
+
+To understand how n8n works by building from scratch:
 
 1. Click **New Workflow**
-2. Add a **Webhook** trigger node
-   - Method: `POST`
-   - Copy the webhook URL shown (something like `http://localhost:5678/webhook/abc123`)
-3. Add an **HTTP Request** node after it
-   - Method: `POST`
-   - URL: `http://host.docker.internal:8080/v1/chat/completions`
-   - Add header: `Authorization: Bearer sk-local`
-   - Body (JSON):
-     ```json
-     {
-       "model": "coder",
-       "messages": [
-         {"role": "system", "content": "Write a concise git commit message for this diff. Output only the message, nothing else."},
-         {"role": "user", "content": "{{ $json.body.diff }}"}
-       ]
-     }
-     ```
-4. Add a **Set** node to extract the response:
-   - Field: `message`
-   - Value: `{{ $json.choices[0].message.content }}`
-5. Add a **Respond to Webhook** node (returns the message as the HTTP response)
-6. Click **Save**, then **Activate**
+2. Add a **Webhook** trigger node → Method: `POST` → copy the webhook URL
+3. Add an **HTTP Request** node:
+   - Method: `POST`, URL: `http://host.docker.internal:8081/v1/chat/completions`
+   - Header: `Authorization: Bearer sk-local`
+   - Body (raw JSON): `{{ JSON.stringify({model: "coder", messages: [{role: "system", content: "Write a concise git commit message for this diff. Output only the message."}, {role: "user", content: $json.body.diff}]}) }}`
+4. Add a **Set** node → extract `message` = `{{ $json.choices[0].message.content }}`
+5. Add a **Respond to Webhook** node → click **Save** → **Activate**
 
-Now test it from a terminal:
+Test from a terminal:
 ```powershell
 $diff = git diff --staged
-$body = @{ diff = $diff } | ConvertTo-Json
-Invoke-RestMethod -Uri "http://localhost:5678/webhook/abc123" -Method POST -Body $body -ContentType "application/json"
+Invoke-RestMethod -Uri "http://localhost:5678/webhook/<your-id>" -Method POST `
+  -Body (@{ diff = $diff } | ConvertTo-Json) -ContentType "application/json"
 ```
 
-You get a commit message back. Wire this into a git hook to automate it completely.
-
-> **Note:** Inside n8n containers, your machine is at `host.docker.internal`. The inference endpoint is always `http://host.docker.internal:8080/v1`.
+> Inside n8n containers, your machine is at `host.docker.internal`. Use `:8081` (LiteLLM proxy) for automatic retry, or `:8080` for the direct endpoint.
 
 ### More workflow ideas
 
 | Workflow | Trigger | What it does |
 |---|---|---|
 | PR summary | GitHub webhook on PR open | Fetches the diff → asks `coder` → posts summary comment |
-| Daily digest | Schedule (every morning) | Fetches RSS feed → asks `planner` to summarize → emails you |
 | Code review | Webhook from CI | Sends changed files to `coder` → returns review checklist |
 | Release notes | Git tag push | Reads commit log → asks `planner` → writes formatted release notes |
+| Chat memory | Webhook | Stores conversation history in n8n static data, calls `chat` model |
 
 ---
 

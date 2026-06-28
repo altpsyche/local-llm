@@ -611,6 +611,23 @@ The response is `choices[0].message.content`; wire that to whatever you want (Sl
 
 n8n schedules run in UTC by default. To use local time, set `n8nTimezone` in `config/user.psd1` (e.g. `'America/New_York'`) and re-run `.\scripts\setup-docker.ps1`.
 
+**Tip:** prefer the LiteLLM proxy at `:8081` over the direct endpoint `:8080` — it adds automatic retry when the model is mid-swap.
+
+**Starter workflows:**
+
+A ready-to-import workflow lives at `tools/n8n-workflows/daily-research-digest.json`. See `tools/n8n-workflows/README.md` for the full import guide. Quick summary:
+
+1. Open `http://localhost:5678` → top-right menu (≡) → **Import from file** → select the `.json`
+2. Open the imported workflow → edit the **Config** node:
+   - `discord_url` — paste your Discord webhook URL (Server Settings → Integrations → Webhooks → New Webhook)
+   - `rss_feed_url` — RSS feed to follow (default: Hacker News)
+   - `keywords_csv` — optional comma-separated filter (empty = all articles)
+3. Click **Save** → toggle **Active** to enable the daily 8am schedule
+
+The workflow has two modes:
+- **Scheduled digest**: fetches RSS, verifies each article via SearXNG, summarizes one-by-one with the local LLM, posts Discord embeds with clickable links and a ✅/⚠️ corroboration badge
+- **On-demand research**: POST `{"topic": "your topic"}` to `http://localhost:5678/webhook/research-digest` → SearXNG searches the topic → LLM synthesizes → Discord
+
 ---
 
 #### Troubleshooting Docker

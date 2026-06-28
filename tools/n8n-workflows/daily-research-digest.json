@@ -1,0 +1,400 @@
+{
+  "name": "Daily Research Digest",
+  "nodes": [
+    {
+      "id": "sched-0001",
+      "name": "Daily Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-520, -80],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "manual-001",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-520, 60],
+      "parameters": {}
+    },
+    {
+      "id": "webhook-01",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-520, 200],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "research-digest",
+        "responseMode": "onReceived",
+        "responseData": "success",
+        "options": {}
+      }
+    },
+    {
+      "id": "config-001",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-220, 60],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "rss-feed-url",
+              "name": "rss_feed_url",
+              "value": "https://hnrss.org/frontpage",
+              "type": "string"
+            },
+            {
+              "id": "keywords-csv",
+              "name": "keywords_csv",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "max-items",
+              "name": "max_items",
+              "value": 8,
+              "type": "number"
+            },
+            {
+              "id": "model-name",
+              "name": "model",
+              "value": "chat",
+              "type": "string"
+            },
+            {
+              "id": "discord-url",
+              "name": "discord_url",
+              "value": "REPLACE_ME",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "route-0001",
+      "name": "Route",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [80, 60],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "topic-check",
+              "leftValue": "={{ $json.topic }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "sx-search1",
+      "name": "SearXNG: Search Topic",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [380, -80],
+      "continueOnFail": true,
+      "parameters": {
+        "method": "GET",
+        "url": "http://host.docker.internal:8888/search",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "q", "value": "={{ $json.topic }}" },
+            { "name": "format", "value": "json" },
+            { "name": "categories", "value": "general" },
+            { "name": "language", "value": "en" },
+            { "name": "safesearch", "value": "0" }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "normalize1",
+      "name": "Normalize Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, -80],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const data = $input.all()[0]?.json || {};\nconst results = data.results || [];\n\nif (results.length === 0) {\n  return [{ json: { title: 'No results found', contentSnippet: 'SearXNG returned no results for the given topic.', link: '', imageUrl: '', source: 'searxng', __noNewArticles: true } }];\n}\n\nreturn results.slice(0, 8).map(r => ({\n  json: {\n    title: String(r.title || 'Untitled'),\n    contentSnippet: String(r.content || '').slice(0, 400),\n    link: String(r.url || ''),\n    imageUrl: '',\n    source: 'searxng',\n    searchQuery: String(r.title || ''),\n    __noNewArticles: false,\n  }\n}));\n"
+      }
+    },
+    {
+      "id": "rss-feed-1",
+      "name": "RSS: Fetch Feed",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [380, 240],
+      "parameters": {
+        "url": "={{ $('Config').first().json.rss_feed_url }}"
+      }
+    },
+    {
+      "id": "kw-filter1",
+      "name": "Keyword Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 240],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const config = $('Config').first().json;\nconst csv = String(config.keywords_csv || '').trim();\nconst items = $input.all();\n\nconst kws = csv ? csv.split(',').map(k => k.trim().toLowerCase()).filter(Boolean) : [];\n\nconst filtered = kws.length === 0\n  ? items\n  : items.filter(item => {\n      const text = (String(item.json.title || '') + ' ' + String(item.json.contentSnippet || item.json.content || '')).toLowerCase();\n      return kws.some(kw => text.includes(kw));\n    });\n\nconst sorted = filtered.sort((a, b) => {\n  const tA = new Date(a.json.isoDate || a.json.pubDate || 0).getTime();\n  const tB = new Date(b.json.isoDate || b.json.pubDate || 0).getTime();\n  return tB - tA;\n});\n\nreturn sorted.map(i => ({ json: i.json }));\n"
+      }
+    },
+    {
+      "id": "limit-0001",
+      "name": "Limit Articles",
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [980, 240],
+      "parameters": {
+        "maxItems": "={{ $('Config').first().json.max_items || 8 }}"
+      }
+    },
+    {
+      "id": "dedup-0001",
+      "name": "Deduplicate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1280, 240],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nif (!staticData.seenUrls) staticData.seenUrls = {};\n\nconst now = Date.now();\nconst SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;\n\nfor (const url of Object.keys(staticData.seenUrls)) {\n  if (now - staticData.seenUrls[url] > SEVEN_DAYS) delete staticData.seenUrls[url];\n}\n\nconst fresh = [];\nfor (const item of $input.all()) {\n  const url = String(item.json.link || item.json.guid || '').trim();\n  if (!url || staticData.seenUrls[url]) continue;\n  staticData.seenUrls[url] = now;\n  fresh.push({ json: item.json });\n}\n\nif (fresh.length === 0) {\n  return [{ json: { title: 'No new articles today', contentSnippet: 'All recent articles have already been digested.', link: '', source: 'system', __noNewArticles: true } }];\n}\n\nreturn fresh;\n"
+      }
+    },
+    {
+      "id": "prepare-01",
+      "name": "Prepare Article",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1580, 80],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const stripBareUrls = s => s.replace(/https?:\\/\\/\\S+/g, '').replace(/ {2,}/g, ' ').trim();\n\nconst getImageUrl = d => {\n  const enc = d.enclosure;\n  if (enc && typeof enc === 'object' && enc.url && /\\.(jpe?g|png|gif|webp)/i.test(enc.url)) return enc.url;\n  if (enc && typeof enc === 'string' && /\\.(jpe?g|png|gif|webp)/i.test(enc)) return enc;\n  const html = String(d.content || d['content:encoded'] || '');\n  const m = html.match(/<img[^>]+src=[\"']([^\"']+)[\"']/i);\n  if (m && m[1] && /^https?:\\/\\//i.test(m[1])) return m[1];\n  return '';\n};\n\nreturn $input.all().map(item => {\n  const d = item.json;\n  const title = String(d.title || 'Untitled').trim().slice(0, 200);\n  const snippet = stripBareUrls(String(d.contentSnippet || d.content || d.summary || '')).slice(0, 400).trim();\n  const tWords = title.split(/\\s+/).filter(w => w.replace(/[^a-zA-Z]/g,'').length >= 4).slice(0, 4);\n  const sWords = snippet.split(/\\s+/).filter(w => w.replace(/[^a-zA-Z]/g,'').length >= 6).slice(0, 4);\n  const searchQuery = [...new Set([...tWords, ...sWords])].join(' ').slice(0, 120);\n  return {\n    json: {\n      title,\n      contentSnippet: snippet,\n      link: String(d.link || d.url || '').trim(),\n      imageUrl: d.imageUrl || getImageUrl(d),\n      source: String(d.source || 'rss'),\n      searchQuery,\n      __noNewArticles: Boolean(d.__noNewArticles),\n    }\n  };\n});\n"
+      }
+    },
+    {
+      "id": "sx-verify1",
+      "name": "SearXNG: Verify Article",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1880, 80],
+      "continueOnFail": true,
+      "parameters": {
+        "method": "GET",
+        "url": "http://host.docker.internal:8888/search",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "q", "value": "={{ $json.searchQuery }}" },
+            { "name": "format", "value": "json" },
+            { "name": "categories", "value": "general" },
+            { "name": "language", "value": "en" },
+            { "name": "safesearch", "value": "0" }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "bld-prmpt1",
+      "name": "Build LLM Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2180, 80],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const articles = $('Prepare Article').all();\nconst searxngItems = $input.all();\nconst config = $('Config').first().json;\n\nconst SYSTEM_PROMPT = `/no_think\nYou are a tech research digest editor. Respond with valid JSON only. No markdown, no preamble.\n\nRules:\n- Start the summary with the subject or key fact. Never begin with \"The article\", \"This post\", or \"This piece\".\n- No filler: do not use \"underscores\", \"highlights\", \"it is worth noting\", \"furthermore\", \"notably\".\n- No em dashes, no ellipses, no decorative punctuation.\n- Plain declarative sentences.\n- Headline: specific and factual, under 80 characters, no trailing punctuation.\n\nSchema: {\"headline\":\"...\",\"summary\":\"2-3 direct sentences\",\"why_it_matters\":\"one sentence on relevance for developers and researchers\"}`;\n\nconst extractDomain = u => { const m = String(u||'').match(/^https?:\\/\\/(?:www\\.)?([^\\/?#]+)/i); return m ? m[1].toLowerCase() : null; };\n\nreturn articles.map((articleItem, i) => {\n  const article = articleItem.json;\n  let searxng = searxngItems[i]?.json || {};\n  if (typeof searxng === 'string') { try { searxng = JSON.parse(searxng); } catch { searxng = {}; } }\n\n  if (article.__noNewArticles) {\n    return { json: { title: article.title, link: '', contentSnippet: '', imageUrl: '', corroborated: false, verifiedSources: [], __noNewArticles: true, llmRequestBody: { model: config.model || 'chat', messages: [{ role: 'user', content: 'Reply with exactly this JSON: {\"headline\":\"No new articles\",\"summary\":\"Nothing new today.\",\"why_it_matters\":\"\"}' }], max_tokens: 60 } } };\n  }\n\n  const sourceHost = extractDomain(article.link) || '';\n  const results = Array.isArray(searxng.results) ? searxng.results : [];\n  const domains = [...new Set(results.slice(0, 10).map(r => extractDomain(r.url)).filter(d => d && d !== sourceHost))];\n  const corroborated = domains.length >= 1;\n\n  const verificationLine = corroborated\n    ? 'Topic discussed across ' + domains.length + ' source' + (domains.length !== 1 ? 's' : '') + ': ' + domains.slice(0, 3).join(', ')\n    : 'No external coverage found';\n\n  return {\n    json: {\n      title: article.title,\n      link: article.link,\n      contentSnippet: article.contentSnippet,\n      imageUrl: article.imageUrl || '',\n      corroborated,\n      verifiedSources: domains.slice(0, 3),\n      __noNewArticles: false,\n      llmRequestBody: {\n        model: config.model || 'chat',\n        messages: [\n          { role: 'system', content: SYSTEM_PROMPT },\n          { role: 'user', content: 'Title: ' + article.title + '\\nSource: ' + article.link + '\\nContent: ' + article.contentSnippet + '\\nVerification: ' + verificationLine }\n        ],\n        temperature: 0.3,\n        max_tokens: 700,\n      }\n    }\n  };\n});\n"
+      }
+    },
+    {
+      "id": "llm-call-1",
+      "name": "LLM: Summarize Article",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2480, 80],
+      "continueOnFail": true,
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8080/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "Bearer sk-local" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json.llmRequestBody) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "parse-att1",
+      "name": "Parse & Attach Link",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2780, 80],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const buildItems = $('Build LLM Prompt').all();\nconst llmItems = $input.all();\n\nreturn llmItems.map((llmItem, i) => {\n  const upstream = buildItems[i]?.json || {};\n  const llmResponse = llmItem.json;\n\n  if (upstream.__noNewArticles) {\n    return { json: { headline: 'No New Articles Today', summary: 'All recent articles have already been digested.', why_it_matters: '', link: '', imageUrl: '', corroborated: true, verifiedSources: [], __noNewArticles: true } };\n  }\n\n  let parsed;\n  try {\n    const raw = String(llmResponse?.choices?.[0]?.message?.content || '');\n    const match = raw.match(/\\{[\\s\\S]*\\}/);\n    parsed = JSON.parse(match ? match[0] : raw.trim());\n  } catch {\n    parsed = { headline: upstream.title || 'Article', summary: upstream.contentSnippet || 'Summary unavailable.', why_it_matters: '' };\n  }\n\n  return { json: {\n    headline: String(parsed.headline || upstream.title || 'Article').slice(0, 80),\n    summary: String(parsed.summary || upstream.contentSnippet || ''),\n    why_it_matters: String(parsed.why_it_matters || ''),\n    link: String(upstream.link || ''),\n    imageUrl: String(upstream.imageUrl || ''),\n    corroborated: Boolean(upstream.corroborated),\n    verifiedSources: Array.isArray(upstream.verifiedSources) ? upstream.verifiedSources : [],\n  }};\n});\n"
+      }
+    },
+    {
+      "id": "aggregat-1",
+      "name": "Collect All Summaries",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [3080, 80],
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "allArticles",
+        "options": {}
+      }
+    },
+    {
+      "id": "embeds-001",
+      "name": "Build Discord Embeds",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3380, 80],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const aggregated = $input.all()[0]?.json || {};\nconst articles = aggregated.allArticles || [];\n\nconst dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });\n\nconst GREEN = 3066993;\nconst BLUE  = 3447003;\n\nconst realArticles = articles.filter(a => !a.__noNewArticles);\nconst noNew = realArticles.length === 0;\n\nconst embeds = realArticles.slice(0, 10).map(a => {\n  const summary = String(a.summary || '').slice(0, 280);\n  const wim = String(a.why_it_matters || '').slice(0, 160);\n  const desc = wim ? summary + '\\n\\n**Why it matters:** ' + wim : summary;\n\n  const embed = {\n    title: String(a.headline || 'Article').slice(0, 256),\n    description: desc,\n    color: a.corroborated ? GREEN : BLUE,\n    footer: {\n      text: a.corroborated\n        ? 'Verified: ' + (a.verifiedSources || []).join(', ')\n        : 'Single source'\n    }\n  };\n  if (a.link) embed.url = a.link;\n  if (a.imageUrl) embed.thumbnail = { url: a.imageUrl };\n  return embed;\n});\n\nconst header = noNew\n  ? 'Daily Tech Digest - ' + dateStr + '\\nNo new articles today.'\n  : 'Daily Tech Digest - ' + dateStr + ' | ' + embeds.length + ' article' + (embeds.length !== 1 ? 's' : '');\n\nconst payload = { content: header };\nif (embeds.length > 0) payload.embeds = embeds;\n\nreturn [{ json: payload }];\n"
+      }
+    },
+    {
+      "id": "discord-01",
+      "name": "Post to Discord",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3680, 80],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.discord_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "sticky-001",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-520, 360],
+      "parameters": {
+        "width": 560,
+        "height": 280,
+        "color": 4,
+        "content": "## Configuration - Edit the Config node\n\n**`rss_feed_url`** — RSS feed to digest\nDefault: Hacker News front page (`https://hnrss.org/frontpage`)\nOther options: `https://huggingface.co/blog/feed.xml`, any RSS URL\n\n**`keywords_csv`** — Comma-separated filter (empty = all articles)\nExample: `AI, open source, security, rust`\n\n**`max_items`** — Articles per run (default 8, Discord max 10)\n\n**`model`** — Local model alias: `chat` (default), `planner`, `coder`\n\n**`discord_url`** — Paste your Discord webhook URL\nDiscord > Server Settings > Integrations > Webhooks > New Webhook > Copy URL"
+      }
+    },
+    {
+      "id": "sticky-002",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [80, -300],
+      "parameters": {
+        "width": 480,
+        "height": 180,
+        "color": 2,
+        "content": "## On-Demand Research Mode (webhook)\nPOST a topic to trigger a one-off research digest.\n\n```powershell\nInvoke-RestMethod -Method POST \\\n  http://localhost:5678/webhook/research-digest \\\n  -Body '{\"topic\": \"llm quantization techniques\"}' \\\n  -ContentType application/json\n```\n\nSearXNG is searched instead of RSS. Result posts to Discord."
+      }
+    },
+    {
+      "id": "sticky-003",
+      "name": "Sticky Note2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1580, -260],
+      "parameters": {
+        "width": 520,
+        "height": 180,
+        "color": 3,
+        "content": "## Local Stack Endpoints (inside Docker)\n\n| Service | URL |\n|---------|-----|\n| LLM (llama-swap) | `host.docker.internal:8080` |\n| LiteLLM proxy | `host.docker.internal:8081` |\n| SearXNG | `host.docker.internal:8888` |\n\nAuth: `Bearer sk-local`\nModels: `chat`, `planner`, `coder`, `fim`, `embed`\nDedup: article URLs stored 7 days in workflow static data"
+      }
+    }
+  ],
+  "connections": {
+    "Daily Schedule": { "main": [[{ "node": "Config", "type": "main", "index": 0 }]] },
+    "Manual Trigger": { "main": [[{ "node": "Config", "type": "main", "index": 0 }]] },
+    "Webhook Trigger": { "main": [[{ "node": "Config", "type": "main", "index": 0 }]] },
+    "Config": { "main": [[{ "node": "Route", "type": "main", "index": 0 }]] },
+    "Route": {
+      "main": [
+        [{ "node": "SearXNG: Search Topic", "type": "main", "index": 0 }],
+        [{ "node": "RSS: Fetch Feed", "type": "main", "index": 0 }]
+      ]
+    },
+    "SearXNG: Search Topic": { "main": [[{ "node": "Normalize Results", "type": "main", "index": 0 }]] },
+    "Normalize Results": { "main": [[{ "node": "Prepare Article", "type": "main", "index": 0 }]] },
+    "RSS: Fetch Feed": { "main": [[{ "node": "Keyword Filter", "type": "main", "index": 0 }]] },
+    "Keyword Filter": { "main": [[{ "node": "Limit Articles", "type": "main", "index": 0 }]] },
+    "Limit Articles": { "main": [[{ "node": "Deduplicate", "type": "main", "index": 0 }]] },
+    "Deduplicate": { "main": [[{ "node": "Prepare Article", "type": "main", "index": 0 }]] },
+    "Prepare Article": { "main": [[{ "node": "SearXNG: Verify Article", "type": "main", "index": 0 }]] },
+    "SearXNG: Verify Article": { "main": [[{ "node": "Build LLM Prompt", "type": "main", "index": 0 }]] },
+    "Build LLM Prompt": { "main": [[{ "node": "LLM: Summarize Article", "type": "main", "index": 0 }]] },
+    "LLM: Summarize Article": { "main": [[{ "node": "Parse & Attach Link", "type": "main", "index": 0 }]] },
+    "Parse & Attach Link": { "main": [[{ "node": "Collect All Summaries", "type": "main", "index": 0 }]] },
+    "Collect All Summaries": { "main": [[{ "node": "Build Discord Embeds", "type": "main", "index": 0 }]] },
+    "Build Discord Embeds": { "main": [[{ "node": "Post to Discord", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "meta": { "templateCredsSetupCompleted": true, "instanceId": "local-llm" },
+  "id": "11111111-1111-1111-1111-111111111100",
+  "tags": []
+}
