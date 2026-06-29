@@ -44,6 +44,10 @@ function Get-ModelsConfig {
         }
       }
     }
+    if ($user.prompts) {
+      if (-not $base.prompts) { $base.prompts = @{} }
+      foreach ($role in $user.prompts.Keys) { $base.prompts[$role] = $user.prompts[$role] }
+    }
     if ($user.peers) {
       if (-not $base.peers) { $base.peers = @{} }
       foreach ($peerName in $user.peers.Keys) {

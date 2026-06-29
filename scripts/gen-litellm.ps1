@@ -44,7 +44,15 @@ foreach ($peer in $peers) {
 
     # Emit roles in sorted order for deterministic output
     foreach ($role in ($peer.pro.Keys | Sort-Object)) {
-        $modelId   = $peer.pro[$role]
+        $roleVal = $peer.pro[$role]
+        # Support both string ('model-id') and hashtable (@{ model='...'; maxTokens=N })
+        if ($roleVal -is [string]) {
+            $modelId  = $roleVal
+            $maxToks  = $null
+        } else {
+            $modelId  = $roleVal.model
+            $maxToks  = $roleVal.maxTokens
+        }
         $modelStr  = "$prefix/$modelId"
         $roleName  = "$role-pro"
 
@@ -55,13 +63,16 @@ foreach ($peer in $peers) {
             $out.Add("      api_base: $proxyUrl")
         }
         $out.Add("      api_key: os.environ/$keyEnv")
+        if ($maxToks) {
+            $out.Add("      max_tokens: $maxToks")
+        }
     }
 }
 
 $out.Add('')
 $out.Add('litellm_settings:')
 $out.Add('  num_retries: 3')
-$out.Add('  request_timeout: 120')
+$out.Add('  request_timeout: 600')
 
 # Budget controls — emitted when any enabled peer defines a budget field
 $budgetPeer = $peers | Where-Object { $_.budget -and $_.budget -gt 0 } | Select-Object -First 1
@@ -84,6 +95,7 @@ if ($cfg.defaults.langfuseEnabled) {
 }
 $out.Add('')
 $out.Add('general_settings:')
+$out.Add('  drop_params: true      # silently drop unsupported params from clients (avoids 400s)')
 $out.Add('  master_key: sk-local   # dummy — proxy is local-only, no real auth needed')
 
 $outFile = Join-Path $script:ModelsRepo 'config\litellm.yaml'

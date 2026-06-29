@@ -11,3 +11,4 @@ editor-edit-format: diff
 openai-api-base: http://localhost:8081/v1
 openai-api-key: sk-local
 auto-accept-architect: false        # review the plan before edits are applied
+map-tokens: 1024                    # cap repo map; default 4096-8192 overflows planner's 16k context

@@ -27,27 +27,33 @@ model_list:
       model: openai/embed
       api_base: http://localhost:8080/v1
       api_key: sk-local
-  - model_name: coder-pro
-    litellm_params:
-      model: openai/glm-4-flash
-      api_base: https://open.bigmodel.cn/api/paas/v4
-      api_key: os.environ/ZHIPU_API_KEY
   - model_name: chat-pro
     litellm_params:
       model: deepseek/deepseek-chat
       api_base: https://api.deepseek.com
       api_key: os.environ/DEEPSEEK_API_KEY
+      max_tokens: 4096
+  - model_name: coder-pro
+    litellm_params:
+      model: deepseek/deepseek-chat
+      api_base: https://api.deepseek.com
+      api_key: os.environ/DEEPSEEK_API_KEY
+      max_tokens: 4096
   - model_name: planner-pro
     litellm_params:
       model: deepseek/deepseek-reasoner
       api_base: https://api.deepseek.com
       api_key: os.environ/DEEPSEEK_API_KEY
+      max_tokens: 8192
 
 litellm_settings:
   num_retries: 3
-  request_timeout: 120
+  request_timeout: 600
+  max_budget: 15
+  budget_duration: "30d"
   # Enable Langfuse tracing: set langfuseEnabled = $true in config/user.psd1, then llm gen + llm litellm
   # Set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY as environment variables (Settings → API Keys in Langfuse UI)
 
 general_settings:
+  drop_params: true      # silently drop unsupported params from clients (avoids 400s)
   master_key: sk-local   # dummy — proxy is local-only, no real auth needed

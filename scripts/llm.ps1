@@ -158,6 +158,7 @@ switch ($cmd) {
   'gen'    {                                                   # regenerate config from models.psd1
     & "$repo\scripts\gen-llama-swap.ps1" @rest
     & "$repo\scripts\gen-litellm.ps1"
+    & "$repo\scripts\gen-webui.ps1"
   }
   'fetch'  {                                                   # download models for a profile
     $fa = @{}
