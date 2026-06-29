@@ -27,6 +27,11 @@ model_list:
       model: openai/embed
       api_base: http://localhost:8080/v1
       api_key: sk-local
+  - model_name: coder-pro
+    litellm_params:
+      model: openai/glm-4-flash
+      api_base: https://open.bigmodel.cn/api/paas/v4
+      api_key: os.environ/ZHIPU_API_KEY
   - model_name: chat-pro
     litellm_params:
       model: deepseek/deepseek-chat
@@ -37,11 +42,6 @@ model_list:
       model: deepseek/deepseek-reasoner
       api_base: https://api.deepseek.com
       api_key: os.environ/DEEPSEEK_API_KEY
-  - model_name: coder-pro
-    litellm_params:
-      model: openai/glm-4-flash
-      api_base: https://open.bigmodel.cn/api/paas/v4
-      api_key: os.environ/ZHIPU_API_KEY
 
 litellm_settings:
   num_retries: 3
