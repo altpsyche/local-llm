@@ -7,8 +7,9 @@ $repo  = Split-Path $PSScriptRoot -Parent
 $webui = Join-Path $repo "tools\venv-webui\Scripts\open-webui.exe"
 . "$PSScriptRoot\_models.ps1"
 $cfg        = Get-ModelsConfig
-$port       = $cfg.defaults.port ?? 8080
-$webuiPort  = $cfg.defaults.webuiPort ?? 3000
+$port        = $cfg.defaults.port ?? 8080
+$litellmPort = $cfg.defaults.litellmPort ?? 8081
+$webuiPort   = $cfg.defaults.webuiPort ?? 3000
 $secret     = $cfg.defaults.webuiSecret ?? 'local-llm-dev'
 $logsDir    = Join-Path $repo 'logs'
 if (-not (Test-Path $logsDir)) { New-Item -ItemType Directory $logsDir | Out-Null }
@@ -38,13 +39,18 @@ while ($sw.Elapsed.TotalSeconds -lt 60) {
 if ($up) { Write-Host "`r  Endpoint ready ($([int]$sw.Elapsed.TotalSeconds)s)              " -ForegroundColor Green }
 else      { Write-Warning "Endpoint did not respond in 60s. Check: llm logs" }
 
-# 2) Open WebUI — hidden window, log to logs/open-webui.log
+# 2) LiteLLM proxy — routes all clients through :8081 (local + pro models)
+$litellmExe = Join-Path $repo 'tools\venv-litellm\Scripts\litellm.exe'
+if (Test-Path $litellmExe) { & "$PSScriptRoot\start-litellm.ps1" -NoWindow }
+else { Write-Host "LiteLLM venv not found — skipping proxy. Run scripts\bootstrap-litellm.ps1" -ForegroundColor DarkGray }
+
+# 3) Open WebUI — hidden window, log to logs/open-webui.log
 if (Test-Path $webui) {
   $owEnv = @(
-    "`$env:OPENAI_API_BASE_URL='http://localhost:$port/v1';",
+    "`$env:OPENAI_API_BASE_URL='http://localhost:$litellmPort/v1';",
     "`$env:OPENAI_API_KEY='sk-local';",
     "`$env:RAG_EMBEDDING_ENGINE='openai';",
-    "`$env:RAG_OPENAI_API_BASE_URL='http://localhost:$port/v1';",
+    "`$env:RAG_OPENAI_API_BASE_URL='http://localhost:$litellmPort/v1';",
     "`$env:RAG_OPENAI_API_KEY='sk-local';",
     "`$env:RAG_EMBEDDING_MODEL='embed';",
     # keep ALL Open WebUI state inside the (gitignored) repo data dir, not scattered in CWD
@@ -105,4 +111,4 @@ N8N_PORT=$($cfg.defaults.n8nPort ?? 5678)
     Write-Warning "-WithServices: Docker not found. Run .\scripts\setup-docker.ps1 first."
   }
 }
-Write-Host "aider: llm aider   stop: llm stop   status: llm status   logs: llm logs" -ForegroundColor DarkGray
+Write-Host "clients: http://localhost:$litellmPort/v1   aider: llm aider   stop: llm stop   logs: llm logs" -ForegroundColor DarkGray

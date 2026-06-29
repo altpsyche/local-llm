@@ -58,6 +58,13 @@
         # maxTokens = 2048      # Increase for longer `llm chat` responses.
         # webuiSecret = 'my-real-secret-here'   # Set before exposing WebUI on LAN.
         # flashAttn = $false    # Disable flash attention (CPU-only inference).
+
+        # ── Langfuse tracing ─────────────────────────────────────────────────────
+        # Enable after `llm services start` and setting API keys from Langfuse UI:
+        #   $env:LANGFUSE_PUBLIC_KEY = 'pk-lf-...'
+        #   $env:LANGFUSE_SECRET_KEY = 'sk-lf-...'
+        # Then run `llm gen` to regenerate config/litellm.yaml with callbacks active.
+        # langfuseEnabled = $true
     }
 
     # ── MoE ngl tuning ───────────────────────────────────────────────
@@ -70,5 +77,41 @@
     #   '16gb' = @{
     #     planner = @{ flags = @('--temp', '0.3', '-ngl', '31') }
     #   }
+    # }
+
+    # ── API Pro Models (optional) ────────────────────────────────────────────────
+    # Pro models (chat-pro / planner-pro / coder-pro) route litellm → API provider
+    # directly — no llama-swap hop. Direct APIs have no platform fee (unlike OpenRouter).
+    # Re-run `llm gen` after editing. No restart needed for litellm; `llm litellm stop && llm litellm start` to reload.
+    #
+    # peers = @{
+    #   deepseek = @{
+    #     # enabled      = $false      # disable all deepseek pro models (no key required)
+    #     # budget       = 5.0         # optional USD hard cap (LiteLLM enforced)
+    #     # budgetPeriod = '1d'        # reset period: 1d, 7d, 30d, monthly
+    #     pro = @{
+    #       # Override individual roles (leave others at their models.psd1 defaults):
+    #       # chat    = 'deepseek-chat'      # DeepSeek V3
+    #       # planner = 'deepseek-reasoner'  # DeepSeek R1
+    #     }
+    #   }
+    #   zhipu = @{
+    #     # enabled = $false
+    #     pro = @{
+    #       # coder = 'glm-4-plus'    # upgrade from default glm-4-flash
+    #     }
+    #   }
+    #   # OpenRouter — 300+ models, but adds 5.5% platform fee:
+    #   # openrouter = @{
+    #   #   enabled       = $true
+    #   #   proxy         = 'https://openrouter.ai/api/v1'
+    #   #   apiKeyEnv     = 'OPENROUTER_API_KEY'
+    #   #   litellmPrefix = 'openrouter'
+    #   #   pro = @{
+    #   #     chat    = 'deepseek/deepseek-v3.2'
+    #   #     planner = 'deepseek/deepseek-r1'
+    #   #     coder   = 'z-ai/glm-5.2'
+    #   #   }
+    #   # }
     # }
 }

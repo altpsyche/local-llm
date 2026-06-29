@@ -53,7 +53,7 @@ After setup, open a new terminal to pick up the PATH change, then run `llm up`.
 2. `.\scripts\build-llama.ps1` compiles llama.cpp against CUDA 12.8 and writes the binaries to `bin/`. Skips if the binary already exists; pass `-Force` to rebuild from scratch. Before replacing an existing binary, the script backs it up as `bin/llama-server.exe.bak`. If a rebuild leaves things broken, restore it with `Move-Item bin\llama-server.exe.bak bin\llama-server.exe`.
 3. `.\scripts\build-llama-swap.ps1` compiles the model-swap proxy.
 4. Python virtual environments are created in `tools/venv-aider`, `tools/venv-webui`, `tools/venv-litellm`, and `tools/venv-eval` and their dependencies are installed. These are kept separate on purpose. Their dependency pins conflict and can't be merged into one environment.
-5. `.\scripts\gen-llama-swap.ps1` generates `config/llama-swap.yaml` from `config/models.psd1`.
+5. `.\scripts\gen-llama-swap.ps1` generates `config/llama-swap.yaml` and `.\scripts\gen-litellm.ps1` generates `config/litellm.yaml` — both from `config/models.psd1`. Neither file should ever be edited by hand; both are regenerated on every `llm serve`.
 6. `.\scripts\fetch-models.ps1` downloads GGUF model files for the active profile.
 7. `.\scripts\setup-clients.ps1` symlinks `config/continue/config.yaml` to `~/.continue/config.yaml` and checks VS Code extension status.
 8. `.\scripts\setup-fabric.ps1` installs the fabric CLI and configures it to use the local endpoint.
@@ -99,12 +99,14 @@ For a detailed walkthrough of what `setup-docker.ps1` does internally, including
 ## Verifying the install
 
 ```powershell
-llm serve                 # start the inference endpoint (default port 8080)
+llm up                    # starts llama-swap (:8080) + LiteLLM proxy (:8081) + Open WebUI (:3000)
 llm models                # should list: planner, coder, chat, fim, embed
 llm bench                 # performance check (see expected numbers below)
-llm chat coder "hi"       # end-to-end sanity check
+llm chat coder "hi"       # end-to-end sanity check (routes via :8081 LiteLLM proxy)
 llm diagnose              # re-run hardware summary at any time; flags any unresolved issues
 ```
+
+**Pro models** (optional): set `DEEPSEEK_API_KEY` and `ZHIPU_API_KEY` environment variables, then run `llm gen`. The pro models (`chat-pro`, `planner-pro`, `coder-pro`) will be available via the LiteLLM proxy at `:8081`. See [USAGE.md § Pro models](USAGE.md#pro-models-api-backed-no-platform-fee).
 
 **Memory lock** is handled automatically during setup (step 10). If you enable `mlockBig = $true` in `config/user.psd1` after setup, run `llm mlock` to grant `SeLockMemoryPrivilege` and restart your terminal.
 

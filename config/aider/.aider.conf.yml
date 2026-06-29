@@ -8,6 +8,6 @@ architect: true
 model: openai/planner               # planning / architect model
 editor-model: openai/coder          # model that writes the edits
 editor-edit-format: diff
-openai-api-base: http://localhost:8080/v1
+openai-api-base: http://localhost:8081/v1
 openai-api-key: sk-local
 auto-accept-architect: false        # review the plan before edits are applied

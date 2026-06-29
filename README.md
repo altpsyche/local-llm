@@ -6,7 +6,7 @@ A private AI stack for Windows. Models run on your NVIDIA GPU with no cloud depe
 
 | Feature | Entry point |
 |---|---|
-| Inference API | `http://localhost:8080/v1` |
+| Inference API | `http://localhost:8081/v1` (LiteLLM proxy: local + pro models) |
 | Browser chat + RAG | Open WebUI at `:3000` |
 | VS Code autocomplete | Continue.dev ghost-text completions, `Tab` to accept |
 | VS Code chat | Continue.dev with `@web`, `@filesystem`, `@codebase` |
@@ -50,11 +50,11 @@ Installs CUDA, Python 3.12, Go, Node.js, cmake, and Docker Desktop. If Docker De
 llm up
 ```
 
-Builds the inference engine and proxy from source, downloads models, wires VS Code and terminal clients, and starts Docker services. Open a new terminal after setup so the PATH update takes effect. `llm up` starts the endpoint on `:8080` and Open WebUI on `:3000` in the background. Tail logs with `llm logs`.
+Builds the inference engine and proxy from source, downloads models, wires VS Code and terminal clients, and starts Docker services. Open a new terminal after setup so the PATH update takes effect. `llm up` starts llama-swap (`:8080`), the LiteLLM proxy (`:8081`), and Open WebUI (`:3000`) in the background. Tail logs with `llm logs`.
 
 Both scripts are safe to re-run if something fails partway through.
 
-The server speaks the same chat completions protocol as OpenAI. Any tool already pointed at OpenAI works here unchanged by redirecting its base URL to `http://localhost:8080/v1`.
+The server speaks the same chat completions protocol as OpenAI. Any tool already pointed at OpenAI works here unchanged by redirecting its base URL to `http://localhost:8081/v1`.
 
 Flags for `setup.bat`: `-Profile 12gb` (smaller model set), `-SkipModels` (skip downloads), `-Launch` (start the stack when setup finishes).
 

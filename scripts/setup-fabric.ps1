@@ -34,7 +34,7 @@ if ($Force -or -not (Test-Path $out)) {
 # 3. Write ~/.config/fabric/.env (endpoint config)
 . "$PSScriptRoot\_models.ps1"
 $cfg  = Get-ModelsConfig
-$port = $cfg.defaults.port ?? 8080
+$port = $cfg.defaults.litellmPort ?? 8081
 
 $fabricDir = Join-Path $env:USERPROFILE '.config\fabric'
 if (-not (Test-Path $fabricDir)) { New-Item -ItemType Directory -Force $fabricDir | Out-Null }

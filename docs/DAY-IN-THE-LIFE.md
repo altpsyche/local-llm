@@ -33,8 +33,9 @@ Open a terminal and run:
 llm up
 ```
 
-This starts two things silently in the background:
-- The **inference endpoint** at `http://localhost:8080/v1`: all your AI tools point here
+This starts three things silently in the background:
+- The **llama-swap engine** at `http://localhost:8080/v1`: local model server (llama.cpp)
+- The **LiteLLM proxy** at `http://localhost:8081/v1`: all your AI tools point here (retry + pro models)
 - **Open WebUI** at `http://localhost:3000`: a browser chat interface
 
 Your browser opens automatically. If you'd rather it didn't:
@@ -48,6 +49,8 @@ llm status
 ```
 
 You should see five models listed: `planner`, `coder`, `chat`, `fim`, `embed`. None are loaded into VRAM yet; they load on first use and stay there until idle. `fim` (autocomplete) and `embed` (search indexing) are pinned and never unload.
+
+> **Pro models:** If you've set `DEEPSEEK_API_KEY` and `ZHIPU_API_KEY`, three additional models are available via the LiteLLM proxy at `:8081`: `chat-pro`, `planner-pro`, `coder-pro`. These route directly to DeepSeek and Zhipu APIs — no local GPU required, no platform fee. See [USAGE.md § Pro models](USAGE.md#pro-models-api-backed-no-platform-fee).
 
 > **Tip:** To start everything (including Docker services) automatically at every login, create a Task Scheduler task set to "At log on" running:
 > `pwsh -File C:\local-llm\scripts\up.ps1 -NoOpen`
@@ -178,7 +181,7 @@ At the bottom of the Continue chat panel, there's a model dropdown. Use `coder` 
 Open the Cline panel (C icon in the sidebar). If you haven't configured it yet:
 - Click the settings gear
 - API Provider: `OpenAI Compatible`
-- Base URL: `http://localhost:8080/v1`
+- Base URL: `http://localhost:8081/v1`
 - API Key: `sk-local` (anything non-empty)
 - Model ID: `coder`
 - Context window: `16384`
@@ -405,30 +408,35 @@ Langfuse only captures requests routed through the LiteLLM proxy (port 8081). Di
 2. Go to **Settings → API Keys**
 3. Click **Create API Key** and copy both the **Public Key** (`pk-lf-...`) and **Secret Key** (`sk-lf-...`)
 
-**Step 2: Add keys to litellm.yaml:**
+**Step 2: Set API keys as environment variables:**
 
-Open `config/litellm.yaml` and uncomment the callback block:
-```yaml
-litellm_settings:
-  success_callback: ["langfuse"]
-  failure_callback: ["langfuse"]
-
-environment_variables:
-  LANGFUSE_PUBLIC_KEY: "pk-lf-..."   # paste your public key here
-  LANGFUSE_SECRET_KEY: "sk-lf-..."   # paste your secret key here
-  LANGFUSE_HOST: "http://localhost:3001"
+```powershell
+$env:LANGFUSE_PUBLIC_KEY = 'pk-lf-...'   # paste your public key
+$env:LANGFUSE_SECRET_KEY = 'sk-lf-...'   # paste your secret key
 ```
 
-**Step 3: Start LiteLLM:**
+Add these to your PowerShell profile (`$PROFILE`) so they persist across sessions.
+
+**Step 3: Enable Langfuse callbacks and regenerate config:**
+
+Add one line to `config/user.psd1` (create it if it doesn't exist):
 ```powershell
-llm litellm stop      # stop if already running
-llm litellm -NoWindow # restart with the new config
+@{ defaults = @{ langfuseEnabled = $true } }
+```
+
+Then regenerate and restart LiteLLM:
+```powershell
+llm gen
+llm litellm stop
+llm litellm -NoWindow
 llm litellm status    # confirm it's running
 ```
 
-**Step 4: Route requests through :8081:**
+> `config/litellm.yaml` is generated automatically — do not edit it directly. Use `user.psd1` + `llm gen` to make any persistent changes.
 
-In Cline settings, change Base URL from `:8080/v1` to `:8081/v1`. For aider, set `openai-api-base: http://localhost:8081/v1` in `config/aider/.aider.conf.yml`. Direct `llm chat` calls go through LiteLLM automatically.
+**Step 4: Confirm clients use :8081:**
+
+All bundled clients (Continue, aider, Cline, fabric, Open WebUI, `llm chat`) are already configured for `:8081`. If you use a custom tool, set its API base to `http://localhost:8081/v1`.
 
 **Step 5: Make a request and check Langfuse:**
 
@@ -521,7 +529,7 @@ This is how you debug "why did the model respond like that?": you see the exact 
 | Stop proxy | `llm litellm stop` |
 | Start foreground (see logs) | `llm litellm` |
 
-LiteLLM runs on port 8081. Point any client at `:8081/v1` instead of `:8080/v1` to get retry-on-failure and Langfuse tracing.
+LiteLLM runs on port 8081 and starts automatically with `llm up`. All bundled clients default to `:8081`. Direct `:8080` (llama-swap) still works for local models but bypasses retry and Langfuse.
 
 ### Diagnostics
 
@@ -565,7 +573,7 @@ If this was your first read-through, here's a short sequence that touches every 
 9. `llm services start`: start Docker services
 10. Open http://localhost:8888: do a search, set it as a browser shortcut
 11. Open http://localhost:5678: create a webhook workflow that calls the LLM
-12. Enable Langfuse tracing (steps in the Langfuse section), make a request, open http://localhost:3001 and look at the trace
+12. Enable Langfuse tracing: set `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` env vars + `langfuseEnabled = $true` in `user.psd1` + `llm gen && llm litellm`, make a request, open http://localhost:3001 and look at the trace
 13. `llm stop`: shut down cleanly
 
 For more detail on any feature: [USAGE.md](USAGE.md). For troubleshooting the Docker services: [USAGE.md § Docker troubleshooting](USAGE.md#troubleshooting-docker).

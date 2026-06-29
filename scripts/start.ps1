@@ -11,6 +11,13 @@ if (-not (Test-Path $swap))   { throw "llama-swap.exe missing. Run scripts\build
 # Regenerate the runtime config from the single source (config/models.psd1) so edits /
 # profile switches always take effect, and a fresh clone always has a config. Sub-second.
 & "$PSScriptRoot\gen-llama-swap.ps1"
+& "$PSScriptRoot\gen-litellm.ps1"
+
+# Auto-start LiteLLM proxy in background so clients on :8081 work immediately.
+$litellmExe = Join-Path $repo 'tools\venv-litellm\Scripts\litellm.exe'
+if (Test-Path $litellmExe) { & "$PSScriptRoot\start-litellm.ps1" -NoWindow }
+else { Write-Host "LiteLLM venv not found — skipping proxy. Run scripts\bootstrap-litellm.ps1" -ForegroundColor DarkGray }
+
 if (Test-PortInUse -Port $port) {
   Write-Warning "Port $port already in use — the endpoint is probably already running ('llm stop' to free it)."; return
 }

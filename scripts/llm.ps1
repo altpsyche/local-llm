@@ -5,8 +5,10 @@ $ErrorActionPreference = "Stop"
 $repo = Split-Path $PSScriptRoot -Parent
 . "$PSScriptRoot\_models.ps1"
 $d        = (Get-ModelsConfig).defaults
-$port     = $d.port ?? 8080
-$base     = "http://localhost:$port/v1"
+$port        = $d.port ?? 8080
+$litellmPort = $d.litellmPort ?? 8081
+$base        = "http://localhost:$port/v1"
+$litellmBase = "http://localhost:$litellmPort/v1"
 # Copy out of the automatic $args (whose slicing unwraps oddly) into plain arrays.
 $argv = @($args)
 $cmd  = if ($argv.Count) { $argv[0] } else { 'help' }
@@ -44,7 +46,7 @@ switch ($cmd) {
     Write-Host "`nLocal LLM Processes`n"
     Write-Host ("{0,-15} {1,-8} {2,-10} {3,-10} {4}" -f 'Service','PID','RAM','Uptime','Status')
     Write-Host ('-' * 60)
-    foreach ($svc in @('llama-swap','open-webui')) {
+    foreach ($svc in @('llama-swap','litellm','open-webui')) {
       $pf = Join-Path $repo "logs\$svc.pid"
       if (Test-Path $pf) {
         $wPid = [int](Get-Content $pf -Raw)
@@ -67,7 +69,7 @@ switch ($cmd) {
   }
   'diagnose' { & "$repo\scripts\diagnose.ps1" }
   'up'     { & "$repo\scripts\up.ps1" -NoOpen:($rest -contains '-NoOpen') -WithServices:($rest -contains '-WithServices') }
-  'serve'  { & "$repo\scripts\start.ps1" }                    # endpoint only (:8080), interactive
+  'serve'  { & "$repo\scripts\start.ps1" }                    # llama-swap (:8080) + LiteLLM (:8081), interactive
   'restart' {
     Write-Host "Stopping endpoint..."
     Get-Process -Name 'llama-swap','llama-server','open-webui' -ErrorAction SilentlyContinue | Stop-Process -Force
@@ -78,6 +80,12 @@ switch ($cmd) {
         Get-Process -Id $wPid -ErrorAction SilentlyContinue | Stop-Process -Force
         Remove-Item $pf
       }
+    }
+    $litellmPid = Join-Path $repo 'logs\litellm.pid'
+    if (Test-Path $litellmPid) {
+      $wPid = [int](Get-Content $litellmPid -Raw -ErrorAction SilentlyContinue)
+      if ($wPid) { Get-Process -Id $wPid -ErrorAction SilentlyContinue | Stop-Process -Force }
+      Remove-Item $litellmPid -ErrorAction SilentlyContinue
     }
     Start-Sleep -Milliseconds 500
     Write-Host "Starting endpoint (interactive — Ctrl+C to stop)..."
@@ -147,7 +155,10 @@ switch ($cmd) {
     }
     Write-Host ""
   }
-  'gen'    { & "$repo\scripts\gen-llama-swap.ps1" @rest }     # regenerate config from models.psd1
+  'gen'    {                                                   # regenerate config from models.psd1
+    & "$repo\scripts\gen-llama-swap.ps1" @rest
+    & "$repo\scripts\gen-litellm.ps1"
+  }
   'fetch'  {                                                   # download models for a profile
     $fa = @{}
     if ($rest -contains '--list') { $fa['ListOnly'] = $true }
@@ -237,7 +248,7 @@ switch ($cmd) {
       $spinPs.BeginInvoke() | Out-Null
       $script:chatSpinDone = $false
 
-      curl.exe --no-buffer --silent -X POST "$base/chat/completions" `
+      curl.exe --no-buffer --silent -X POST "$litellmBase/chat/completions" `
           -H 'Content-Type: application/json' -d $body |
       ForEach-Object {
         if ($_ -match '^data: (.+)$') {
@@ -279,7 +290,13 @@ switch ($cmd) {
         Remove-Item $pf
       }
     }
-    Write-Host "Stopped endpoint + services (VRAM freed)." -ForegroundColor Green
+    $litellmPid = Join-Path $repo 'logs\litellm.pid'
+    if (Test-Path $litellmPid) {
+      $wPid = [int](Get-Content $litellmPid -Raw -ErrorAction SilentlyContinue)
+      if ($wPid) { Get-Process -Id $wPid -ErrorAction SilentlyContinue | Stop-Process -Force }
+      Remove-Item $litellmPid -ErrorAction SilentlyContinue
+    }
+    Write-Host "Stopped endpoint + proxy + services (VRAM freed)." -ForegroundColor Green
   }
   'update' {
     $llmCppPath = Join-Path $repo 'external\llama.cpp'

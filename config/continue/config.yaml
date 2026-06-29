@@ -9,7 +9,7 @@ models:
   - name: coder
     provider: openai
     model: coder                 # -> llama-swap "coder"
-    apiBase: http://localhost:8080/v1
+    apiBase: http://localhost:8081/v1
     apiKey: sk-local
     contextLength: 16384
     roles: [chat, edit, apply]
@@ -18,7 +18,7 @@ models:
   - name: planner
     provider: openai
     model: planner               # -> llama-swap "planner" (use for heavy reasoning chats)
-    apiBase: http://localhost:8080/v1
+    apiBase: http://localhost:8081/v1
     apiKey: sk-local
     contextLength: 16384
     roles: [chat, edit]
@@ -27,7 +27,7 @@ models:
   - name: autocomplete
     provider: openai
     model: fim                   # -> llama-swap "fim"
-    apiBase: http://localhost:8080/v1
+    apiBase: http://localhost:8081/v1
     apiKey: sk-local
     contextLength: 8192
     roles: [autocomplete]
@@ -35,7 +35,7 @@ models:
   - name: embeddings
     provider: openai
     model: embed                 # -> llama-swap "embed"
-    apiBase: http://localhost:8080/v1
+    apiBase: http://localhost:8081/v1
     apiKey: sk-local
     roles: [embed]
 

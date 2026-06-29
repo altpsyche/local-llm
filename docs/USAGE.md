@@ -39,7 +39,7 @@ Management:
   llm fetch [--list] [profile]         Download models for active/specified profile
   llm verify-urls [<profile>]          Check all HuggingFace download URLs (needs network)
   llm update                           Pull latest llama.cpp and rebuild
-  llm gen                              Regenerate config/llama-swap.yaml
+  llm gen                              Regenerate config/llama-swap.yaml and config/litellm.yaml
 
 Tools:
   llm aider [args]                     Run aider in architect mode in the current folder
@@ -69,7 +69,7 @@ No extra steps.
 | Inference endpoint (API + streaming) | `llm serve` or `llm up` |
 | Open WebUI browser chat | `llm up` (auto-opens `:3000`) |
 | VS Code autocomplete + chat | Install Continue extension, then `llm serve` |
-| VS Code agentic edits | Install Cline extension, configure Base URL `:8080` once |
+| VS Code agentic edits | Install Cline extension, configure Base URL `:8081` once |
 | Terminal AI coding | `llm aider` from any project folder |
 | Shell pattern pipes | `llm fabric-setup` once, then `git diff \| fabric --pattern write_git_commit` |
 | LiteLLM proxy (retry + logging) | `llm litellm` |
@@ -86,7 +86,7 @@ No extra steps.
 | n8n workflow automation | Same |
 | Continue MCP `@web` search | Requires SearXNG running (`llm services start`) |
 | Continue MCP `@github` | Set `GITHUB_TOKEN` environment variable (GitHub PAT with `repo` scope) |
-| Langfuse tracing via LiteLLM | After Docker setup: get API keys from Langfuse UI → uncomment callback block in `config/litellm.yaml` → `llm litellm` |
+| Langfuse tracing via LiteLLM | After Docker setup: get API keys from Langfuse UI → set `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` env vars → set `langfuseEnabled = $true` in `config/user.psd1` → `llm gen && llm litellm` |
 
 ### Quick test scenarios
 
@@ -203,12 +203,35 @@ Every model's GGUF file, HuggingFace source, context size, and launch flags are 
 
 The `12gb` profile uses smaller variants (about 21 GB on disk instead of 38 GB). The `8gb` profile targets cards like the RTX 3070 and 4060 and is marked unvalidated; it ships with the repo but has not been tested on physical hardware yet. Switch with `llm profile 12gb` or `llm profile 8gb`, or pass `-Profile` to `setup.bat` before the first model download.
 
+### Pro models (API-backed, no platform fee)
+
+Three additional model names are available via the LiteLLM proxy (`:8081`) when the corresponding API keys are set. They route **litellm → API provider directly** — no llama-swap hop, no OpenRouter markup.
+
+| Name | Role | Provider | Backing model | Approx. cost |
+|---|---|---|---|---|
+| `chat-pro` | general conversation | DeepSeek | deepseek-chat (V3) | ~$0.27/M in |
+| `planner-pro` | heavy reasoning | DeepSeek | deepseek-reasoner (R1) | ~$0.55/M in |
+| `coder-pro` | coding | Zhipu | glm-4-flash | very cheap |
+
+**API keys** — set as environment variables before `llm serve` or `llm gen`:
+
+```powershell
+$env:DEEPSEEK_API_KEY = 'sk-...'   # platform.deepseek.com → API keys
+$env:ZHIPU_API_KEY    = 'sk-...'   # open.bigmodel.cn → API keys
+```
+
+Pro models are only available through `:8081` (LiteLLM). Direct `:8080` requests return "model not found" because llama-swap only serves local models.
+
+**Override providers or models** in `config/user.psd1` (see the `peers` block in `config/user.psd1.example`). You can disable individual peers, change which model a role uses, or add OpenRouter as a fallback (5.5% platform fee applies). Run `llm gen` after any change.
+
+**Bill control:** set a per-key spending limit on the provider dashboard (DeepSeek / Zhipu) as a hard stop independent of local config. Optionally add `budget = 5.0` to the peer block in `user.psd1` to enforce a daily LiteLLM-side cap.
+
 ## Calling the API directly
 
 The endpoint speaks the OpenAI chat completions API, so any HTTP client works:
 
 ```powershell
-curl http://localhost:8080/v1/chat/completions -H "Content-Type: application/json" -d '{
+curl http://localhost:8081/v1/chat/completions -H "Content-Type: application/json" -d '{
   "model": "coder", "messages": [{"role":"user","content":"write a fizzbuzz in rust"}] }'
 ```
 
@@ -219,14 +242,14 @@ llm chat coder "write fizzbuzz in rust"
 llm chat planner "design a caching layer" --sys "Be concise." --max 1024
 ```
 
-The port defaults to `8080`. To change it, set `port` in the `defaults` block of `config/models.psd1` or create a `config/user.psd1` override (see [Customizing your setup](#customizing-your-setup-configuserpsd1)).
+The LiteLLM proxy port defaults to `8081` (`litellmPort` in `defaults`). The underlying llama-swap engine is on `8080` (`port` in `defaults`) but clients should use `8081` for retry logic, Langfuse tracing, and pro model access.
 
 ### Embeddings API
 
 The `embed` model (bge-m3) exposes an embeddings endpoint:
 
 ```powershell
-curl http://localhost:8080/v1/embeddings `
+curl http://localhost:8081/v1/embeddings `
   -H "Content-Type: application/json" `
   -d '{"model": "embed", "input": "The quick brown fox"}'
 ```
@@ -241,12 +264,12 @@ Response shape:
 }
 ```
 
-The vector dimension is 1024. `embed` is pinned in VRAM and never unloads, so embedding calls never trigger a model swap. Use this endpoint to build your own RAG pipeline, or point any tool that accepts an embeddings endpoint at `http://localhost:8080/v1`.
+The vector dimension is 1024. `embed` is pinned in VRAM and never unloads, so embedding calls never trigger a model swap. Use this endpoint to build your own RAG pipeline, or point any tool that accepts an embeddings endpoint at `http://localhost:8081/v1`.
 
 **From Python (openai SDK):**
 ```python
 from openai import OpenAI
-client = OpenAI(base_url="http://localhost:8080/v1", api_key="sk-local")
+client = OpenAI(base_url="http://localhost:8081/v1", api_key="sk-local")
 resp = client.embeddings.create(model="embed", input=["your text here"])
 vector = resp.data[0].embedding   # list of 1024 floats
 ```
@@ -266,7 +289,7 @@ the model internally reasons through the problem. This produces better answers b
 Append `/no_think` to your prompt:
 
 ```bash
-curl http://localhost:8080/v1/chat/completions \
+curl http://localhost:8081/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "chat",
@@ -322,7 +345,7 @@ $body = @{
     tool_choice = 'auto'
 } | ConvertTo-Json -Depth 10
 
-$response = Invoke-RestMethod http://localhost:8080/v1/chat/completions `
+$response = Invoke-RestMethod http://localhost:8081/v1/chat/completions `
     -Method POST -ContentType 'application/json' -Body $body
 
 $choice = $response.choices[0]
@@ -387,7 +410,7 @@ Install the **Cline** extension, start the endpoint, then open Cline settings an
 
 | Field | Value |
 |---|---|
-| Base URL | `http://localhost:8080/v1` (replace `8080` if you changed `defaults.port`) |
+| Base URL | `http://localhost:8081/v1` (replace `8081` if you changed `defaults.litellmPort`) |
 | API Key | `sk-local` (any non-empty string; the server ignores it) |
 | Model ID | `coder` |
 
@@ -479,11 +502,9 @@ llm litellm
 llm litellm -NoWindow
 ```
 
-Point any client at `http://localhost:8081/v1` instead of `:8080` to route through the proxy. The proxy exposes the same model names (`coder`, `planner`, `chat`, `fim`, `embed`). Direct `:8080` access continues to work unchanged.
+All clients (Continue, aider, Cline, fabric, Open WebUI, `llm chat`) are configured to use `:8081` by default. The proxy exposes all local model names (`coder`, `planner`, `chat`, `fim`, `embed`) plus pro model names (`chat-pro`, `planner-pro`, `coder-pro`) when API keys are set. Direct `:8080` access to llama-swap still works for local models but bypasses retry logic and Langfuse tracing.
 
-**When to use `:8081` vs `:8080`:** Direct `:8080` access works for most use. Route through `:8081` (LiteLLM) when you want retry-on-failure or Langfuse request tracing. To enable tracing: start Docker services, open `http://localhost:3001`, go to **Settings → API Keys**, create a key pair, then uncomment and fill the `success_callback` block in `config/litellm.yaml` and restart with `llm litellm`.
-
-To point Cline at LiteLLM: change its Base URL from `http://localhost:8080/v1` to `http://localhost:8081/v1`. For aider: set `openai-api-base: http://localhost:8081/v1` in `config/aider/.aider.conf.yml`.
+`config/litellm.yaml` is generated automatically by `llm gen` and `llm serve` — do not edit it by hand.
 
 ### Docker services (Langfuse + SearXNG + n8n)
 
@@ -532,21 +553,26 @@ Langfuse records every LLM request routed through LiteLLM: the full prompt, resp
 Tracing only works through LiteLLM. Direct `:8080` requests are invisible to Langfuse.
 
 1. Start Docker services: `llm services start`
-2. Open `http://localhost:3001` → **Settings → API Keys** → create a key pair, then copy the **Secret Key** and **Public Key**
-3. Open `config/litellm.yaml` and uncomment the `success_callback` block:
-   ```yaml
-   litellm_settings:
-     success_callback: ["langfuse"]
-     failure_callback: ["langfuse"]
-
-   environment_variables:
-     LANGFUSE_PUBLIC_KEY: "pk-lf-..."   # paste your public key
-     LANGFUSE_SECRET_KEY: "sk-lf-..."   # paste your secret key
-     LANGFUSE_HOST: "http://localhost:3001"
+2. Open `http://localhost:3001` → **Settings → API Keys** → create a key pair, copy the **Public Key** and **Secret Key**
+3. Set the keys as environment variables (add to your PowerShell profile for persistence):
+   ```powershell
+   $env:LANGFUSE_PUBLIC_KEY = 'pk-lf-...'   # paste your public key
+   $env:LANGFUSE_SECRET_KEY = 'sk-lf-...'   # paste your secret key
    ```
-4. If LiteLLM is running, stop it first: `llm litellm stop`. Then start it: `llm litellm -NoWindow`
-5. Point your client at `:8081` instead of `:8080` (or use `llm chat` which goes through LiteLLM automatically)
-6. Requests appear in the Langfuse dashboard under **Traces** within a few seconds
+4. Enable Langfuse callbacks by adding one line to `config/user.psd1`:
+   ```powershell
+   @{ defaults = @{ langfuseEnabled = $true } }
+   ```
+5. Regenerate `config/litellm.yaml` and restart the proxy:
+   ```powershell
+   llm gen
+   llm litellm stop
+   llm litellm -NoWindow
+   ```
+6. Point your client at `:8081` instead of `:8080` (or use `llm chat` which goes through LiteLLM automatically)
+7. Requests appear in the Langfuse dashboard under **Traces** within a few seconds
+
+> **Note:** `config/litellm.yaml` is generated on every `llm gen` and `llm serve`. Do not edit it directly — changes are overwritten. Use `user.psd1` for all persistent customization.
 
 ---
 
@@ -587,12 +613,12 @@ n8n is a visual workflow builder. Each workflow is a graph of nodes: triggers (w
 
 Inside n8n containers, the host machine is reachable at `host.docker.internal`. The inference endpoint is:
 ```
-http://host.docker.internal:8080/v1/chat/completions
+http://host.docker.internal:8081/v1/chat/completions
 ```
 
 Add an **HTTP Request** node:
 - Method: `POST`
-- URL: `http://host.docker.internal:8080/v1/chat/completions`
+- URL: `http://host.docker.internal:8081/v1/chat/completions`
 - Header: `Authorization: Bearer sk-local` (any non-empty string)
 - Body (JSON):
   ```json
@@ -726,10 +752,10 @@ Or just write it as a plain PSD1 hashtable:
 
 After changing ports or timezone, re-run `.\scripts\setup-docker.ps1` to regenerate `.env` and restart containers. After changing `activeProfile`, run `llm gen` to regenerate the server config, then `llm fetch` to download any missing model files.
 
-`llm gen` regenerates `config/llama-swap.yaml` from `models.psd1` + `user.psd1` without restarting the server; useful after editing model parameters:
+`llm gen` regenerates both `config/llama-swap.yaml` and `config/litellm.yaml` from `models.psd1` + `user.psd1` without restarting the server; useful after editing model parameters or peer configuration:
 
 ```powershell
-llm gen       # regenerate config (no restart needed for the next llm serve)
+llm gen       # regenerate both configs (no restart needed for the next llm serve)
 ```
 
 ---
@@ -749,7 +775,7 @@ llm show coder           # file path, size, SHA256, and disk status for a specif
 
 Switching profiles does not delete models from previous profiles; they stay in `models/`. Run `llm fetch` after switching to pull any files the new profile needs that aren't already there.
 
-To add or change a model, edit its entry in `config/models.psd1` (setting `repo`, `path`, `gguf`, `ctx`, and any optional flags), then run `llm fetch` to download it and `llm serve` to pick it up. The server config (`config/llama-swap.yaml`) is generated automatically on each launch and should never be edited by hand.
+To add or change a model, edit its entry in `config/models.psd1` (setting `repo`, `path`, `gguf`, `ctx`, and any optional flags), then run `llm fetch` to download it and `llm serve` to pick it up. The server configs (`config/llama-swap.yaml` and `config/litellm.yaml`) are generated automatically on each launch and should never be edited by hand.
 
 To add a new profile for a different VRAM tier, add a new key under `profiles` in the PSD1 file and switch to it with `llm profile <name>`.
 

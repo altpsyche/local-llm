@@ -17,7 +17,7 @@ The build script (`scripts/build-llama.ps1`) detects your GPU and CUDA version a
 
 **Prebuilt llama.cpp binary:** Download `*-bin-win-cuda-12.4-x64.zip` from the [llama.cpp releases page](https://github.com/ggml-org/llama.cpp/releases), or install with `scoop install llama.cpp-cu124`. Extract the binaries to `bin/` and also copy the matching CUDA DLLs into `bin/` (the build script copies these automatically, but the prebuilt zip does not include them). This works on all supported GPU generations. On Blackwell it's slightly slower than a CUDA 12.8 source build; on Ada and Ampere the difference is negligible.
 
-**Ollama:** If you want to skip the build entirely, Ollama has GPU support for all three generations with no compile step. Install it from the official site, then change every client's API base from `http://localhost:8080/v1` to `http://localhost:11434/v1`. The Continue, aider, and Open WebUI configs all use `apiBase`, so it's a one-line change per config. Peak performance is lower than a native build, but all clients work correctly.
+**Ollama:** If you want to skip the build entirely, Ollama has GPU support for all three generations with no compile step. Install it from the official site, then change every client's API base from `http://localhost:8081/v1` to `http://localhost:11434/v1`. The Continue, aider, and Open WebUI configs all use `apiBase`, so it's a one-line change per config. Peak performance is lower than a native build, but all clients work correctly.
 
 ## No Go compiler for llama-swap
 
@@ -25,7 +25,7 @@ Download the native Windows `llama-swap.exe` from the [llama-swap releases page]
 
 ## Open WebUI won't install
 
-Open WebUI needs Python 3.11 or 3.12. Python 3.14 is too new; 3.10 is too old. It lives in its own virtual environment (`tools/venv-webui`), separate from aider's (`tools/venv-aider`), because their dependency pins conflict and can't share an environment. If pip still fails on the right Python version, the most reliable alternative is AnythingLLM, which is a desktop installer with no Python dependency. Install it, add an OpenAI connection pointing at `http://localhost:8080/v1`, choose a separate embedding backend, and organize documents per workspace.
+Open WebUI needs Python 3.11 or 3.12. Python 3.14 is too new; 3.10 is too old. It lives in its own virtual environment (`tools/venv-webui`), separate from aider's (`tools/venv-aider`), because their dependency pins conflict and can't share an environment. If pip still fails on the right Python version, the most reliable alternative is AnythingLLM, which is a desktop installer with no Python dependency. Install it, add an OpenAI connection pointing at `http://localhost:8081/v1`, choose a separate embedding backend, and organize documents per workspace.
 
 ## Model file not found on download
 

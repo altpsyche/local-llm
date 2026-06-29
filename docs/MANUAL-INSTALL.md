@@ -380,23 +380,30 @@ Each venv install takes 2–10 minutes. The webui venv is the largest (~1 GB).
 
 ---
 
-## 7. Generate the llama-swap config
+## 7. Generate runtime configs
+
+Two config files are generated from `config/models.psd1`. Both are overwritten on every
+`llm serve` and `llm gen` — do not edit them by hand.
 
 ```powershell
-.\scripts\gen-llama-swap.ps1
+.\scripts\gen-llama-swap.ps1   # writes config/llama-swap.yaml (local model routing)
+.\scripts\gen-litellm.ps1      # writes config/litellm.yaml (LiteLLM proxy model list)
 ```
 
-This reads `config/models.psd1` and writes `config/llama-swap.yaml`. The output file is
-gitignored and regenerated automatically on every `llm serve`, so manual edits to it will
-be overwritten. To customize model parameters, edit `config/models.psd1` or
-`config/user.psd1` instead.
-
-To target a specific profile:
+To target a specific VRAM profile for llama-swap (litellm.yaml is profile-agnostic):
 ```powershell
 .\scripts\gen-llama-swap.ps1 12gb
+.\scripts\gen-litellm.ps1
 ```
 
-Verify: `config\llama-swap.yaml` exists and is non-empty.
+To customize model parameters or add API pro models, edit `config/models.psd1` or create
+`config/user.psd1` (gitignored per-machine overrides). Re-run both generators after editing.
+
+Verify:
+```powershell
+Test-Path config\llama-swap.yaml   # True
+Test-Path config\litellm.yaml      # True
+```
 
 ---
 
@@ -492,13 +499,13 @@ New-Item -ItemType Directory -Force "$HOME\.config\fabric" | Out-Null
 
 @"
 OPENAI_API_KEY=sk-local
-OPENAI_API_BASE_URL=http://localhost:8080/v1
+OPENAI_API_BASE_URL=http://localhost:8081/v1
 DEFAULT_VENDOR=OpenAI
 DEFAULT_MODEL=coder
 "@ | Set-Content "$HOME\.config\fabric\.env" -Encoding utf8
 ```
 
-Replace `8080` if you changed the default port in `config/user.psd1`.
+Replace `8081` if you changed `litellmPort` in `config/user.psd1`.
 
 ### 10.3 Link the patterns
 

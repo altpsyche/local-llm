@@ -120,4 +120,4 @@ if (-not $SkipModels) { Step "Fetch models (multi-GB)"; & "$PSScriptRoot\fetch-m
 else { Write-Host "Skipping model downloads (-SkipModels). Run scripts\fetch-models.ps1 later." -ForegroundColor DarkGray }
 
 Step "Done"
-Write-Host "Next: .\scripts\start.ps1   then point tools at http://localhost:8080/v1  (see docs\USAGE.md)" -ForegroundColor Green
+Write-Host "Next: llm up   (endpoint :8080 + LiteLLM proxy :8081 start automatically — see docs\USAGE.md)" -ForegroundColor Green

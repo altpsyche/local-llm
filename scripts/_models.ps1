@@ -4,6 +4,7 @@
 #
 # Exposes:
 #   Get-ModelsConfig                  -> raw hashtable from the PSD1
+#   Get-EnabledPeers [-Config c]      -> list of enabled peer objects (with injected .name)
 #   Resolve-ProfileName [-Profile n]  -> profile name (arg -> $env:LLM_PROFILE -> activeProfile)
 #   Get-Models [-Profile n]           -> @{ profile; config; models } ; models = ordered role objects
 #   Set-ActiveProfile -Name n         -> rewrite the activeProfile line in place (validated)
@@ -43,8 +44,41 @@ function Get-ModelsConfig {
         }
       }
     }
+    if ($user.peers) {
+      if (-not $base.peers) { $base.peers = @{} }
+      foreach ($peerName in $user.peers.Keys) {
+        if (-not $base.peers.Contains($peerName)) {
+          $base.peers[$peerName] = $user.peers[$peerName]
+          continue
+        }
+        foreach ($k in $user.peers[$peerName].Keys) {
+          if ($k -eq 'pro') {
+            if (-not $base.peers[$peerName].pro) { $base.peers[$peerName].pro = @{} }
+            foreach ($role in $user.peers[$peerName].pro.Keys) {
+              $base.peers[$peerName].pro[$role] = $user.peers[$peerName].pro[$role]
+            }
+          } else {
+            $base.peers[$peerName][$k] = $user.peers[$peerName][$k]
+          }
+        }
+      }
+    }
   }
   return $base
+}
+
+function Get-EnabledPeers {
+  param($Config)
+  if (-not $Config) { $Config = Get-ModelsConfig }
+  if (-not $Config.peers) { return @() }
+  return @(
+    $Config.peers.Keys | Where-Object { $Config.peers[$_].enabled -ne $false } |
+    ForEach-Object {
+      $p = $Config.peers[$_].Clone()
+      $p['name'] = $_
+      [pscustomobject]$p
+    }
+  )
 }
 
 function Resolve-ProfileName {
