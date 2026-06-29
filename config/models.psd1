@@ -114,6 +114,8 @@
 
   # ── API Pro Models ───────────────────────────────────────────────────────────
   # Routes {role}-pro model names through litellm directly to external API providers.
+  # All three roles (chat, coder, planner) currently use DeepSeek — one key covers all.
+  # Multiple providers are supported; enable additional peers and set the relevant env var.
   # Override any field or individual role model in config/user.psd1 (see user.psd1.example).
   # Re-run `llm gen` after editing. No llama-swap restart needed.
   #
@@ -138,7 +140,7 @@
       }
     }
     zhipu = @{
-      enabled       = $false                       # disabled — coder-pro now uses deepseek
+      enabled       = $false                       # disabled — all roles use deepseek; re-enable to route coder back here
       proxy         = 'https://open.bigmodel.cn/api/paas/v4'
       apiKeyEnv     = 'ZHIPU_API_KEY'
       litellmPrefix = 'openai'

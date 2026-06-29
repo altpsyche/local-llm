@@ -39,7 +39,7 @@ Management:
   llm fetch [--list] [profile]         Download models for active/specified profile
   llm verify-urls [<profile>]          Check all HuggingFace download URLs (needs network)
   llm update                           Pull latest llama.cpp and rebuild
-  llm gen                              Regenerate config/llama-swap.yaml and config/litellm.yaml
+  llm gen                              Regenerate llama-swap.yaml, litellm.yaml, and Open WebUI system prompts
 
 Tools:
   llm aider [args]                     Run aider in architect mode in the current folder
@@ -209,22 +209,22 @@ Three additional model names are available via the LiteLLM proxy (`:8081`) when 
 
 | Name | Role | Provider | Backing model | Approx. cost |
 |---|---|---|---|---|
-| `chat-pro` | general conversation | DeepSeek | deepseek-chat (V3) | ~$0.27/M in |
+| `chat-pro` | general conversation | DeepSeek | deepseek-chat (V4) | ~$0.27/M in |
 | `planner-pro` | heavy reasoning | DeepSeek | deepseek-reasoner (R1) | ~$0.55/M in |
-| `coder-pro` | coding | Zhipu | glm-4-flash | very cheap |
+| `coder-pro` | coding | DeepSeek | deepseek-chat (V4) | ~$0.27/M in |
 
-**API keys** — set as environment variables before `llm serve` or `llm gen`:
+**API keys** — all three roles currently route through DeepSeek, so only one key is needed. The system supports multiple providers; set additional keys to enable other peers:
 
 ```powershell
-$env:DEEPSEEK_API_KEY = 'sk-...'   # platform.deepseek.com → API keys
-$env:ZHIPU_API_KEY    = 'sk-...'   # open.bigmodel.cn → API keys
+$env:DEEPSEEK_API_KEY = 'sk-...'   # platform.deepseek.com → API keys  (active: chat, coder, planner)
+$env:ZHIPU_API_KEY    = 'sk-...'   # open.bigmodel.cn → API keys         (peer disabled by default)
 ```
 
 Pro models are only available through `:8081` (LiteLLM). Direct `:8080` requests return "model not found" because llama-swap only serves local models.
 
 **Override providers or models** in `config/user.psd1` (see the `peers` block in `config/user.psd1.example`). You can disable individual peers, change which model a role uses, or add OpenRouter as a fallback (5.5% platform fee applies). Run `llm gen` after any change.
 
-**Bill control:** set a per-key spending limit on the provider dashboard (DeepSeek / Zhipu) as a hard stop independent of local config. Optionally add `budget = 5.0` to the peer block in `user.psd1` to enforce a daily LiteLLM-side cap.
+**Bill control:** set a per-key spending limit on the provider dashboard as a hard stop independent of local config. Optionally add `budget` and `budgetPeriod` to the deepseek peer block in `user.psd1` for a LiteLLM-side cap (e.g. `budget = 15.0; budgetPeriod = '30d'`). Run `llm gen` after any change.
 
 ## Calling the API directly
 
@@ -276,8 +276,7 @@ vector = resp.data[0].embedding   # list of 1024 floats
 
 ## Qwen3 Thinking Mode
 
-Qwen3 models (`planner`, `chat`) use a reasoning scratchpad by default. Before responding,
-the model internally reasons through the problem. This produces better answers but:
+Qwen3 models (`planner`, `chat`) support a reasoning scratchpad. `planner` has it on by default — appropriate for deep analysis. `chat` has it off by default via its system prompt (`/no_think`) because conversational responses don't benefit from the added latency. When enabled, the model internally reasons through the problem before responding. This produces better answers but:
 
 - **Consumes `max_tokens` silently.** The scratchpad counts toward your token limit.
   For complex tasks, set `max_tokens` to at least 2000 (or 8192 for deep planning).
@@ -311,8 +310,7 @@ llm chat chat "What is 2+2? /no_think" --max 128
 | Default (thinking on) | Complex reasoning, code architecture, planning | 2000–8192 |
 | `/no_think` | Quick Q&A, simple edits, autocomplete-like tasks | 128–512 |
 
-**In Continue.dev:** Add `/no_think` to the end of your message in the chat box.
-Continue always uses the configured `maxTokens`; make sure it's large enough for planning tasks.
+**In Continue.dev:** The `chat` model has `/no_think` set in its system prompt by default. For `planner`, add `/no_think` to your message to skip the scratchpad on simpler tasks. Continue always uses the configured `maxTokens`; make sure it's large enough for planning tasks.
 
 **In aider:** The planner model is used for architecture; thinking mode is appropriate.
 aider auto-adjusts context size; no special configuration needed.
@@ -374,12 +372,18 @@ To get started, run `.\scripts\setup-clients.ps1` once, install the **Continue**
 |---|---|---|
 | Chat, edit, apply | `coder` (Qwen2.5-Coder-14B) | default coding chat and inline edits |
 | Chat, edit | `planner` (Qwen3-30B-A3B) | architecture discussion and heavy reasoning |
+| Chat | `chat` (Qwen3-14B) | general conversation; thinking off by default |
+| Chat, edit | `chat-pro` (DeepSeek V4, API) | general conversation via API |
+| Chat, edit, apply | `coder-pro` (DeepSeek V4, API) | coding via API |
+| Chat | `planner-pro` (DeepSeek R1, API) | heavy reasoning via API |
 | Autocomplete | `fim` (Qwen-Coder-3B, pinned) | as-you-type ghost text completions |
 | Embed | `embed` (bge-m3, pinned) | `@codebase` and `@docs` RAG indexing |
 
-`Ctrl+L` opens a new chat with any selected code attached as context. `Ctrl+I` opens an inline edit on the selected lines and shows a diff for you to accept or reject. Autocomplete fires as ghost text; `Tab` accepts it. Use the model dropdown at the bottom of the chat panel to switch between `coder` (everyday edits) and `planner` (design and architecture questions).
+System prompts are set per-model: `coder` uses a direct engineering style prompt; `chat` includes `/no_think` to suppress the Qwen3 scratchpad for conversational use; `planner` has no prompt so thinking runs freely. Pro model prompts are configured in the `peers.deepseek.pro` block in `models.psd1` and synced to Open WebUI by `llm gen`. The `systemMessage` field in `config/continue/config.yaml` sets prompts for Continue specifically.
 
-Context is 32768 tokens for `coder` and `chat`, 16384 for `planner`. Large `@codebase` queries get truncated to fit; use `@file` when you need to be precise about what's included. The first message to a large model is slower while it loads into VRAM. `fim` and `embed` stay pinned so autocomplete and RAG never trigger a reload.
+`Ctrl+L` opens a new chat with any selected code attached as context. `Ctrl+I` opens an inline edit on the selected lines and shows a diff for you to accept or reject. Autocomplete fires as ghost text; `Tab` accepts it. Use the model dropdown at the bottom of the chat panel to switch between roles.
+
+Context is 32768 tokens for all models except `planner` (16384). Large `@codebase` queries get truncated to fit; use `@file` when you need to be precise about what's included. The first message to a large model is slower while it loads into VRAM. `fim` and `embed` stay pinned so autocomplete and RAG never trigger a reload.
 
 If you used a copied config rather than a symlink and later edited the repo's config, re-run `setup-clients.ps1` after deleting the copy, or edit `~/.continue/config.yaml` directly.
 
@@ -389,7 +393,7 @@ Four MCP servers are wired into Continue automatically via `config/continue/conf
 
 | Server | How to invoke | What it does |
 |--------|--------------|-------------|
-| `filesystem` | `@filesystem` then a path | Read local files without copy-pasting |
+| `filesystem` | `@filesystem` then a path | Read files in `C:\Users\vsiva\dev` and `C:\local-llm` (strict whitelist; paths outside return permission denied) |
 | `fetch` | `@url https://...` | Fetch any URL and include its text as context |
 | `github` | `@github` then a query | Search GitHub issues, PRs, and code |
 | `searxng-search` | `@web` then a query | Private web search via local SearXNG |
@@ -752,7 +756,7 @@ Or just write it as a plain PSD1 hashtable:
 
 After changing ports or timezone, re-run `.\scripts\setup-docker.ps1` to regenerate `.env` and restart containers. After changing `activeProfile`, run `llm gen` to regenerate the server config, then `llm fetch` to download any missing model files.
 
-`llm gen` regenerates both `config/llama-swap.yaml` and `config/litellm.yaml` from `models.psd1` + `user.psd1` without restarting the server; useful after editing model parameters or peer configuration:
+`llm gen` regenerates `config/llama-swap.yaml`, `config/litellm.yaml`, and Open WebUI system prompts from `models.psd1` + `user.psd1` without restarting the server; useful after editing model parameters, peer configuration, or system prompts:
 
 ```powershell
 llm gen       # regenerate both configs (no restart needed for the next llm serve)

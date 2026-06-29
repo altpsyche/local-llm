@@ -82,23 +82,26 @@
     # ── API Pro Models (optional) ────────────────────────────────────────────────
     # Pro models (chat-pro / planner-pro / coder-pro) route litellm → API provider
     # directly — no llama-swap hop. Direct APIs have no platform fee (unlike OpenRouter).
+    # All three roles currently use DeepSeek — one key covers all.
+    # Multiple providers are supported; enable additional peers and set the relevant env var.
     # Re-run `llm gen` after editing. No restart needed for litellm; `llm litellm stop && llm litellm start` to reload.
     #
     # peers = @{
     #   deepseek = @{
     #     # enabled      = $false      # disable all deepseek pro models (no key required)
-    #     # budget       = 5.0         # optional USD hard cap (LiteLLM enforced)
-    #     # budgetPeriod = '1d'        # reset period: 1d, 7d, 30d, monthly
+    #     # budget       = 15.0        # optional USD hard cap (LiteLLM enforced)
+    #     # budgetPeriod = '30d'       # reset period: 1d, 7d, 30d, monthly
     #     pro = @{
-    #       # Override individual roles (leave others at their models.psd1 defaults):
-    #       # chat    = 'deepseek-chat'      # DeepSeek V3
-    #       # planner = 'deepseek-reasoner'  # DeepSeek R1
+    #       # Override individual roles — use hashtable form to set maxTokens or systemPrompt:
+    #       # chat    = @{ model = 'deepseek-chat';     maxTokens = 4096 }   # DeepSeek V4
+    #       # planner = @{ model = 'deepseek-reasoner'; maxTokens = 8192 }   # DeepSeek R1
+    #       # coder   = @{ model = 'deepseek-chat';     maxTokens = 4096 }   # DeepSeek V4
     #     }
     #   }
     #   zhipu = @{
-    #     # enabled = $false
+    #     # enabled = $true   # re-enable to route specific roles through Zhipu
     #     pro = @{
-    #       # coder = 'glm-4-plus'    # upgrade from default glm-4-flash
+    #       # coder = 'glm-4-plus'    # alternative coder model
     #     }
     #   }
     #   # OpenRouter — 300+ models, but adds 5.5% platform fee:
