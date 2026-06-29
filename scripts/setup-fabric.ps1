@@ -2,7 +2,7 @@
 # Build fabric from the external/fabric submodule and configure it for the local endpoint.
 # fabric pipes text through 200+ named prompt patterns: git diff | fabric --pattern write_git_commit
 #
-# Run once after cloning:  llm fabric-setup
+# Run once after cloning:  bob fabric-setup
 # Re-run to reconfigure or after a submodule update.
 # Pass -Force to rebuild bin\fabric.exe even if it already exists.
 param([switch]$Force)

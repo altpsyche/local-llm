@@ -6,7 +6,7 @@ Because all clients point at a single OpenAI-compatible endpoint, the stack is l
 |---|---|---|---|
 | Inference engine | llama.cpp (source build, CUDA 12.8) | Official prebuilt llama.cpp (CUDA 12.4 zip) | Ollama |
 | Proxy / model router | llama-swap (Go build) | llama-swap release binary | Ollama's built-in model swapping |
-| Chat and RAG UI | Open WebUI (Python 3.12, port 3000) | AnythingLLM desktop installer | LM Studio |
+| Chat and RAG UI | Open WebUI (Python 3.12, port 3000) | Anythingbob desktop installer | LM Studio |
 | IDE autocomplete | Continue.dev | twinny | LM Studio + Continue |
 | Plan and edit separately | aider architect mode | Cline Plan/Act | Cline single-model |
 | Embeddings | bge-m3 | nomic-embed-text | Open WebUI's built-in nomic |
@@ -29,4 +29,4 @@ Open WebUI needs Python 3.11 or 3.12. Python 3.14 is too new; 3.10 is too old. I
 
 ## Model file not found on download
 
-If `llm fetch` fails with a 404 or file-not-found error, the HuggingFace repository or filename for that model has probably changed. Open the model's page on huggingface.co, find the correct repo path and exact filename, update that model's `repo`, `path`, and `gguf` fields in `config/models.psd1`, then run `llm fetch` again. Use `llm fetch --list` first to preview the resolved download URLs without pulling anything.
+If `bob fetch` fails with a 404 or file-not-found error, the HuggingFace repository or filename for that model has probably changed. Open the model's page on huggingface.co, find the correct repo path and exact filename, update that model's `repo`, `path`, and `gguf` fields in `config/models.psd1`, then run `bob fetch` again. Use `bob fetch --list` first to preview the resolved download URLs without pulling anything.

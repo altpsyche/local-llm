@@ -1,6 +1,6 @@
 #requires -Version 7
 # GENERATE config/llama-swap.yaml from config/models.psd1 (the single source of truth).
-# Deterministic, idempotent. Re-run any time; also runs automatically on `llm serve`.
+# Deterministic, idempotent. Re-run any time; also runs automatically on `bob serve`.
 #   .\scripts\gen-llama-swap.ps1            # active profile (or $env:LLM_PROFILE)
 #   .\scripts\gen-llama-swap.ps1 12gb       # a specific profile
 param([string]$Profile)
@@ -104,7 +104,7 @@ $sb = [System.Text.StringBuilder]::new()
 $nl = "`n"
 [void]$sb.Append("# =============================================================$nl")
 [void]$sb.Append("#  GENERATED - DO NOT EDIT.  Source: config/models.psd1$nl")
-[void]$sb.Append("#  Regenerate: scripts/gen-llama-swap.ps1  (also runs on ``llm serve``)$nl")
+[void]$sb.Append("#  Regenerate: scripts/gen-llama-swap.ps1  (also runs on ``bob serve``)$nl")
 [void]$sb.Append("#  Active profile: $name$nl")
 [void]$sb.Append("# =============================================================$nl$nl")
 

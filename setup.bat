@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================================
-REM  local-llm master setup. Run ONCE after cloning. Idempotent (safe to re-run).
+REM  Bob master setup. Run ONCE after cloning. Idempotent (safe to re-run).
 REM  Installs prereqs (CUDA 12.8, Python 3.12, Go) -> builds engine+proxy ->
 REM  creates venvs + installs tools -> fetches models -> wires Continue/aider.
 REM

@@ -86,7 +86,7 @@
     n8nPort     = 5678              # n8n workflow automation port (Module H).
     n8nTimezone = 'UTC'             # n8n schedule timezone (IANA, e.g. 'America/New_York'). Override in user.psd1.
     maxTokens      = 512              # Default max_tokens for `llm chat`.
-    webuiSecret    = 'local-llm-dev' # Change before exposing WebUI on LAN.
+    webuiSecret    = 'bob-dev'        # Change before exposing WebUI on LAN.
     langfuseEnabled = $false          # Set $true in user.psd1 after `llm services start`; enables Langfuse callbacks in litellm.yaml.
   }
 

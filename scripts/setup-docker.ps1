@@ -3,11 +3,11 @@
 # Ports are read from config/models.psd1 defaults (override via config/user.psd1).
 #
 # Services started:
-#   Langfuse  — LLM observability       (default :3001)
+#   Langfuse  — bob observability       (default :3001)
 #   SearXNG   — private web search      (default :8888)
 #   n8n       — workflow automation     (default :5678)
 #
-# Run once to install. Afterwards: llm services start|stop|status|logs
+# Run once to install. Afterwards: bob services start|stop|status|logs
 $ErrorActionPreference = "Stop"
 $repo = Split-Path $PSScriptRoot -Parent
 
@@ -117,6 +117,6 @@ Write-Host "  Langfuse:  http://localhost:$langfusePort  (login: admin@local.dev
 Write-Host "  SearXNG:   http://localhost:$searxngPort" -ForegroundColor Green
 Write-Host "  n8n:       http://localhost:$n8nPort" -ForegroundColor Green
 Write-Host ""
-Write-Host "Manage:          llm services start|stop|status|logs" -ForegroundColor DarkGray
+Write-Host "Manage:          bob services start|stop|status|logs" -ForegroundColor DarkGray
 Write-Host "Change ports:    edit config/user.psd1, re-run .\scripts\setup-docker.ps1" -ForegroundColor DarkGray
 Write-Host "Enable tracing:  uncomment langfuse callbacks in config/litellm.yaml" -ForegroundColor DarkGray

@@ -1,5 +1,5 @@
 #requires -Version 7
-# Install all prerequisites for local-llm (Node.js, uv, Go, Python 3.12, CUDA, cmake,
+# Install all prerequisites for bob (Node.js, uv, Go, Python 3.12, CUDA, cmake,
 # Docker Desktop). Run once on a fresh machine. Idempotent — safe to re-run.
 #
 # When done, one of two messages will appear:

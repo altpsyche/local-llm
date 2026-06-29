@@ -1,6 +1,6 @@
 #requires -Version 7
 # Machine-readiness check: GPU, VRAM, CUDA compatibility, active profile, and model files.
-# Called automatically at the start of setup.bat. Also available standalone: llm diagnose
+# Called automatically at the start of setup.bat. Also available standalone: bob diagnose
 param()
 $ErrorActionPreference = "Stop"
 $repo = Split-Path $PSScriptRoot -Parent
@@ -87,13 +87,13 @@ try {
 $d = $cfg.defaults
 $mlockEnabled = ($d.mlockBig -eq $true)
 if ($mlockEnabled -and -not $mlockGranted) {
-    Row "mlock" "mlockBig=true but SeLockMemoryPrivilege NOT granted — run: llm mlock" 'Yellow'
+    Row "mlock" "mlockBig=true but SeLockMemoryPrivilege NOT granted — run: bob mlock" 'Yellow'
     $issues++
 } elseif ($mlockEnabled -and $mlockGranted) {
     Row "mlock" "SeLockMemoryPrivilege granted  (--mlock active)" 'Green'
 } else {
     $mlockRamHint = if ($ram -and $ram.FreeGB -ge 32) { "  — $($ram.FreeGB) GB free RAM; eligible" } else { '' }
-    Row "mlock" "not enabled$mlockRamHint  (set mlockBig=true in user.psd1 + run: llm mlock)" 'DarkGray'
+    Row "mlock" "not enabled$mlockRamHint  (set mlockBig=true in user.psd1 + run: bob mlock)" 'DarkGray'
 }
 
 # NUMA topology vs config
@@ -124,11 +124,11 @@ foreach ($role in @('planner','coder','chat','fim','embed')) {
   if (-not (Test-Path $f)) { continue }
   $present++
   if (Test-Path "$f.part") {
-    $bad += "$($m['gguf'])  (partial download — delete and re-run: llm fetch)"
+    $bad += "$($m['gguf'])  (partial download — delete and re-run: bob fetch)"
   } else {
     $expGB = [float]$m['sizeGB']; $actGB = (Get-Item $f).Length / 1GB
     if ($actGB -lt $expGB * (1 - $script:SizeTolPct) -or $actGB -gt $expGB * (1 + $script:SizeTolPct)) {
-      $bad += "$($m['gguf'])  (size $([math]::Round($actGB,1)) GB, expected ~$expGB GB — re-download: llm fetch)"
+      $bad += "$($m['gguf'])  (size $([math]::Round($actGB,1)) GB, expected ~$expGB GB — re-download: bob fetch)"
     }
   }
 }
@@ -158,7 +158,7 @@ foreach ($role in @('planner','coder','chat','fim','embed')) {
 }
 if ($mTotal -gt 0) {
   $mColor = if ($mCovered -eq $mTotal) { 'Green' } elseif ($mCovered -gt 0) { 'Yellow' } else { 'DarkGray' }
-  Row "Manifest" "$mCovered / $mTotal SHA256 recorded  (llm fetch to populate)" $mColor
+  Row "Manifest" "$mCovered / $mTotal SHA256 recorded  (bob fetch to populate)" $mColor
 }
 
 Write-Host ('-' * 52)

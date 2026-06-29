@@ -1,5 +1,5 @@
 # GENERATED - DO NOT EDIT.  Source: config/models.psd1
-# Regenerate: scripts/gen-litellm.ps1  (also runs on `llm gen` and `llm serve`)
+# Regenerate: scripts/gen-litellm.ps1  (also runs on `bob gen` and `bob serve`)
 
 model_list:
   - model_name: planner
@@ -51,7 +51,7 @@ litellm_settings:
   request_timeout: 600
   max_budget: 15
   budget_duration: "30d"
-  # Enable Langfuse tracing: set langfuseEnabled = $true in config/user.psd1, then llm gen + llm litellm
+  # Enable Langfuse tracing: set langfuseEnabled = $true in config/user.psd1, then bob gen + bob litellm
   # Set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY as environment variables (Settings → API Keys in Langfuse UI)
 
 general_settings:

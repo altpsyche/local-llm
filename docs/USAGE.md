@@ -18,46 +18,46 @@ Run this once per machine. It links the VS Code Continue config and the aider co
 
 ```
 Inference:
-  llm serve                            Start API endpoint (interactive, Ctrl+C to stop)
-  llm up [-NoOpen]                     Start endpoint + Open WebUI silently (no popup windows) [+ browser]
-  llm stop                             Stop all services and free VRAM
-  llm restart                          Stop then start endpoint (interactive, shows logs)
-  llm status                           Show which models are loaded and VRAM usage
-  llm ps                               Show daemon processes with PID, RAM, and uptime
-  llm logs [-n N]                      Tail the server log (default: last 50 lines)
+  bob serve                            Start API endpoint (interactive, Ctrl+C to stop)
+  bob up [-NoOpen]                     Start endpoint + Open WebUI silently (no popup windows) [+ browser]
+  bob stop                             Stop all services and free VRAM
+  bob restart                          Stop then start endpoint (interactive, shows logs)
+  bob status                           Show which models are loaded and VRAM usage
+  bob ps                               Show daemon processes with PID, RAM, and uptime
+  bob logs [-n N]                      Tail the server log (default: last 50 lines)
 
 Models:
-  llm models                           List models with backing names and load state
-  llm show <role>                      Model details: file, VRAM, SHA256, disk status
-  llm chat <model> <prompt>            Streaming chat (tokens appear as they generate)
+  bob models                           List models with backing names and load state
+  bob show <role>                      Model details: file, VRAM, SHA256, disk status
+  bob chat <model> <prompt>            Streaming chat (tokens appear as they generate)
     [--sys <system>] [--max <tokens>]
-  llm bench [gguf]                     Throughput benchmark
+  bob bench [gguf]                     Throughput benchmark
 
 Management:
-  llm profiles                         List VRAM profiles with sizes and active marker
-  llm profile <name|auto>              Switch profile (auto = detect from GPU VRAM)
-  llm fetch [--list] [profile]         Download models for active/specified profile
-  llm verify-urls [<profile>]          Check all HuggingFace download URLs (needs network)
-  llm update                           Pull latest llama.cpp and rebuild
-  llm gen                              Regenerate llama-swap.yaml, litellm.yaml, and Open WebUI system prompts
+  bob profiles                         List VRAM profiles with sizes and active marker
+  bob profile <name|auto>              Switch profile (auto = detect from GPU VRAM)
+  bob fetch [--list] [profile]         Download models for active/specified profile
+  bob verify-urls [<profile>]          Check all HuggingFace download URLs (needs network)
+  bob update                           Pull latest llama.cpp and rebuild
+  bob gen                              Regenerate llama-swap.yaml, litellm.yaml, and Open WebUI system prompts
 
 Tools:
-  llm aider [args]                     Run aider in architect mode in the current folder
-  llm webui                            Start Open WebUI only
-  llm diagnose                         GPU, VRAM, CUDA, and model file health check
-  llm mlock                            Check or grant SeLockMemoryPrivilege (needed for --mlock)
-  llm version                          Show binary versions and submodule commits
+  bob aider [args]                     Run aider in architect mode in the current folder
+  bob webui                            Start Open WebUI only
+  bob diagnose                         GPU, VRAM, CUDA, and model file health check
+  bob mlock                            Check or grant SeLockMemoryPrivilege (needed for --mlock)
+  bob version                          Show binary versions and submodule commits
 
 Ecosystem:
-  llm fabric-setup                     Build fabric from source and configure it for the local endpoint
-  llm litellm [-NoWindow]              Start LiteLLM proxy (:8081), foreground or background
-  llm litellm stop                     Stop the background LiteLLM proxy
-  llm litellm status                   Show PID and uptime of the background LiteLLM proxy
-  llm services start|stop|status|logs  Docker services: Langfuse (:3001) SearXNG (:8888) n8n (:5678)
-  llm eval <role> [task] [--shots N]   Benchmark model quality (humaneval, mmlu, gsm8k)
+  bob fabric-setup                     Build fabric from source and configure it for the local endpoint
+  bob litellm [-NoWindow]              Start LiteLLM proxy (:8081), foreground or background
+  bob litellm stop                     Stop the background LiteLLM proxy
+  bob litellm status                   Show PID and uptime of the background LiteLLM proxy
+  bob services start|stop|status|logs  Docker services: Langfuse (:3001) SearXNG (:8888) n8n (:5678)
+  bob eval <role> [task] [--shots N]   Benchmark model quality (humaneval, mmlu, gsm8k)
 ```
 
-If `llm` isn't found after setup, run `scripts\install-cli.ps1` and open a fresh terminal. That script also registers tab completions in your PowerShell profile (`llm <TAB>` completes subcommands, model roles, and profile names).
+If `llm` isn't found after setup, run `scripts\install-cli.ps1` and open a fresh terminal. That script also registers tab completions in your PowerShell profile (`bob <TAB>` completes subcommands, model roles, and profile names).
 
 ## What's ready after setup
 
@@ -66,14 +66,14 @@ No extra steps.
 
 | Feature | Entry point |
 |---------|------------|
-| Inference endpoint (API + streaming) | `llm serve` or `llm up` |
-| Open WebUI browser chat | `llm up` (auto-opens `:3000`) |
-| VS Code autocomplete + chat | Install Continue extension, then `llm serve` |
+| Inference endpoint (API + streaming) | `bob serve` or `bob up` |
+| Open WebUI browser chat | `bob up` (auto-opens `:3000`) |
+| VS Code autocomplete + chat | Install Continue extension, then `bob serve` |
 | VS Code agentic edits | Install Cline extension, configure Base URL `:8081` once |
-| Terminal AI coding | `llm aider` from any project folder |
-| Shell pattern pipes | `llm fabric-setup` once, then `git diff \| fabric --pattern write_git_commit` |
-| LiteLLM proxy (retry + logging) | `llm litellm` |
-| Model quality benchmarks | `llm eval coder humaneval` (needs endpoint running) |
+| Terminal AI coding | `bob aider` from any project folder |
+| Shell pattern pipes | `bob fabric-setup` once, then `git diff \| fabric --pattern write_git_commit` |
+| LiteLLM proxy (retry + logging) | `bob litellm` |
+| Model quality benchmarks | `bob eval coder humaneval` (needs endpoint running) |
 | Continue MCP: read files (`@filesystem`) | Wired automatically; use `@filesystem` in Continue chat |
 | Continue MCP: fetch URLs (`@url`) | Wired automatically; use `@url https://...` in Continue chat |
 
@@ -81,25 +81,25 @@ No extra steps.
 
 | Feature | What to run |
 |---------|------------|
-| Langfuse observability | Starts automatically; or manually: `.\scripts\setup-docker.ps1` then `llm services start` |
+| Langfuse observability | Starts automatically; or manually: `.\scripts\setup-docker.ps1` then `bob services start` |
 | SearXNG private web search | Same; starts as part of the Docker stack |
 | n8n workflow automation | Same |
-| Continue MCP `@web` search | Requires SearXNG running (`llm services start`) |
+| Continue MCP `@web` search | Requires SearXNG running (`bob services start`) |
 | Continue MCP `@github` | Set `GITHUB_TOKEN` environment variable (GitHub PAT with `repo` scope) |
-| Langfuse tracing via LiteLLM | After Docker setup: get API keys from Langfuse UI → set `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` env vars → set `langfuseEnabled = $true` in `config/user.psd1` → `llm gen && llm litellm` |
+| Langfuse tracing via LiteLLM | After Docker setup: get API keys from Langfuse UI → set `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` env vars → set `langfuseEnabled = $true` in `config/user.psd1` → `bob gen && bob litellm` |
 
 ### Quick test scenarios
 
 **1. Verify the endpoint is up and serving all models:**
 ```powershell
-llm up -NoOpen
-llm status          # should show: planner, coder, chat, fim, embed
-llm chat coder "write a PowerShell one-liner that lists the 5 largest files in the current folder"
+bob up -NoOpen
+bob status          # should show: planner, coder, chat, fim, embed
+bob chat coder "write a PowerShell one-liner that lists the 5 largest files in the current folder"
 ```
 
 **2. Continue.dev autocomplete and inline edit:**
 ```
-llm serve
+bob serve
 # Open VS Code, open any source file
 # Start typing a function (ghost text should appear within 1–2 seconds)
 # Select a block of code, press Ctrl+I, type "add error handling"
@@ -109,8 +109,8 @@ llm serve
 **3. aider plan-then-edit workflow:**
 ```powershell
 cd C:\my-project
-llm up -NoOpen
-llm aider
+bob up -NoOpen
+bob aider
 # In aider: /add src/parser.py
 # Type: "add input validation. Raise ValueError if the input string is empty or contains only whitespace"
 # Review the plan, press Enter to apply edits
@@ -119,7 +119,7 @@ llm aider
 
 **4. fabric for quick prompt patterns:**
 ```powershell
-llm up -NoOpen
+bob up -NoOpen
 git diff --staged | fabric --pattern write_git_commit
 cat meeting-notes.txt | fabric --pattern extract_wisdom
 cat error.log | fabric --pattern explain_code
@@ -128,26 +128,26 @@ fabric -l    # see all 254 patterns
 
 **5. LiteLLM proxy with stop/status:**
 ```powershell
-llm litellm -NoWindow    # starts proxy in background on :8081, logs to logs/litellm.log
-llm litellm status       # shows PID and uptime
+bob litellm -NoWindow    # starts proxy in background on :8081, logs to logs/litellm.log
+bob litellm status       # shows PID and uptime
 # Point Cline at http://localhost:8081/v1 to get retry-on-failure
-llm litellm stop
+bob litellm stop
 ```
 
 **6. Model quality benchmark:**
 ```powershell
-llm serve
-llm eval coder gsm8k --limit 100   # quick smoke test (~8 min); math word problems
-llm eval coder gsm8k               # full benchmark (~90 min)
-llm eval planner mmlu --shots 5    # general knowledge, 5-shot (~90 min)
+bob serve
+bob eval coder gsm8k --limit 100   # quick smoke test (~8 min); math word problems
+bob eval coder gsm8k               # full benchmark (~90 min)
+bob eval planner mmlu --shots 5    # general knowledge, 5-shot (~90 min)
 # Results in results/eval-coder-gsm8k-<timestamp>/
 ```
 
 **7. Docker services (Langfuse + SearXNG + n8n):**
 ```powershell
 .\scripts\setup-docker.ps1   # first time only (installs Docker Desktop if needed)
-llm services start
-llm services status          # verify all three containers are Up
+bob services start
+bob services status          # verify all three containers are Up
 # Langfuse: http://localhost:3001  (admin@local.dev / admin123)
 # SearXNG:  http://localhost:8888
 # n8n:      http://localhost:5678
@@ -157,35 +157,35 @@ llm services status          # verify all three containers are Up
 ## Starting the stack each session
 
 ```powershell
-llm up        # endpoint on configured port (default 8080) + Open WebUI (default 3000)
+bob up        # endpoint on configured port (default 8080) + Open WebUI (default 3000)
 ```
 
-`llm up` starts both services silently in the background (no terminal windows pop up), then waits inline for each to be ready: a spinner resolves to a green "ready (Ns)" line for the endpoint, then again for Open WebUI, then the browser opens. Typical wait: 5–15 s for the endpoint, 10–25 s for Open WebUI. If either doesn't respond within its timeout (60 s / 120 s) a warning is printed with a fallback URL.
+`bob up` starts both services silently in the background (no terminal windows pop up), then waits inline for each to be ready: a spinner resolves to a green "ready (Ns)" line for the endpoint, then again for Open WebUI, then the browser opens. Typical wait: 5–15 s for the endpoint, 10–25 s for Open WebUI. If either doesn't respond within its timeout (60 s / 120 s) a warning is printed with a fallback URL.
 
-The endpoint logs go to `logs/llama-swap.log`; tail them live with `llm logs`. Pass `-NoOpen` to skip the WebUI wait and browser open entirely:
+The endpoint logs go to `logs/llama-swap.log`; tail them live with `bob logs`. Pass `-NoOpen` to skip the WebUI wait and browser open entirely:
 
 ```powershell
-llm up -NoOpen    # start services, wait for endpoint only, don't open the browser
+bob up -NoOpen    # start services, wait for endpoint only, don't open the browser
 ```
 
 Check what's running and how much RAM each service is using:
 
 ```powershell
-llm status    # which models are loaded in VRAM
-llm ps        # daemon PIDs, RAM, and uptime
+bob status    # which models are loaded in VRAM
+bob ps        # daemon PIDs, RAM, and uptime
 ```
 
 If you only need the API for IDE and terminal tools, use interactive mode instead: it stays in your terminal, shows output directly, and stops with Ctrl+C:
 
 ```powershell
-llm serve     # inference endpoint at http://localhost:<port>/v1  (default: 8080)
+bob serve     # inference endpoint at http://localhost:<port>/v1  (default: 8080)
 ```
 
 The server loads a model into VRAM when it first receives a request, and unloads it when it's been idle for a while. The exception is `fim` (autocomplete) and `embed` (embeddings), which are pinned in VRAM and never unloaded. Only one large model (`planner`, `coder`, or `chat`) is resident at a time; switching between them takes a few seconds.
 
-**mlock:** `fim` and `embed` are pinned in physical RAM with `--mlock`, preventing the OS from paging their weights to disk under memory pressure (e.g. simultaneous VS Code autocomplete, chat, and Open WebUI load). This locks approximately 4 GB of physical RAM permanently. On systems with less than 32 GB of RAM, disable it by setting `mlock = $false` on the `fim` and `embed` entries in `config/user.psd1` (gitignored per-machine override; re-run `llm gen` after editing).
+**mlock:** `fim` and `embed` are pinned in physical RAM with `--mlock`, preventing the OS from paging their weights to disk under memory pressure (e.g. simultaneous VS Code autocomplete, chat, and Open WebUI load). This locks approximately 4 GB of physical RAM permanently. On systems with less than 32 GB of RAM, disable it by setting `mlock = $false` on the `fim` and `embed` entries in `config/user.psd1` (gitignored per-machine override; re-run `bob gen` after editing).
 
-Setting `mlockBig = $true` in `config/user.psd1` extends mlock to the swap-group models (planner, coder, chat), pinning CPU-offloaded weight pages against pagefile eviction. This requires `SeLockMemoryPrivilege` on Windows — run `llm mlock` to check status and grant the privilege automatically (UAC prompt; restart terminal after).
+Setting `mlockBig = $true` in `config/user.psd1` extends mlock to the swap-group models (planner, coder, chat), pinning CPU-offloaded weight pages against pagefile eviction. This requires `SeLockMemoryPrivilege` on Windows — run `bob mlock` to check status and grant the privilege automatically (UAC prompt; restart terminal after).
 
 To start automatically at login, put a shortcut to `up.ps1` in `shell:startup`, or create a Task Scheduler task set to "At log on" running `pwsh -File C:\local-llm\scripts\up.ps1 -NoOpen`.
 
@@ -201,7 +201,7 @@ To start automatically at login, put a shortcut to `up.ps1` in `shell:startup`, 
 
 Every model's GGUF file, HuggingFace source, context size, and launch flags are defined once in [config/models.psd1](../config/models.psd1). The downloader and the runtime config both read from it. Clients reference the role names above (`coder`, `planner`, etc.), so swapping the backing model for a role never requires touching any client configuration.
 
-The `12gb` profile uses smaller variants (about 21 GB on disk instead of 38 GB). The `8gb` profile targets cards like the RTX 3070 and 4060 and is marked unvalidated; it ships with the repo but has not been tested on physical hardware yet. Switch with `llm profile 12gb` or `llm profile 8gb`, or pass `-Profile` to `setup.bat` before the first model download.
+The `12gb` profile uses smaller variants (about 21 GB on disk instead of 38 GB). The `8gb` profile targets cards like the RTX 3070 and 4060 and is marked unvalidated; it ships with the repo but has not been tested on physical hardware yet. Switch with `bob profile 12gb` or `bob profile 8gb`, or pass `-Profile` to `setup.bat` before the first model download.
 
 ### Pro models (API-backed, no platform fee)
 
@@ -222,9 +222,9 @@ $env:ZHIPU_API_KEY    = 'sk-...'   # open.bigmodel.cn → API keys         (peer
 
 Pro models are only available through `:8081` (LiteLLM). Direct `:8080` requests return "model not found" because llama-swap only serves local models.
 
-**Override providers or models** in `config/user.psd1` (see the `peers` block in `config/user.psd1.example`). You can disable individual peers, change which model a role uses, or add OpenRouter as a fallback (5.5% platform fee applies). Run `llm gen` after any change.
+**Override providers or models** in `config/user.psd1` (see the `peers` block in `config/user.psd1.example`). You can disable individual peers, change which model a role uses, or add OpenRouter as a fallback (5.5% platform fee applies). Run `bob gen` after any change.
 
-**Bill control:** set a per-key spending limit on the provider dashboard as a hard stop independent of local config. Optionally add `budget` and `budgetPeriod` to the deepseek peer block in `user.psd1` for a LiteLLM-side cap (e.g. `budget = 15.0; budgetPeriod = '30d'`). Run `llm gen` after any change.
+**Bill control:** set a per-key spending limit on the provider dashboard as a hard stop independent of local config. Optionally add `budget` and `budgetPeriod` to the deepseek peer block in `user.psd1` for a LiteLLM-side cap (e.g. `budget = 15.0; budgetPeriod = '30d'`). Run `bob gen` after any change.
 
 ## Calling the API directly
 
@@ -238,8 +238,8 @@ curl http://localhost:8081/v1/chat/completions -H "Content-Type: application/jso
 Or use the built-in streaming CLI (tokens appear as they generate):
 
 ```powershell
-llm chat coder "write fizzbuzz in rust"
-llm chat planner "design a caching layer" --sys "Be concise." --max 1024
+bob chat coder "write fizzbuzz in rust"
+bob chat planner "design a caching layer" --sys "Be concise." --max 1024
 ```
 
 The LiteLLM proxy port defaults to `8081` (`litellmPort` in `defaults`). The underlying llama-swap engine is on `8080` (`port` in `defaults`) but clients should use `8081` for retry logic, Langfuse tracing, and pro model access.
@@ -297,10 +297,10 @@ curl http://localhost:8081/v1/chat/completions \
   }'
 ```
 
-Or via `llm chat`:
+Or via `bob chat`:
 
 ```powershell
-llm chat chat "What is 2+2? /no_think" --max 128
+bob chat chat "What is 2+2? /no_think" --max 128
 ```
 
 ### When to use each mode
@@ -364,7 +364,7 @@ if ($choice.finish_reason -eq 'tool_calls') {
 
 Continue.dev provides inline autocomplete and a chat panel inside VS Code. `setup-clients.ps1` links the repo's config into `~/.continue/config.yaml`, so all models are wired with no in-editor setup needed.
 
-To get started, run `.\scripts\setup-clients.ps1` once, install the **Continue** extension from the VS Code Marketplace, then start the endpoint with `llm serve` or `llm up`. Open the Continue panel with the sidebar icon or `Ctrl+L` and the `coder` and `planner` models should appear immediately.
+To get started, run `.\scripts\setup-clients.ps1` once, install the **Continue** extension from the VS Code Marketplace, then start the endpoint with `bob serve` or `bob up`. Open the Continue panel with the sidebar icon or `Ctrl+L` and the `coder` and `planner` models should appear immediately.
 
 **How models map to Continue roles:**
 
@@ -379,7 +379,7 @@ To get started, run `.\scripts\setup-clients.ps1` once, install the **Continue**
 | Autocomplete | `fim` (Qwen-Coder-3B, pinned) | as-you-type ghost text completions |
 | Embed | `embed` (bge-m3, pinned) | `@codebase` and `@docs` RAG indexing |
 
-System prompts are set per-model: `coder` uses a direct engineering style prompt; `chat` includes `/no_think` to suppress the Qwen3 scratchpad for conversational use; `planner` has no prompt so thinking runs freely. Pro model prompts are configured in the `peers.deepseek.pro` block in `models.psd1` and synced to Open WebUI by `llm gen`. The `systemMessage` field in `config/continue/config.yaml` sets prompts for Continue specifically.
+System prompts are set per-model: `coder` uses a direct engineering style prompt; `chat` includes `/no_think` to suppress the Qwen3 scratchpad for conversational use; `planner` has no prompt so thinking runs freely. Pro model prompts are configured in the `peers.deepseek.pro` block in `models.psd1` and synced to Open WebUI by `bob gen`. The `systemMessage` field in `config/continue/config.yaml` sets prompts for Continue specifically.
 
 `Ctrl+L` opens a new chat with any selected code attached as context. `Ctrl+I` opens an inline edit on the selected lines and shows a diff for you to accept or reject. Autocomplete fires as ghost text; `Tab` accepts it. Use the model dropdown at the bottom of the chat panel to switch between roles.
 
@@ -402,7 +402,7 @@ Four MCP servers are wired into Continue automatically via `config/continue/conf
 - `filesystem`, `github` require Node.js (installed by `setup.bat`).
 - `fetch` requires uv / `uvx` (installed by `setup.bat`).
 - `github` requires `GITHUB_TOKEN` set as a user or system environment variable. Without it the server loads but all queries return auth errors. Create a token at GitHub → Settings → Developer Settings → Personal access tokens (classic) with `repo` scope.
-- `searxng-search` requires the Docker stack running (`llm services start`). If Docker is stopped, `@web` queries return nothing silently.
+- `searxng-search` requires the Docker stack running (`bob services start`). If Docker is stopped, `@web` queries return nothing silently.
 
 If a server fails to load, Continue shows a warning badge on its name in the chat panel. Click it to see the error. Most failures are a missing `node`, `uvx`, or `GITHUB_TOKEN`.
 
@@ -432,7 +432,7 @@ Run `.\scripts\setup-clients.ps1` to link the aider config (`config/aider/.aider
 
 ```powershell
 cd <your-project>
-llm aider
+bob aider
 ```
 
 The config sets `architect: true`, which sends your request to `planner` first. It writes a prose description of what needs to change, then `coder` turns that into a diff. With `auto-accept-architect: false`, you see the plan and press Enter to apply it, or refine it before anything is written. Each turn triggers a VRAM swap between `planner` and `coder`, which takes a few seconds.
@@ -453,17 +453,17 @@ aider commits each accepted edit to git automatically. Work on a branch so `/und
 ## Shell AI Patterns: fabric
 
 fabric transforms piped text through a named prompt pattern: a structured prompt with a
-specific output format baked in. Where `llm chat` is a blank canvas, fabric patterns encode
+specific output format baked in. Where `bob chat` is a blank canvas, fabric patterns encode
 the _format_ of the answer (commit message, executive summary, code review checklist) so you
 don't rewrite the same prompt structure every time. Patterns live in
 `~/.config/fabric/patterns/`, each a directory with a `system.md` you can inspect or copy to
 build your own.
 
 It ships as a Go binary built from the `external/fabric` submodule; no winget, no download.
-Run `llm fabric-setup` once to build and configure it:
+Run `bob fabric-setup` once to build and configure it:
 
 ```powershell
-llm fabric-setup
+bob fabric-setup
 ```
 
 This builds `bin/fabric.exe` from `external/fabric/cmd/fabric/` and copies the 254 patterns
@@ -489,7 +489,7 @@ cat meeting.txt | fabric --pattern extract_wisdom
 fabric uses the `coder` model by default. Pass `--model planner` for complex analysis tasks.
 Run `fabric -l` to see all 254 available patterns.
 
-To update patterns after a submodule bump: re-run `llm fabric-setup` (patterns re-copied,
+To update patterns after a submodule bump: re-run `bob fabric-setup` (patterns re-copied,
 binary rebuilt only if `bin/fabric.exe` is missing; delete it first to force a rebuild).
 
 ## Ecosystem Services
@@ -500,15 +500,15 @@ LiteLLM sits between clients and llama-swap, adding retry logic and structured r
 
 ```powershell
 # Start proxy on port 8081 (foreground, Ctrl+C to stop)
-llm litellm
+bob litellm
 
 # Start in background (PID tracked, stop/status commands work)
-llm litellm -NoWindow
+bob litellm -NoWindow
 ```
 
-All clients (Continue, aider, Cline, fabric, Open WebUI, `llm chat`) are configured to use `:8081` by default. The proxy exposes all local model names (`coder`, `planner`, `chat`, `fim`, `embed`) plus pro model names (`chat-pro`, `planner-pro`, `coder-pro`) when API keys are set. Direct `:8080` access to llama-swap still works for local models but bypasses retry logic and Langfuse tracing.
+All clients (Continue, aider, Cline, fabric, Open WebUI, `bob chat`) are configured to use `:8081` by default. The proxy exposes all local model names (`coder`, `planner`, `chat`, `fim`, `embed`) plus pro model names (`chat-pro`, `planner-pro`, `coder-pro`) when API keys are set. Direct `:8080` access to llama-swap still works for local models but bypasses retry logic and Langfuse tracing.
 
-`config/litellm.yaml` is generated automatically by `llm gen` and `llm serve` — do not edit it by hand.
+`config/litellm.yaml` is generated automatically by `bob gen` and `bob serve` — do not edit it by hand.
 
 ### Docker services (Langfuse + SearXNG + n8n)
 
@@ -519,13 +519,13 @@ CPU-only services run in Docker Desktop. GPU tools (llama.cpp, Open WebUI) stay 
 .\scripts\setup-docker.ps1
 
 # After setup, manage with:
-llm services start    # writes .env from models.psd1, starts containers, prints state table
-llm services stop     # stops containers (data is preserved)
-llm services status   # show container names, state, and uptime
-llm services logs     # tail all container logs (Ctrl+C to stop)
+bob services start    # writes .env from models.psd1, starts containers, prints state table
+bob services stop     # stops containers (data is preserved)
+bob services status   # show container names, state, and uptime
+bob services logs     # tail all container logs (Ctrl+C to stop)
 ```
 
-Docker Desktop must be running before `llm services start`; it does not auto-launch. Start it from the Start menu or system tray (look for the whale icon) if needed.
+Docker Desktop must be running before `bob services start`; it does not auto-launch. Start it from the Start menu or system tray (look for the whale icon) if needed.
 
 Override ports or timezone in `config/user.psd1` (file is gitignored, safe for per-machine settings):
 ```powershell
@@ -537,18 +537,18 @@ After changing any of these, re-run `.\scripts\setup-docker.ps1` to regenerate `
 - `tools/langfuse-data/`: Postgres database containing all Langfuse traces, projects, and API keys
 - `tools/n8n-data/`: n8n workflows, credentials, and execution history
 
-These survive `llm services stop` and `llm services start`. They are deleted if you run `docker system prune -af` (used for fixing corrupted images; see Troubleshooting below). Back them up if you have valuable Langfuse history or n8n workflows.
+These survive `bob services stop` and `bob services start`. They are deleted if you run `docker system prune -af` (used for fixing corrupted images; see Troubleshooting below). Back them up if you have valuable Langfuse history or n8n workflows.
 
 ---
 
-#### Langfuse: LLM observability
+#### Langfuse: bob observability
 
 Open `http://localhost:3001`. Default login: `admin@local.dev` / `admin123`.
 
-Langfuse records every LLM request routed through LiteLLM: the full prompt, response, model name, latency (time to first token + total), token counts, and any retry events. Use it to:
+Langfuse records every bob request routed through LiteLLM: the full prompt, response, model name, latency (time to first token + total), token counts, and any retry events. Use it to:
 
 - **Debug unexpected answers**: see the exact system prompt and user message the model received, not what your code sent before transformation
-- **Compare quant levels**: run `llm eval` before and after a profile switch, then look at Langfuse to see if latency changed alongside accuracy
+- **Compare quant levels**: run `bob eval` before and after a profile switch, then look at Langfuse to see if latency changed alongside accuracy
 - **Audit agentic tools**: see every turn aider or Cline makes, including tool calls and their results
 - **Track token burn**: spot which workflows are expensive before they become a problem
 
@@ -556,7 +556,7 @@ Langfuse records every LLM request routed through LiteLLM: the full prompt, resp
 
 Tracing only works through LiteLLM. Direct `:8080` requests are invisible to Langfuse.
 
-1. Start Docker services: `llm services start`
+1. Start Docker services: `bob services start`
 2. Open `http://localhost:3001` → **Settings → API Keys** → create a key pair, copy the **Public Key** and **Secret Key**
 3. Set the keys as environment variables (add to your PowerShell profile for persistence):
    ```powershell
@@ -569,14 +569,14 @@ Tracing only works through LiteLLM. Direct `:8080` requests are invisible to Lan
    ```
 5. Regenerate `config/litellm.yaml` and restart the proxy:
    ```powershell
-   llm gen
-   llm litellm stop
-   llm litellm -NoWindow
+   bob gen
+   bob litellm stop
+   bob litellm -NoWindow
    ```
-6. Point your client at `:8081` instead of `:8080` (or use `llm chat` which goes through LiteLLM automatically)
+6. Point your client at `:8081` instead of `:8080` (or use `bob chat` which goes through LiteLLM automatically)
 7. Requests appear in the Langfuse dashboard under **Traces** within a few seconds
 
-> **Note:** `config/litellm.yaml` is generated on every `llm gen` and `llm serve`. Do not edit it directly — changes are overwritten. Use `user.psd1` for all persistent customization.
+> **Note:** `config/litellm.yaml` is generated on every `bob gen` and `bob serve`. Do not edit it directly — changes are overwritten. Use `user.psd1` for all persistent customization.
 
 ---
 
@@ -632,7 +632,7 @@ Add an **HTTP Request** node:
   }
   ```
 
-The response is `choices[0].message.content`; wire that to whatever you want (Slack, email, file, another LLM call).
+The response is `choices[0].message.content`; wire that to whatever you want (Slack, email, file, another bob call).
 
 **Example workflows:**
 - **PR summarizer**: GitHub webhook trigger → fetch PR diff → HTTP Request to `coder` → post summary comment
@@ -656,7 +656,7 @@ A ready-to-import workflow lives at `tools/n8n-workflows/daily-research-digest.j
 
 The workflow has two modes:
 - **Scheduled digest**: fetches RSS, verifies each article via SearXNG, summarizes one-by-one with the local LLM, posts Discord embeds with clickable links and a ✅/⚠️ corroboration badge
-- **On-demand research**: POST `{"topic": "your topic"}` to `http://localhost:5678/webhook/research-digest` → SearXNG searches the topic → LLM synthesizes → Discord
+- **On-demand research**: POST `{"topic": "your topic"}` to `http://localhost:5678/webhook/research-digest` → SearXNG searches the topic → bob synthesizes → Discord
 
 ---
 
@@ -667,12 +667,12 @@ The workflow has two modes:
 | `exec /bin/sh: exec format error` on any container | Image layers corrupted by interrupted download (e.g. daemon crashed mid-pull) | `docker system prune -af` then re-run `.\scripts\setup-docker.ps1`; this deletes all cached images and re-downloads clean copies (~3 GB) |
 | `langfuse-postgres unhealthy`, `dependency failed to start` | Postgres container failed to start; almost always the corrupted-layer issue above | Same: `docker system prune -af` + re-run setup |
 | `500 Internal Server Error` on all `docker` commands | WSL2 backend not started or crashed | Restart Docker Desktop from system tray → wait for whale icon to go solid (60–90 s) |
-| `@web` in Continue returns nothing | Docker services not running, or SearXNG container stopped | `llm services status`; if any container is not `Up`, run `llm services start` |
-| Langfuse dashboard shows no traces | Tracing not enabled; LiteLLM not configured or not running | Follow the "Enabling tracing" steps above; confirm `llm litellm status` shows running |
+| `@web` in Continue returns nothing | Docker services not running, or SearXNG container stopped | `bob services status`; if any container is not `Up`, run `bob services start` |
+| Langfuse dashboard shows no traces | Tracing not enabled; LiteLLM not configured or not running | Follow the "Enabling tracing" steps above; confirm `bob litellm status` shows running |
 | Port already in use | Another process on 3001, 8888, or 5678 | Set override ports in `config/user.psd1`, re-run `.\scripts\setup-docker.ps1` |
 | Containers stop after reboot | `restart: unless-stopped` is set but Docker Desktop didn't start | Enable Docker Desktop → Settings → General → "Start Docker Desktop when you log in" |
 | Lost n8n workflows or Langfuse history | `docker system prune -af` deleted `tools/langfuse-data` and `tools/n8n-data` | These are not recoverable without a backup; back them up before running prune |
-| `llm services logs` shows nothing for SearXNG | SearXNG logs are suppressed by design (noisy access logs) | To debug, temporarily change `logging.driver: none` to `logging.driver: json-file` in `tools/compose/docker-compose.yml`, re-run `docker compose -f tools/compose/docker-compose.yml up -d` |
+| `bob services logs` shows nothing for SearXNG | SearXNG logs are suppressed by design (noisy access logs) | To debug, temporarily change `logging.driver: none` to `logging.driver: json-file` in `tools/compose/docker-compose.yml`, re-run `docker compose -f tools/compose/docker-compose.yml up -d` |
 
 #### Updating Docker service images
 
@@ -682,29 +682,29 @@ To pull newer versions of Langfuse, SearXNG, or n8n:
 2. Pull the new images and restart:
    ```powershell
    docker compose -f tools\compose\docker-compose.yml pull
-   llm services stop
-   llm services start
+   bob services stop
+   bob services start
    ```
 
 Persistent data in `tools/langfuse-data/` and `tools/n8n-data/` is preserved across image updates. Back them up before a major version upgrade in case the new container runs a migration that isn't backwards-compatible.
 
 ### Model quality benchmarks
 
-`llm eval` uses [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness), an open-source benchmarking framework that runs standardized tasks against any compatible endpoint and returns a reproducible accuracy score. This is separate from `llm bench`, which measures throughput (tokens/sec); `llm eval` measures *answer quality*.
+`bob eval` uses [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness), an open-source benchmarking framework that runs standardized tasks against any compatible endpoint and returns a reproducible accuracy score. This is separate from `bob bench`, which measures throughput (tokens/sec); `bob eval` measures *answer quality*.
 
-**Why run it:** VRAM savings from lower quant levels come at an accuracy cost. Speed and VRAM are easy to measure; `llm eval` closes the loop on whether a model or quant change actually degraded the answers.
+**Why run it:** VRAM savings from lower quant levels come at an accuracy cost. Speed and VRAM are easy to measure; `bob eval` closes the loop on whether a model or quant change actually degraded the answers.
 
-Requires `llm serve` running first. The eval venv is created by `setup.bat`; no separate bootstrap needed.
+Requires `bob serve` running first. The eval venv is created by `setup.bat`; no separate bootstrap needed.
 
 ```powershell
 # Quick smoke test (recommended first run, ~8 min)
-llm eval coder gsm8k --limit 100
+bob eval coder gsm8k --limit 100
 
 # Full benchmarks (saved to results/)
-llm eval coder gsm8k            # math word problems (~90 min)
-llm eval coder humaneval        # code generation (~3 hr)
-llm eval planner mmlu           # general knowledge (~90 min)
-llm eval coder gsm8k --shots 5  # 5-shot variant (slightly higher scores, longer)
+bob eval coder gsm8k            # math word problems (~90 min)
+bob eval coder humaneval        # code generation (~3 hr)
+bob eval planner mmlu           # general knowledge (~90 min)
+bob eval coder gsm8k --shots 5  # 5-shot variant (slightly higher scores, longer)
 ```
 
 Results are saved as JSON under `results/eval-<role>-<task>-<timestamp>/<role>/results_<timestamp>.json`. The primary metric is `exact_match,flexible-extract` (accuracy 0.0–1.0; the flexible extractor finds the final number in the response). Reference points for 14B Q4 quant models at **5-shot**:
@@ -719,7 +719,7 @@ Scores well below these ranges usually mean the chat template wasn't applied cor
 
 ## Browser chat and RAG: Open WebUI
 
-`llm up` starts Open WebUI on port 3000, pre-wired to the local inference endpoint and embedding model. There's no manual admin setup. If you want it without the inference stack, use `llm webui`.
+`bob up` starts Open WebUI on port 3000, pre-wired to the local inference endpoint and embedding model. There's no manual admin setup. If you want it without the inference stack, use `bob webui`.
 
 Open WebUI uses the `embed` model for document search automatically. Add documents through the workspace panel; they're indexed locally and available in any chat via the RAG interface. You can create model presets in Workspace → Models, for example a "Planner" preset with low temperature for precise answers, or a "Chat" preset for general conversation.
 
@@ -754,12 +754,12 @@ Or just write it as a plain PSD1 hashtable:
 }
 ```
 
-After changing ports or timezone, re-run `.\scripts\setup-docker.ps1` to regenerate `.env` and restart containers. After changing `activeProfile`, run `llm gen` to regenerate the server config, then `llm fetch` to download any missing model files.
+After changing ports or timezone, re-run `.\scripts\setup-docker.ps1` to regenerate `.env` and restart containers. After changing `activeProfile`, run `bob gen` to regenerate the server config, then `bob fetch` to download any missing model files.
 
-`llm gen` regenerates `config/llama-swap.yaml`, `config/litellm.yaml`, and Open WebUI system prompts from `models.psd1` + `user.psd1` without restarting the server; useful after editing model parameters, peer configuration, or system prompts:
+`bob gen` regenerates `config/llama-swap.yaml`, `config/litellm.yaml`, and Open WebUI system prompts from `models.psd1` + `user.psd1` without restarting the server; useful after editing model parameters, peer configuration, or system prompts:
 
 ```powershell
-llm gen       # regenerate both configs (no restart needed for the next llm serve)
+bob gen       # regenerate both configs (no restart needed for the next bob serve)
 ```
 
 ---
@@ -769,25 +769,25 @@ llm gen       # regenerate both configs (no restart needed for the next llm serv
 `config/models.psd1` defines all models grouped into profiles. The `activeProfile` key at the top selects which one is used.
 
 ```powershell
-llm profiles             # list all profiles with VRAM footprints and current selection
-llm profile 12gb         # switch profiles and regenerate the server config
-llm profile auto         # detect GPU VRAM and switch to the best-fit profile automatically
-llm fetch --list 12gb    # preview what the 12gb profile would download, without downloading
-llm fetch                # download any models the current profile is missing
-llm show coder           # file path, size, SHA256, and disk status for a specific role
+bob profiles             # list all profiles with VRAM footprints and current selection
+bob profile 12gb         # switch profiles and regenerate the server config
+bob profile auto         # detect GPU VRAM and switch to the best-fit profile automatically
+bob fetch --list 12gb    # preview what the 12gb profile would download, without downloading
+bob fetch                # download any models the current profile is missing
+bob show coder           # file path, size, SHA256, and disk status for a specific role
 ```
 
-Switching profiles does not delete models from previous profiles; they stay in `models/`. Run `llm fetch` after switching to pull any files the new profile needs that aren't already there.
+Switching profiles does not delete models from previous profiles; they stay in `models/`. Run `bob fetch` after switching to pull any files the new profile needs that aren't already there.
 
-To add or change a model, edit its entry in `config/models.psd1` (setting `repo`, `path`, `gguf`, `ctx`, and any optional flags), then run `llm fetch` to download it and `llm serve` to pick it up. The server configs (`config/llama-swap.yaml` and `config/litellm.yaml`) are generated automatically on each launch and should never be edited by hand.
+To add or change a model, edit its entry in `config/models.psd1` (setting `repo`, `path`, `gguf`, `ctx`, and any optional flags), then run `bob fetch` to download it and `bob serve` to pick it up. The server configs (`config/llama-swap.yaml` and `config/litellm.yaml`) are generated automatically on each launch and should never be edited by hand.
 
-To add a new profile for a different VRAM tier, add a new key under `profiles` in the PSD1 file and switch to it with `llm profile <name>`.
+To add a new profile for a different VRAM tier, add a new key under `profiles` in the PSD1 file and switch to it with `bob profile <name>`.
 
 ## Keeping the stack current
 
 **Inference engine (llama.cpp):**
 ```powershell
-llm update    # pulls latest llama.cpp submodule commit and rebuilds
+bob update    # pulls latest llama.cpp submodule commit and rebuilds
 ```
 This is equivalent to bumping the submodule, running `build-llama.ps1 -Force`, and copying the new binary. See [TUNING.md](TUNING.md#bumping-the-llamacpp-submodule) for how to verify performance didn't regress after an update.
 
@@ -795,4 +795,4 @@ This is equivalent to bumping the submodule, running `build-llama.ps1 -Force`, a
 
 **Python venv dependencies:** delete the relevant `tools/venv-*` directory and re-run `setup.bat`; it recreates missing venvs automatically.
 
-**Fabric patterns:** re-run `llm fabric-setup` after bumping the `external/fabric` submodule; it re-copies the pattern directory.
+**Fabric patterns:** re-run `bob fabric-setup` after bumping the `external/fabric` submodule; it re-copies the pattern directory.

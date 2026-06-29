@@ -4,10 +4,10 @@
 # To change a port, set it in config/user.psd1, then re-run: .\scripts\setup-docker.ps1
 #
 # Start:   .\scripts\setup-docker.ps1
-#   or:    llm services start
-# Stop:    llm services stop
-# Status:  llm services status
-# Logs:    llm services logs
+#   or:    bob services start
+# Stop:    bob services stop
+# Status:  bob services status
+# Logs:    bob services logs
 
 services:
   langfuse-postgres:
@@ -35,16 +35,16 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://langfuse:langfuse@langfuse-postgres:5432/langfuse
-      NEXTAUTH_SECRET: local-llm-langfuse-secret
-      SALT: local-llm-salt-1234
+      NEXTAUTH_SECRET: bob-langfuse-secret
+      SALT: bob-salt-1234
       NEXTAUTH_URL: http://localhost:${LANGFUSE_PORT}
       TELEMETRY_ENABLED: "false"
       LANGFUSE_INIT_ORG_ID: local
-      LANGFUSE_INIT_ORG_NAME: local-llm
+      LANGFUSE_INIT_ORG_NAME: bob
       LANGFUSE_INIT_USER_EMAIL: admin@local.dev
       LANGFUSE_INIT_USER_PASSWORD: admin123
       LANGFUSE_INIT_PROJECT_ID: main
-      LANGFUSE_INIT_PROJECT_NAME: local-llm
+      LANGFUSE_INIT_PROJECT_NAME: bob
 
   searxng:
     image: searxng/searxng:2026.6.26-f8ffbf36f
@@ -71,5 +71,5 @@ services:
       N8N_HOST: localhost
       N8N_PROTOCOL: http
       WEBHOOK_URL: http://localhost:${N8N_PORT}
-      N8N_ENCRYPTION_KEY: local-llm-n8n-key
+      N8N_ENCRYPTION_KEY: bob-n8n-key
       GENERIC_TIMEZONE: ${N8N_TIMEZONE:-UTC}

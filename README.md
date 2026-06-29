@@ -1,4 +1,4 @@
-# local-llm
+# Bob
 
 A private AI stack for Windows. Models run on your NVIDIA GPU with no cloud dependencies and no data leaving the machine. Fast enough for real-time autocomplete and multi-turn coding sessions.
 
@@ -47,10 +47,10 @@ Installs CUDA, Python 3.12, Go, Node.js, cmake, and Docker Desktop. If Docker De
 
 ```powershell
 .\setup.bat
-llm up
+bob up
 ```
 
-Builds the inference engine and proxy from source, downloads models, wires VS Code and terminal clients, and starts Docker services. Open a new terminal after setup so the PATH update takes effect. `llm up` starts llama-swap (`:8080`), the LiteLLM proxy (`:8081`), and Open WebUI (`:3000`) in the background. Tail logs with `llm logs`.
+Builds the inference engine and proxy from source, downloads models, wires VS Code and terminal clients, and starts Docker services. Open a new terminal after setup so the PATH update takes effect. `bob up` starts llama-swap (`:8080`), the LiteLLM proxy (`:8081`), and Open WebUI (`:3000`) in the background. Tail logs with `bob logs`.
 
 Both scripts are safe to re-run if something fails partway through.
 

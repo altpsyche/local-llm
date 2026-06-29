@@ -130,18 +130,18 @@ if ($mlockBigEnabled) {
         Write-Host "  mlockBig = true in config — granting SeLockMemoryPrivilege (UAC prompt)..." -ForegroundColor Cyan
         & "$PSScriptRoot\grant-mlock.ps1"
         if ($LASTEXITCODE -ne 0) {
-            Write-Host "  mlock skipped — grant cancelled or failed. Run: llm mlock" -ForegroundColor Yellow
+            Write-Host "  mlock skipped — grant cancelled or failed. Run: bob mlock" -ForegroundColor Yellow
         } else {
             Write-Host "  NOTE: open a new terminal after setup completes for mlock to take effect." -ForegroundColor Yellow
         }
     }
 } elseif ($ram -and $ram.FreeGB -ge 32) {
     Write-Host "  $($ram.TotalGB) GB RAM detected ($($ram.FreeGB) GB free) — mlockBig not enabled." -ForegroundColor DarkGray
-    Write-Host "  Tip: add  mlockBig = `$true  to config/user.psd1, then run: llm mlock" -ForegroundColor DarkGray
+    Write-Host "  Tip: add  mlockBig = `$true  to config/user.psd1, then run: bob mlock" -ForegroundColor DarkGray
     Write-Host "  This pins the planner's CPU-offloaded layers in RAM, preventing pagefile eviction." -ForegroundColor DarkGray
 } else {
     $reason = if ($ram) { "$($ram.FreeGB) GB free RAM (need 32+)" } else { "RAM detection unavailable" }
-    Write-Host "  mlock skipped — $reason.  Enable manually with: llm mlock" -ForegroundColor DarkGray
+    Write-Host "  mlock skipped — $reason.  Enable manually with: bob mlock" -ForegroundColor DarkGray
 }
 
 Step "Docker services (Langfuse + SearXNG + n8n)"
@@ -155,5 +155,5 @@ if ((Have 'docker') -or (Test-Path $dockerExe)) {
 
 if ($script:stepSw) { Write-Host "    done in $([int]$script:stepSw.Elapsed.TotalSeconds)s" -ForegroundColor DarkGray }
 Write-Host "`nSetup complete in $([int]$setupStart.Elapsed.TotalMinutes)m$($setupStart.Elapsed.Seconds)s." -ForegroundColor Green
-Write-Host "Open a new terminal, then:  llm up   (or  llm help  for all commands)" -ForegroundColor Green
+Write-Host "Open a new terminal, then:  bob up   (or  bob help  for all commands)" -ForegroundColor Green
 if ($Launch) { & "$PSScriptRoot\up.ps1" }

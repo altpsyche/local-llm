@@ -19,7 +19,7 @@ if (Test-Path $litellmExe) { & "$PSScriptRoot\start-litellm.ps1" -NoWindow }
 else { Write-Host "LiteLLM venv not found — skipping proxy. Run scripts\bootstrap-litellm.ps1" -ForegroundColor DarkGray }
 
 if (Test-PortInUse -Port $port) {
-  Write-Warning "Port $port already in use — the endpoint is probably already running ('llm stop' to free it)."; return
+  Write-Warning "Port $port already in use — the endpoint is probably already running ('bob stop' to free it)."; return
 }
 
 # Expose the repo root to the config so model paths relocate with the clone (see config\llama-swap.yaml).

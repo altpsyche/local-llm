@@ -1,6 +1,6 @@
 #requires -Version 7
 # Create the LiteLLM proxy venv (tools/venv-litellm/).
-# Run once. After this, 'llm litellm' starts the proxy on port 8081.
+# Run once. After this, 'bob litellm' starts the proxy on port 8081.
 $ErrorActionPreference = "Stop"
 $pyVer = & python --version 2>&1
 if ($pyVer -notmatch '3\.12') {
@@ -23,4 +23,4 @@ Write-Host "Installing litellm[proxy]..." -ForegroundColor Cyan
 if ($LASTEXITCODE -ne 0) { throw "pip install failed." }
 
 Write-Host "LiteLLM installed at tools/venv-litellm/" -ForegroundColor Green
-Write-Host "Start proxy: llm litellm   (listens on http://localhost:8081/v1)" -ForegroundColor DarkGray
+Write-Host "Start proxy: bob litellm   (listens on http://localhost:8081/v1)" -ForegroundColor DarkGray

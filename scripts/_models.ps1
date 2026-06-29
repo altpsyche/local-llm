@@ -5,7 +5,7 @@
 # Exposes:
 #   Get-ModelsConfig                  -> raw hashtable from the PSD1
 #   Get-EnabledPeers [-Config c]      -> list of enabled peer objects (with injected .name)
-#   Resolve-ProfileName [-Profile n]  -> profile name (arg -> $env:LLM_PROFILE -> activeProfile)
+#   Resolve-ProfileName [-Profile n]  -> profile name (arg -> $env:BOB_PROFILE -> activeProfile)
 #   Get-Models [-Profile n]           -> @{ profile; config; models } ; models = ordered role objects
 #   Set-ActiveProfile -Name n         -> rewrite the activeProfile line in place (validated)
 #   Get-GpuVramGB                     -> total VRAM of GPU 0 in whole GB, or $null
@@ -89,7 +89,7 @@ function Resolve-ProfileName {
   param([string]$Profile, $Config)
   if (-not $Config) { $Config = Get-ModelsConfig }
   $name = if     ($Profile)          { $Profile }
-          elseif ($env:LLM_PROFILE)  { $env:LLM_PROFILE }
+          elseif ($env:BOB_PROFILE)  { $env:BOB_PROFILE }
           else                       { $Config.activeProfile }
   if (-not $Config.profiles.Contains($name)) {
     throw "unknown profile '$name'. Valid: $($Config.profiles.Keys -join ', ')"

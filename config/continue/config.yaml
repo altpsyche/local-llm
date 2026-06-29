@@ -1,7 +1,7 @@
 # Continue.dev config (2026 YAML format; config.json is deprecated).
 # Per-role model assignment — no code. Copy or symlink this to ~/.continue/config.yaml
 # (PowerShell: New-Item -ItemType SymbolicLink -Path $HOME\.continue\config.yaml -Target C:\local-llm\config\continue\config.yaml)
-name: local-llm
+name: bob
 version: 0.0.1
 schema: v1
 

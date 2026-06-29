@@ -1,6 +1,6 @@
 #requires -Version 7
 # Create the lm-evaluation-harness venv (tools/venv-eval/).
-# Run once. After this, 'llm eval <role> [task]' benchmarks any model.
+# Run once. After this, 'bob eval <role> [task]' benchmarks any model.
 $ErrorActionPreference = "Stop"
 $pyVer = & python --version 2>&1
 if ($pyVer -notmatch '3\.12') {
@@ -23,5 +23,5 @@ Write-Host "Installing lm-eval (this may take a few minutes)..." -ForegroundColo
 if ($LASTEXITCODE -ne 0) { throw "pip install failed." }
 
 Write-Host "lm-eval installed at tools/venv-eval/" -ForegroundColor Green
-Write-Host "Quick smoke test:  llm eval coder gsm8k --limit 100  (~8 min)" -ForegroundColor DarkGray
-Write-Host "Full benchmark:    llm eval coder gsm8k               (~90 min)" -ForegroundColor DarkGray
+Write-Host "Quick smoke test:  bob eval coder gsm8k --limit 100  (~8 min)" -ForegroundColor DarkGray
+Write-Host "Full benchmark:    bob eval coder gsm8k               (~90 min)" -ForegroundColor DarkGray

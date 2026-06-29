@@ -1,7 +1,7 @@
 #requires -Version 7
 # Syncs model system prompts from config/models.psd1 -> Open WebUI database.
-# Run automatically on `llm gen`. Safe to run manually anytime.
-# Skips gracefully if webui.db does not exist yet (first run before `llm webui`).
+# Run automatically on `bob gen`. Safe to run manually anytime.
+# Skips gracefully if webui.db does not exist yet (first run before `bob webui`).
 
 param([string]$Profile)
 
@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Stop'
 
 $dbPath = Join-Path $script:ModelsRepo 'tools\webui-data\webui.db'
 if (-not (Test-Path $dbPath)) {
-    Write-Host "gen-webui: webui.db not found — skipping (run `llm webui` once to create it)" -ForegroundColor DarkGray
+    Write-Host "gen-webui: webui.db not found — skipping (run `bob webui` once to create it)" -ForegroundColor DarkGray
     return
 }
 

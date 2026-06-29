@@ -5,7 +5,7 @@
 #   .\scripts\grant-mlock.ps1           # Grant (prompts UAC if not admin)
 #   .\scripts\grant-mlock.ps1 -Check    # Report status only (no elevation needed)
 #
-# After granting: restart your terminal, then llm serve.
+# After granting: restart your terminal, then bob serve.
 
 param([switch]$Check)
 $ErrorActionPreference = "Stop"
@@ -56,7 +56,7 @@ if ($Check) {
         Write-Host "  mlock privilege: granted  ($($s.Sid))" -ForegroundColor Green
         exit 0
     } else {
-        Write-Host "  mlock privilege: NOT granted — run: llm mlock" -ForegroundColor Yellow
+        Write-Host "  mlock privilege: NOT granted — run: bob mlock" -ForegroundColor Yellow
         exit 1
     }
 }
@@ -81,7 +81,7 @@ if (-not (Test-IsAdmin)) {
         if ($proc.ExitCode -eq 0) {
             Write-Host ""
             Write-Host "Privilege granted." -ForegroundColor Green
-            Write-Host "IMPORTANT: close this terminal and open a new one, then run: llm serve" -ForegroundColor Yellow
+            Write-Host "IMPORTANT: close this terminal and open a new one, then run: bob serve" -ForegroundColor Yellow
         } else {
             Write-Host "Grant failed or was cancelled (exit $($proc.ExitCode))." -ForegroundColor Red
             Write-Host "Fallback: secpol.msc -> Local Policies -> User Rights Assignment -> Lock pages in memory"

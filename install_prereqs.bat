@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================================
-REM  local-llm prerequisite installer. Run ONCE on a fresh machine.
+REM  Bob prerequisite installer. Run ONCE on a fresh machine.
 REM  Installs: Node.js, uv, Go, Python 3.12, CUDA Toolkit, cmake, Docker Desktop.
 REM
 REM  After this script finishes:

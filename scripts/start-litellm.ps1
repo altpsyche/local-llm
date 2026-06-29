@@ -38,7 +38,7 @@ if ($NoWindow) {
         -WindowStyle Hidden -PassThru
     $proc.Id | Set-Content $pidFile -Encoding utf8
     Write-Host "LiteLLM proxy: http://localhost:$port/v1   (PID $($proc.Id))" -ForegroundColor Green
-    Write-Host "Logs: logs/litellm.log   Stop: llm litellm stop" -ForegroundColor DarkGray
+    Write-Host "Logs: logs/litellm.log   Stop: bob litellm stop" -ForegroundColor DarkGray
 } else {
     Write-Host "LiteLLM proxy starting on http://localhost:$port/v1 (Ctrl+C to stop)" -ForegroundColor Cyan
     & $proxy --config $cfg --port $port

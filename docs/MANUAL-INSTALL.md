@@ -383,7 +383,7 @@ Each venv install takes 2–10 minutes. The webui venv is the largest (~1 GB).
 ## 7. Generate runtime configs
 
 Two config files are generated from `config/models.psd1`. Both are overwritten on every
-`llm serve` and `llm gen` — do not edit them by hand.
+`bob serve` and `bob gen` — do not edit them by hand.
 
 ```powershell
 .\scripts\gen-llama-swap.ps1   # writes config/llama-swap.yaml (local model routing)
@@ -534,7 +534,7 @@ terminal (cmd or PowerShell), and registers tab completions in your PowerShell p
 
 **Open a new terminal** after this step — the PATH change only takes effect in new sessions.
 
-Verify: `llm help` prints the command list.
+Verify: `bob help` prints the command list.
 
 ---
 
@@ -595,7 +595,7 @@ Services running:
 ### 12.3 Verify
 
 ```powershell
-llm services status
+bob services status
 # Expected: four rows, all "Up"
 #   compose-langfuse-postgres-1
 #   compose-langfuse-1
@@ -606,13 +606,13 @@ llm services status
 ### 12.4 Day-to-day management
 
 ```powershell
-llm services start    # start all containers (Docker Desktop must be running)
-llm services stop     # stop containers — data is preserved
-llm services status   # container names, state, uptime
-llm services logs     # tail all container logs (Ctrl+C to stop)
+bob services start    # start all containers (Docker Desktop must be running)
+bob services stop     # stop containers — data is preserved
+bob services status   # container names, state, uptime
+bob services logs     # tail all container logs (Ctrl+C to stop)
 ```
 
-The full `setup-docker.ps1` only needs to run once. Use `llm services start` afterward.
+The full `setup-docker.ps1` only needs to run once. Use `bob services start` afterward.
 
 ### 12.5 Troubleshooting
 
@@ -634,30 +634,30 @@ Run these in order. Each one exercises a different part of the stack.
 
 ```powershell
 # 1. Hardware and config summary
-llm diagnose
+bob diagnose
 
 # 2. Start the inference endpoint
-llm serve
+bob serve
 
 # (in a second terminal)
 
 # 3. List all models and their load state
-llm models
+bob models
 
 # 4. End-to-end inference test
-llm chat coder "write a fizzbuzz in Rust"
+bob chat coder "write a fizzbuzz in Rust"
 
 # 5. Throughput benchmark (should show pp512 ≈ 4600 t/s on RTX 5080)
-llm bench
+bob bench
 
 # 6. Docker services (if installed)
-llm services status    # all four containers should show "Up"
+bob services status    # all four containers should show "Up"
 ```
 
-If `llm diagnose` shows the wrong CUDA version or GPU is not detected, re-run the CUDA
+If `bob diagnose` shows the wrong CUDA version or GPU is not detected, re-run the CUDA
 install step and restart your terminal.
 
-If `llm bench` shows prefill around 1000 t/s rather than 4000+, the build is using a
+If `bob bench` shows prefill around 1000 t/s rather than 4000+, the build is using a
 CPU fallback path. Force a clean rebuild:
 ```powershell
 .\scripts\build-llama.ps1 -Force
@@ -678,5 +678,5 @@ Make sure `$env:CUDA_PATH` points to CUDA 12.8 when you rebuild.
 | `pip install` fails in webui venv | Python version mismatch | Confirm `$py --version` is `3.12.x`; do not use the system `python` |
 | `llm` not found after step 11 | PATH not refreshed | Open a new terminal |
 | Docker services: `exec format error` | Containerd snapshotter enabled | Docker Desktop → Settings → General → uncheck containerd → Apply & Restart |
-| SearXNG `@web` returns nothing | Docker services stopped | `llm services start` |
+| SearXNG `@web` returns nothing | Docker services stopped | `bob services start` |
 | Langfuse shows no traces | LiteLLM not configured | Follow the tracing setup in [USAGE.md § Langfuse](USAGE.md#langfuse--llm-observability) |

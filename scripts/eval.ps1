@@ -1,12 +1,12 @@
 #requires -Version 7
 # Benchmark a model role for quality using lm-evaluation-harness.
-# Usage: llm eval <role> [task] [--shots N] [--limit N]
+# Usage: bob eval <role> [task] [--shots N] [--limit N]
 # Examples:
-#   llm eval coder gsm8k             # math word problems, full run (~90 min sequential)
-#   llm eval coder gsm8k --limit 100 # quick smoke test (~8 min)
-#   llm eval coder humaneval         # code generation (~180 min)
-#   llm eval planner mmlu            # general knowledge (5-shot)
-#   llm eval planner hellaswag       # common-sense reasoning
+#   bob eval coder gsm8k             # math word problems, full run (~90 min sequential)
+#   bob eval coder gsm8k --limit 100 # quick smoke test (~8 min)
+#   bob eval coder humaneval         # code generation (~180 min)
+#   bob eval planner mmlu            # general knowledge (5-shot)
+#   bob eval planner hellaswag       # common-sense reasoning
 # Results are saved as JSON to results/eval-<role>-<task>-<timestamp>/
 # Uses local-chat-completions → /v1/chat/completions (required for chat-tuned models)
 # Speed: sequential by default (parallel=1 server). For faster runs, set defaults.parallel
@@ -37,7 +37,7 @@ if (-not $tokenizer) {
 }
 
 try { Invoke-RestMethod "http://localhost:$port/v1/models" -TimeoutSec 3 | Out-Null }
-catch { throw "Endpoint not running at http://localhost:$port/v1 — start it first: llm serve" }
+catch { throw "Endpoint not running at http://localhost:$port/v1 — start it first: bob serve" }
 
 $resultsDir = Join-Path $repo 'results'
 if (-not (Test-Path $resultsDir)) { New-Item -ItemType Directory $resultsDir | Out-Null }

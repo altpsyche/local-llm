@@ -16,7 +16,7 @@ This is a hands-on tour of every feature in the stack, structured as a typical w
 - [Feature 5: Fabric (Shell Pattern Pipes)](#feature-5-fabric-shell-pattern-pipes)
 - [Feature 6: SearXNG (Private Web Search)](#feature-6-searxng-private-web-search)
 - [Feature 7: n8n (Workflow Automation)](#feature-7-n8n-workflow-automation)
-- [Feature 8: Langfuse (LLM Observability)](#feature-8-langfuse-llm-observability)
+- [Feature 8: Langfuse (bob Observability)](#feature-8-langfuse-llm-observability)
 - [Command Reference](#command-reference-everything-at-a-glance)
 - [Evening: Wrapping Up](#evening-wrapping-up)
 - [What to Try First](#what-to-try-first)
@@ -30,7 +30,7 @@ This is a hands-on tour of every feature in the stack, structured as a typical w
 Open a terminal and run:
 
 ```powershell
-llm up
+bob up
 ```
 
 This starts three things silently in the background:
@@ -40,12 +40,12 @@ This starts three things silently in the background:
 
 Your browser opens automatically. If you'd rather it didn't:
 ```powershell
-llm up -NoOpen
+bob up -NoOpen
 ```
 
 Check that everything is running:
 ```powershell
-llm status
+bob status
 ```
 
 You should see five models listed: `planner`, `coder`, `chat`, `fim`, `embed`. None are loaded into VRAM yet; they load on first use and stay there until idle. `fim` (autocomplete) and `embed` (search indexing) are pinned and never unload.
@@ -60,8 +60,8 @@ You should see five models listed: `planner`, `coder`, `chat`, `fim`, `embed`. N
 The optional services (Langfuse, SearXNG, n8n) run in Docker. Make sure Docker Desktop is open (whale icon in the system tray), then:
 
 ```powershell
-llm services start
-llm services status
+bob services start
+bob services status
 ```
 
 You should see four containers, all `Up`:
@@ -222,7 +222,7 @@ Open a terminal, navigate to a project, and run:
 
 ```powershell
 cd C:\my-project
-llm aider
+bob aider
 ```
 
 ### A typical aider session
@@ -265,7 +265,7 @@ aider commits each accepted edit to git automatically. Work on a branch so `/und
 
 First-time setup (once):
 ```powershell
-llm fabric-setup
+bob fabric-setup
 ```
 
 ### Common patterns
@@ -326,7 +326,7 @@ This is where SearXNG integrates with your coding workflow. In the Continue chat
 
 Continue queries SearXNG, includes the top results as context, then asks the model. So the model answers with current information, not just what it was trained on. This is especially useful for library releases, recent bug fixes, and anything that changes frequently.
 
-If `@web` returns nothing, check that Docker services are running: `llm services status`.
+If `@web` returns nothing, check that Docker services are running: `bob services status`.
 
 ---
 
@@ -354,7 +354,7 @@ A ready-to-import workflow is at `tools/n8n-workflows/daily-research-digest.json
 ```powershell
 Invoke-RestMethod -Method POST `
   -Uri "http://localhost:5678/webhook/research-digest" `
-  -Body '{"topic": "llm quantization techniques"}' `
+  -Body '{"topic": "bob quantization techniques"}' `
   -ContentType "application/json"
 ```
 
@@ -393,7 +393,7 @@ Invoke-RestMethod -Uri "http://localhost:5678/webhook/<your-id>" -Method POST `
 
 ---
 
-## Feature 8: Langfuse (LLM Observability)
+## Feature 8: Langfuse (bob Observability)
 
 **What it is:** A dashboard at http://localhost:3001 that records every AI request routed through LiteLLM: the full prompt, response, latency, token counts, and retries. Useful for understanding what the model actually received (not what you think you sent), debugging unexpected answers, and seeing which workflows are expensive.
 
@@ -426,22 +426,22 @@ Add one line to `config/user.psd1` (create it if it doesn't exist):
 
 Then regenerate and restart LiteLLM:
 ```powershell
-llm gen
-llm litellm stop
-llm litellm -NoWindow
-llm litellm status    # confirm it's running
+bob gen
+bob litellm stop
+bob litellm -NoWindow
+bob litellm status    # confirm it's running
 ```
 
-> `config/litellm.yaml` is generated automatically — do not edit it directly. Use `user.psd1` + `llm gen` to make any persistent changes.
+> `config/litellm.yaml` is generated automatically — do not edit it directly. Use `user.psd1` + `bob gen` to make any persistent changes.
 
 **Step 4: Confirm clients use :8081:**
 
-All bundled clients (Continue, aider, Cline, fabric, Open WebUI, `llm chat`) are already configured for `:8081`. If you use a custom tool, set its API base to `http://localhost:8081/v1`.
+All bundled clients (Continue, aider, Cline, fabric, Open WebUI, `bob chat`) are already configured for `:8081`. If you use a custom tool, set its API base to `http://localhost:8081/v1`.
 
 **Step 5: Make a request and check Langfuse:**
 
 ```powershell
-llm chat coder "explain what a mutex is"
+bob chat coder "explain what a mutex is"
 ```
 
 Open http://localhost:3001 → **Traces**. Within a few seconds you'll see the request appear with the full prompt, the response, and timing information.
@@ -464,38 +464,38 @@ This is how you debug "why did the model respond like that?": you see the exact 
 
 | Task | Command |
 |---|---|
-| Start everything | `llm up` |
-| Start without browser | `llm up -NoOpen` |
-| Start inference only | `llm serve` |
-| Check what's running | `llm status` |
-| Stop everything | `llm stop` |
-| Tail logs | `llm logs` |
+| Start everything | `bob up` |
+| Start without browser | `bob up -NoOpen` |
+| Start inference only | `bob serve` |
+| Check what's running | `bob status` |
+| Stop everything | `bob stop` |
+| Tail logs | `bob logs` |
 
 ### Chat from terminal
 
 | Task | Command |
 |---|---|
-| Chat with coder | `llm chat coder "your question"` |
-| Chat with planner | `llm chat planner "design question"` |
-| Skip the scratchpad | `llm chat chat "quick question /no_think"` |
+| Chat with coder | `bob chat coder "your question"` |
+| Chat with planner | `bob chat planner "design question"` |
+| Skip the scratchpad | `bob chat chat "quick question /no_think"` |
 
 ### Docker services
 
 | Task | Command |
 |---|---|
-| Start services | `llm services start` |
-| Stop services | `llm services stop` |
-| Check status | `llm services status` |
-| Tail logs | `llm services logs` |
+| Start services | `bob services start` |
+| Stop services | `bob services stop` |
+| Check status | `bob services status` |
+| Tail logs | `bob services logs` |
 
 ### Models
 
 | Task | Command |
 |---|---|
-| List models | `llm models` |
-| Switch to 12gb profile | `llm profile 12gb` |
-| Download missing models | `llm fetch` |
-| Throughput benchmark | `llm bench` |
+| List models | `bob models` |
+| Switch to 12gb profile | `bob profile 12gb` |
+| Download missing models | `bob fetch` |
+| Throughput benchmark | `bob bench` |
 
 ### Aider
 
@@ -524,21 +524,21 @@ This is how you debug "why did the model respond like that?": you see the exact 
 
 | Task | Command |
 |---|---|
-| Start proxy in background | `llm litellm -NoWindow` |
-| Check proxy is running | `llm litellm status` |
-| Stop proxy | `llm litellm stop` |
-| Start foreground (see logs) | `llm litellm` |
+| Start proxy in background | `bob litellm -NoWindow` |
+| Check proxy is running | `bob litellm status` |
+| Stop proxy | `bob litellm stop` |
+| Start foreground (see logs) | `bob litellm` |
 
-LiteLLM runs on port 8081 and starts automatically with `llm up`. All bundled clients default to `:8081`. Direct `:8080` (llama-swap) still works for local models but bypasses retry and Langfuse.
+LiteLLM runs on port 8081 and starts automatically with `bob up`. All bundled clients default to `:8081`. Direct `:8080` (llama-swap) still works for local models but bypasses retry and Langfuse.
 
 ### Diagnostics
 
 | Task | Command |
 |---|---|
-| Hardware + CUDA + model health | `llm diagnose` |
-| Running processes (PID, RAM) | `llm ps` |
-| Check model files on disk | `llm show coder` |
-| Throughput benchmark | `llm bench` |
+| Hardware + CUDA + model health | `bob diagnose` |
+| Running processes (PID, RAM) | `bob ps` |
+| Check model files on disk | `bob show coder` |
+| Throughput benchmark | `bob bench` |
 
 ---
 
@@ -546,15 +546,15 @@ LiteLLM runs on port 8081 and starts automatically with `llm up`. All bundled cl
 
 Stop the inference stack to free VRAM:
 ```powershell
-llm stop
+bob stop
 ```
 
 Stop Docker services to free RAM (optional; they're lightweight, you can leave them running):
 ```powershell
-llm services stop
+bob services stop
 ```
 
-Data is always preserved when you stop. Langfuse traces, n8n workflows, and model files are all on disk. `llm up` tomorrow picks up exactly where you left off.
+Data is always preserved when you stop. Langfuse traces, n8n workflows, and model files are all on disk. `bob up` tomorrow picks up exactly where you left off.
 
 ---
 
@@ -562,18 +562,18 @@ Data is always preserved when you stop. Langfuse traces, n8n workflows, and mode
 
 If this was your first read-through, here's a short sequence that touches every feature:
 
-1. `llm up`: start the stack
-2. `llm diagnose`: confirm GPU, CUDA, and model files are all healthy
+1. `bob up`: start the stack
+2. `bob diagnose`: confirm GPU, CUDA, and model files are all healthy
 3. Open http://localhost:3000: chat with Open WebUI, try `/no_think` on a simple question
 4. Open VS Code: accept an autocomplete suggestion, try `Ctrl+I` on a block of code
 5. Open the Continue panel (`Ctrl+L`): ask `@web what changed in the latest Python release?`
 6. Open the Cline panel: give it a small contained task ("add a docstring to this function")
-7. In a terminal: `cd C:\my-project && llm aider`: add a file with `/add`, ask for a change, review the plan
+7. In a terminal: `cd C:\my-project && bob aider`: add a file with `/add`, ask for a change, review the plan
 8. In a terminal: `git diff --staged | fabric --pattern write_git_commit`
-9. `llm services start`: start Docker services
+9. `bob services start`: start Docker services
 10. Open http://localhost:8888: do a search, set it as a browser shortcut
 11. Open http://localhost:5678: create a webhook workflow that calls the LLM
-12. Enable Langfuse tracing: set `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` env vars + `langfuseEnabled = $true` in `user.psd1` + `llm gen && llm litellm`, make a request, open http://localhost:3001 and look at the trace
-13. `llm stop`: shut down cleanly
+12. Enable Langfuse tracing: set `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` env vars + `langfuseEnabled = $true` in `user.psd1` + `bob gen && bob litellm`, make a request, open http://localhost:3001 and look at the trace
+13. `bob stop`: shut down cleanly
 
 For more detail on any feature: [USAGE.md](USAGE.md). For troubleshooting the Docker services: [USAGE.md § Docker troubleshooting](USAGE.md#troubleshooting-docker).

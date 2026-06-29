@@ -1,6 +1,6 @@
 #requires -Version 7
 # Start endpoint + Open WebUI silently in the background (no terminal popups).
-# Use 'llm serve' for interactive/foreground mode with live log output.
+# Use 'bob serve' for interactive/foreground mode with live log output.
 param([switch]$NoOpen, [switch]$WithServices)
 $ErrorActionPreference = "Stop"
 $repo  = Split-Path $PSScriptRoot -Parent
@@ -15,7 +15,7 @@ $logsDir    = Join-Path $repo 'logs'
 if (-not (Test-Path $logsDir)) { New-Item -ItemType Directory $logsDir | Out-Null }
 
 if (Test-PortInUse -Port $port) {
-  Write-Warning "Port $port already in use — endpoint may already be running ('llm stop' to free it)."; return
+  Write-Warning "Port $port already in use — endpoint may already be running ('bob stop' to free it)."; return
 }
 
 # 1) Endpoint — hidden window, logs to logs/llama-swap.log via start.ps1's Tee-Object
@@ -24,7 +24,7 @@ $swapProc = Start-Process pwsh `
     -WindowStyle Hidden -PassThru
 $swapProc.Id | Set-Content (Join-Path $logsDir 'llama-swap.pid') -Encoding utf8
 Write-Host "Endpoint:   http://localhost:$port/v1   (PID $($swapProc.Id))" -ForegroundColor Green
-Write-Host "            logs: llm logs" -ForegroundColor DarkGray
+Write-Host "            logs: bob logs" -ForegroundColor DarkGray
 
 $spin = [char[]]@('|','/','-','\')
 $sw   = [Diagnostics.Stopwatch]::StartNew()
@@ -32,12 +32,12 @@ $i    = 0; $up = $false
 while ($sw.Elapsed.TotalSeconds -lt 60) {
     try { Invoke-RestMethod "http://localhost:$port/v1/models" -ErrorAction Stop | Out-Null; $up = $true; break }
     catch {}
-    if ($swapProc.HasExited) { Write-Warning "Endpoint process exited. Check: llm logs"; break }
+    if ($swapProc.HasExited) { Write-Warning "Endpoint process exited. Check: bob logs"; break }
     Write-Host "`r  $($spin[$i++ % 4]) Starting endpoint..." -NoNewline -ForegroundColor DarkGray
     Start-Sleep -Milliseconds 200
 }
 if ($up) { Write-Host "`r  Endpoint ready ($([int]$sw.Elapsed.TotalSeconds)s)              " -ForegroundColor Green }
-else      { Write-Warning "Endpoint did not respond in 60s. Check: llm logs" }
+else      { Write-Warning "Endpoint did not respond in 60s. Check: bob logs" }
 
 # 2) LiteLLM proxy — routes all clients through :8081 (local + pro models)
 $litellmExe = Join-Path $repo 'tools\venv-litellm\Scripts\litellm.exe'
@@ -76,7 +76,7 @@ if (Test-Path $webui) {
         } catch {}
         # Bail early if the host process died
         if ($uiProc.HasExited) {
-            Write-Warning "Open WebUI process exited. Check: llm logs"; break
+            Write-Warning "Open WebUI process exited. Check: bob logs"; break
         }
         Write-Host "`r  $($spin[$j++ % 4]) Starting Open WebUI..." -NoNewline -ForegroundColor DarkGray
         Start-Sleep -Milliseconds 500
@@ -111,4 +111,4 @@ N8N_PORT=$($cfg.defaults.n8nPort ?? 5678)
     Write-Warning "-WithServices: Docker not found. Run .\scripts\setup-docker.ps1 first."
   }
 }
-Write-Host "clients: http://localhost:$litellmPort/v1   aider: llm aider   stop: llm stop   logs: llm logs" -ForegroundColor DarkGray
+Write-Host "clients: http://localhost:$litellmPort/v1   aider: bob aider   stop: bob stop   logs: bob logs" -ForegroundColor DarkGray
