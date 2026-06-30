@@ -19,15 +19,14 @@ if (-not (Test-Path $mdl)) {
     throw "Whisper model not found at $mdl — run: bob setup-voice"
 }
 
-$pidFile = Join-Path $repo 'logs\whisper.pid'
-if (Test-Path $pidFile) {
-    $existingPid = [int](Get-Content $pidFile -Raw -ErrorAction SilentlyContinue)
-    if ($existingPid -and (Get-Process -Id $existingPid -ErrorAction SilentlyContinue)) {
-        Write-Host "whisper-server already running (PID $existingPid) at http://localhost:$sttPort" -ForegroundColor DarkGray
-        return
-    }
-    Remove-Item $pidFile  # stale PID file
+# Kill any stale whisper-server.exe processes before starting (prevents VRAM leak from orphaned procs)
+$stale = Get-Process -Name 'whisper-server' -ErrorAction SilentlyContinue
+if ($stale) {
+    $stale | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Milliseconds 300
 }
+$pidFile = Join-Path $repo 'logs\whisper.pid'
+Remove-Item $pidFile -ErrorAction SilentlyContinue
 
 if ($NoWindow) {
     $logsDir = Join-Path $repo 'logs'
@@ -41,9 +40,10 @@ if ($NoWindow) {
     Write-Host "whisper-server: http://localhost:$sttPort   (PID $($proc.Id))" -ForegroundColor Green
     Write-Host "Logs: logs/whisper.log   Stop: bob whisper stop" -ForegroundColor DarkGray
 
-    # Poll for readiness (TCP connect) so callers know the server is accepting requests
+    # Poll for readiness — GPU load takes ~5s, allow up to 30s
     $ready = $false
-    for ($i = 0; $i -lt 20; $i++) {
+    Write-Host -NoNewline "  Loading model..." -ForegroundColor DarkGray
+    for ($i = 0; $i -lt 60; $i++) {
         Start-Sleep -Milliseconds 500
         try {
             $tcp = [Net.Sockets.TcpClient]::new('127.0.0.1', $sttPort)
@@ -52,7 +52,8 @@ if ($NoWindow) {
             break
         } catch {}
     }
-    if (-not $ready) { Write-Warning "whisper-server may not be ready yet on port $sttPort — check logs/whisper.log" }
+    if ($ready) { Write-Host " ready." -ForegroundColor Green }
+    else { Write-Host ""; Write-Warning "whisper-server may not be ready yet on port $sttPort — check logs/whisper.log" }
 } else {
     Write-Host "whisper-server starting on http://localhost:$sttPort (Ctrl+C to stop)" -ForegroundColor Cyan
     & $exe --model $mdl --port $sttPort --host 0.0.0.0

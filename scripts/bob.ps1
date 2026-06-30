@@ -35,6 +35,8 @@ function Invoke-BobStream {
   [IO.File]::WriteAllText($bodyTmp, $body, [System.Text.UTF8Encoding]::new($false))
   $full = [System.Text.StringBuilder]::new()
   $spinRs = $null; $spinPs = $null; $spinDone = $false
+  $prevEnc = [Console]::OutputEncoding
+  [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
   try {
     if (-not $Raw) {
       $spinRs = [runspacefactory]::CreateRunspace(); $spinRs.Open()
@@ -79,6 +81,7 @@ function Invoke-BobStream {
       [Console]::Write("`r           `r")
     }
     Remove-Item $bodyTmp -ErrorAction SilentlyContinue
+    [Console]::OutputEncoding = $prevEnc
   }
   return $full.ToString()
 }
@@ -89,14 +92,14 @@ function Format-ForSpeech {
   param([string]$Text)
   $t = $Text
   # Normalize typographic Unicode characters to spoken equivalents.
-  $t = $t.Replace([char]0x2014, ', ')    # em dash —
-  $t = $t.Replace([char]0x2013, ' to ')  # en dash –
-  $t = $t.Replace([char]0x2018, "'")     # left single quote
-  $t = $t.Replace([char]0x2019, "'")     # right single quote
-  $t = $t.Replace([char]0x201C, '"')     # left double quote
-  $t = $t.Replace([char]0x201D, '"')     # right double quote
-  $t = $t.Replace([char]0x2026, '...')    # ellipsis
-  $t = $t.Replace([char]0x00A0, ' ')      # non-breaking space
+  $t = $t.Replace([string][char]0x2014, ', ')   # em dash —
+  $t = $t.Replace([string][char]0x2013, ' to ') # en dash –
+  $t = $t.Replace([string][char]0x2018, "'")    # left single quote
+  $t = $t.Replace([string][char]0x2019, "'")    # right single quote
+  $t = $t.Replace([string][char]0x201C, '"')    # left double quote
+  $t = $t.Replace([string][char]0x201D, '"')    # right double quote
+  $t = $t.Replace([string][char]0x2026, '...')  # ellipsis
+  $t = $t.Replace([string][char]0x00A0, ' ')    # non-breaking space
   $t = [regex]::Replace($t, '```[a-zA-Z]*\r?\n?', '')   # fenced code blocks — strip fence
   $t = $t.Replace('```', '')
   $t = [regex]::Replace($t, '`([^`]+)`', '$1')           # inline code
@@ -452,34 +455,54 @@ switch ($cmd) {
     & "$PSScriptRoot\bob.ps1" chat @fwd
   }
   'stop' {
-    Get-Process llama-swap,llama-server,open-webui -ErrorAction SilentlyContinue | Stop-Process -Force
-    foreach ($svc in 'llama-swap','open-webui') {
+    $killed = [System.Collections.Generic.List[string]]::new()
+
+    # 1) Kill C++ binaries by process name (survive stale PID files)
+    foreach ($bin in @('llama-swap','llama-server','whisper-server')) {
+      $procs = Get-Process -Name $bin -ErrorAction SilentlyContinue
+      if ($procs) { $procs | Stop-Process -Force; $killed.Add($bin) }
+    }
+
+    # 2) Kill Python-hosted services via PID files (litellm, piper, open-webui)
+    foreach ($svc in @('litellm','piper','open-webui')) {
       $pf = Join-Path $repo "logs\$svc.pid"
       if (Test-Path $pf) {
-        $wPid = [int](Get-Content $pf -Raw)
-        Get-Process -Id $wPid -ErrorAction SilentlyContinue | Stop-Process -Force
-        Remove-Item $pf
+        $wPid = [int](Get-Content $pf -Raw -ErrorAction SilentlyContinue)
+        if ($wPid) {
+          # Also kill child processes (uvicorn workers etc.)
+          try {
+            $parent = Get-Process -Id $wPid -ErrorAction Stop
+            Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $wPid } |
+              ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+            $parent | Stop-Process -Force
+            $killed.Add($svc)
+          } catch {}
+        }
+        Remove-Item $pf -ErrorAction SilentlyContinue
       }
     }
-    $litellmPid = Join-Path $repo 'logs\litellm.pid'
-    if (Test-Path $litellmPid) {
-      $wPid = [int](Get-Content $litellmPid -Raw -ErrorAction SilentlyContinue)
-      if ($wPid) { Get-Process -Id $wPid -ErrorAction SilentlyContinue | Stop-Process -Force }
-      Remove-Item $litellmPid -ErrorAction SilentlyContinue
+
+    # 3) Clean remaining PID files
+    foreach ($svc in @('llama-swap','whisper')) {
+      $pf = Join-Path $repo "logs\$svc.pid"
+      Remove-Item $pf -ErrorAction SilentlyContinue
     }
-    $whisperPid = Join-Path $repo 'logs\whisper.pid'
-    if (Test-Path $whisperPid) {
-      $wPid = [int](Get-Content $whisperPid -Raw -ErrorAction SilentlyContinue)
-      if ($wPid) { Get-Process -Id $wPid -ErrorAction SilentlyContinue | Stop-Process -Force }
-      Remove-Item $whisperPid -ErrorAction SilentlyContinue
+
+    # 4) Docker services (only if docker is available and compose file exists)
+    $compose = "$repo\tools\compose\docker-compose.yml"
+    if ((Get-Command docker -ErrorAction SilentlyContinue) -and (Test-Path $compose)) {
+      $running = docker compose -f $compose ps -q 2>$null
+      if ($running) {
+        docker compose -f $compose down 2>$null | Out-Null
+        $killed.Add('docker-services')
+      }
     }
-    $piperPid = Join-Path $repo 'logs\piper.pid'
-    if (Test-Path $piperPid) {
-      $wPid = [int](Get-Content $piperPid -Raw -ErrorAction SilentlyContinue)
-      if ($wPid) { Get-Process -Id $wPid -ErrorAction SilentlyContinue | Stop-Process -Force }
-      Remove-Item $piperPid -ErrorAction SilentlyContinue
+
+    if ($killed.Count) {
+      Write-Host "Stopped: $($killed -join ', ')" -ForegroundColor Green
+    } else {
+      Write-Host "Nothing was running." -ForegroundColor DarkGray
     }
-    Write-Host "Stopped endpoint + proxy + services (VRAM freed)." -ForegroundColor Green
   }
   'update' {
     $llmCppPath = Join-Path $repo 'external\llama.cpp'
@@ -731,6 +754,12 @@ N8N_PORT=$($dp.n8nPort ?? 5678)
     $voiceSys  = $bobCfg.voice.systemPrompt ?? $bobCfg.persona.systemPrompt
     $voiceRole = if ($pro) { $bobCfg.routing.proRole ?? 'chat-pro' } else { $bobCfg.routing.defaultRole ?? 'chat' }
     $voiceTok  = $bobCfg.voice.maxTokens ?? 256
+    # Auto-start whisper STT if not reachable
+    $sttPort = $bobCfg.voice.sttPort ?? 8082
+    try { $tcp = [Net.Sockets.TcpClient]::new('127.0.0.1', $sttPort); $tcp.Close() } catch {
+      Write-Host "Starting whisper STT..." -ForegroundColor DarkGray
+      & "$PSScriptRoot\start-whisper.ps1" -NoWindow
+    }
     Write-Host "Bob voice loop — Ctrl+C to exit. Use headphones to avoid echo." -ForegroundColor Cyan
     Write-Host "Model: $voiceRole" -ForegroundColor DarkGray
     # Conversation history persists for the duration of the voice session.
