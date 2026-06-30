@@ -34,11 +34,18 @@ $totalGB  = ($models | Measure-Object -Property sizeGB -Sum).Sum
 Write-Host "Profile '$name': $($models.Count) models, ~$([math]::Round($totalGB,1)) GB total" -ForegroundColor Cyan
 
 if ($ListOnly) {
-  $models | ForEach-Object {
-    $dest    = Join-Path $outDir $_.gguf
+  $rows = [System.Collections.Generic.List[pscustomobject]]::new()
+  foreach ($m in $models) {
+    $dest    = Join-Path $outDir $m.gguf
     $present = if (Test-Path $dest) { "present" } else { "MISSING" }
-    [pscustomobject]@{ model = $_.role; file = $_.gguf; GB = $_.sizeGB; status = $present; from = "$($_.repo)/$($_.path)" }
-  } | Format-Table -AutoSize
+    $rows.Add([pscustomobject]@{ model = $m.role; file = $m.gguf; GB = $m.sizeGB; status = $present; from = "$($m.repo)/$($m.path)" })
+    if ($m.mmproj) {
+      $mDest    = Join-Path $outDir $m.mmproj
+      $mPresent = if (Test-Path $mDest) { "present" } else { "MISSING" }
+      $rows.Add([pscustomobject]@{ model = "$($m.role)/mmproj"; file = $m.mmproj; GB = '~0.6'; status = $mPresent; from = "$($m.repo)/$($m.mmproj)" })
+    }
+  }
+  $rows | Format-Table -AutoSize
   Write-Host "(dry run — nothing downloaded)" -ForegroundColor DarkGray
   return
 }
@@ -69,19 +76,37 @@ if ($staleParts.Count -gt 0) {
 $fail = 0
 foreach ($m in $models) {
   $dest = Join-Path $outDir $m.gguf
-  if (Test-Path $dest) { Write-Host "exists  $($m.gguf)" -ForegroundColor DarkGray; continue }
-
-  $url = "https://huggingface.co/$($m.repo)/resolve/main/$($m.path)"
-  Write-Host "fetch   $($m.gguf)  <-  $($m.repo) / $($m.path)" -ForegroundColor Cyan
-  $dlSw = [Diagnostics.Stopwatch]::StartNew()
-  curl.exe -L -C - --fail-with-body --progress-bar @hdr -o "$dest.part" $url
-  if ($LASTEXITCODE -ne 0) {
-    Write-Warning "FAILED $url  (verify repo/filename on huggingface.co)"; $fail++
-    continue
+  if (Test-Path $dest) { Write-Host "exists  $($m.gguf)" -ForegroundColor DarkGray }
+  else {
+    $url = "https://huggingface.co/$($m.repo)/resolve/main/$($m.path)"
+    Write-Host "fetch   $($m.gguf)  <-  $($m.repo) / $($m.path)" -ForegroundColor Cyan
+    $dlSw = [Diagnostics.Stopwatch]::StartNew()
+    curl.exe -L -C - --fail-with-body --progress-bar @hdr -o "$dest.part" $url
+    if ($LASTEXITCODE -ne 0) {
+      Write-Warning "FAILED $url  (verify repo/filename on huggingface.co)"; $fail++; continue
+    }
+    Move-Item "$dest.part" $dest -Force
+    Update-Manifest -ModelsDir $outDir -Gguf $m.gguf -Url $url -SizeGB $m.sizeGB
+    Write-Host "done    $($m.gguf)  ($($m.sizeGB) GB in $([int]$dlSw.Elapsed.TotalMinutes)m$($dlSw.Elapsed.Seconds)s)" -ForegroundColor Green
   }
-  Move-Item "$dest.part" $dest -Force
-  Update-Manifest -ModelsDir $outDir -Gguf $m.gguf -Url $url -SizeGB $m.sizeGB
-  Write-Host "done    $($m.gguf)  ($($m.sizeGB) GB in $([int]$dlSw.Elapsed.TotalMinutes)m$($dlSw.Elapsed.Seconds)s)" -ForegroundColor Green
+
+  # Download mmproj (multimodal projector) when present — same repo, different file.
+  if ($m.mmproj) {
+    $mmprojDest = Join-Path $outDir $m.mmproj
+    if (Test-Path $mmprojDest) { Write-Host "exists  $($m.mmproj)" -ForegroundColor DarkGray }
+    else {
+      $mmprojUrl = "https://huggingface.co/$($m.repo)/resolve/main/$($m.mmproj)"
+      Write-Host "fetch   $($m.mmproj)  <-  $($m.repo) / $($m.mmproj)" -ForegroundColor Cyan
+      $dlSw2 = [Diagnostics.Stopwatch]::StartNew()
+      curl.exe -L -C - --fail-with-body --progress-bar @hdr -o "$mmprojDest.part" $mmprojUrl
+      if ($LASTEXITCODE -ne 0) {
+        Write-Warning "FAILED $mmprojUrl  (verify mmproj filename on huggingface.co)"; $fail++
+      } else {
+        Move-Item "$mmprojDest.part" $mmprojDest -Force
+        Write-Host "done    $($m.mmproj) in $([int]$dlSw2.Elapsed.TotalMinutes)m$($dlSw2.Elapsed.Seconds)s" -ForegroundColor Green
+      }
+    }
+  }
 }
 
 Write-Host "`nModels in $outDir :" -ForegroundColor Green

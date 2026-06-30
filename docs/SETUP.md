@@ -108,6 +108,8 @@ bob diagnose              # re-run hardware summary at any time; flags any unres
 
 **Pro models** (optional): set `DEEPSEEK_API_KEY` and `ZHIPU_API_KEY` environment variables, then run `bob gen`. The pro models (`chat-pro`, `planner-pro`, `coder-pro`) will be available via the LiteLLM proxy at `:8081`. See [USAGE.md § Pro models](USAGE.md#pro-models-api-backed-no-platform-fee).
 
+**Voice and Vision (Phase 2, optional):** run `bob setup-voice` to download whisper STT, piper TTS, and the Qwen2-VL mmproj file. Then set `voice.enabled = $true` and `vision.enabled = $true` in `config/bob.psd1` and restart with `bob up`. See [USAGE.md § Voice](USAGE.md#voice-phase-2) and [USAGE.md § Vision](USAGE.md#vision-phase-2).
+
 **Memory lock** is handled automatically during setup (step 10). If you enable `mlockBig = $true` in `config/user.psd1` after setup, run `bob mlock` to grant `SeLockMemoryPrivilege` and restart your terminal.
 
 On an RTX 5080 with the 14B Q4 coder model, expected numbers are **pp512 ≈ 4600 t/s, tg128 ≈ 89 t/s**. These confirm the engine is on the fast Blackwell hardware path. Ada and Ampere cards will show lower numbers; what matters is that prefill is not disproportionately slow relative to generation (see [TUNING.md](TUNING.md#verifying-the-fast-path)).

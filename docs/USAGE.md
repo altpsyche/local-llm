@@ -30,6 +30,18 @@ Chat (Bob identity):
   bob memory clear [--yes]             Wipe all memories
   bob budget                           Token and cost usage summary (LiteLLM + configured caps)
 
+Voice (Phase 2 — run `bob setup-voice` once to download whisper + piper; flip voice.enabled in bob.psd1):
+  bob setup-voice                      Download and wire whisper STT, piper TTS, and vision model
+  bob listen                           Record mic until silence → print transcript (whisper STT)
+  bob transcribe <file>                Transcribe an audio file via whisper
+  bob speak ["text"]                   Synthesise text to audio and play it (piper TTS); accepts stdin
+  bob voice [--pro]                    Continuous loop: listen → chat → speak (Ctrl+C to stop)
+  bob whisper start|stop|status|logs  Manage the whisper STT server (port 8082)
+
+Vision (Phase 2 — requires vision model download; model loads on demand, TTL 30 s):
+  bob describe <image> ["prompt"]      Describe an image file or answer a question about it
+  bob screenshot ["prompt"]            Take a screenshot and describe it
+
 Inference:
   bob serve                            Start API endpoint (interactive, Ctrl+C to stop)
   bob up [-NoOpen]                     Start endpoint + Open WebUI silently (no popup windows) [+ browser]
@@ -209,6 +221,7 @@ To start automatically at login, put a shortcut to `up.ps1` in `shell:startup`, 
 | `chat` | general conversation | Qwen3-14B Q4_K_M |
 | `fim` | autocomplete (pinned) | Qwen-Coder-3B Q8_0 |
 | `embed` | RAG embeddings (pinned) | bge-m3 Q8 |
+| `vision` | image description and visual Q&A | Qwen2-VL-7B Q4_K_M + mmproj (Phase 2) |
 
 Every model's GGUF file, HuggingFace source, context size, and launch flags are defined once in [config/models.psd1](../config/models.psd1). The downloader and the runtime config both read from it. Clients reference the role names above (`coder`, `planner`, etc.), so swapping the backing model for a role never requires touching any client configuration.
 
@@ -411,6 +424,72 @@ bob budget    # shows LiteLLM spend (if proxy is running) + configured caps
 ```
 
 Shows the `max_budget` and `budget_duration` from `config/litellm.yaml`, queries the LiteLLM proxy for spend data if it's running, and reports memory DB size at `$0 cost` (fully local). For detailed per-request cost breakdown, enable Langfuse tracing (see [Langfuse section](#langfuse-bob-observability)).
+
+## Voice (Phase 2)
+
+Voice adds two-way audio to the terminal using whisper.cpp (STT) and piper (TTS). All processing is local — no cloud, no microphone data leaving the machine.
+
+**One-time setup:**
+```powershell
+bob setup-voice
+```
+Downloads `ggml-base.en.bin` (~74 MB), piper Windows release, and the Qwen2-VL mmproj file. Then flip the flag in `config/bob.psd1`:
+```powershell
+voice = @{ enabled = $true; ... }
+```
+`bob up` auto-starts the whisper server on port 8082 when `voice.enabled = $true` and `bin/whisper-server.exe` is present.
+
+**Commands:**
+```powershell
+bob listen                          # record mic until 1.5 s silence → print transcript
+bob transcribe path\to\audio.wav    # transcribe a file instead of recording
+bob speak "Hello, I am Bob."        # synthesise and play (piper TTS)
+echo "some text" | bob speak        # pipe stdin to TTS
+bob voice                           # continuous loop: listen → chat → speak (Ctrl+C to stop)
+bob voice --pro                     # same loop but routes chat to cloud (DeepSeek API)
+```
+
+**Pipeline use:**
+```powershell
+bob listen | bob chat | bob speak   # one-shot voice turn
+```
+`bob chat` streams ANSI to the terminal and returns clean text when piped — the spinner and colour codes are suppressed, so `bob speak` receives plain text.
+
+**Whisper server management:**
+```powershell
+bob whisper start                   # start whisper STT server (port 8082)
+bob whisper stop                    # stop the whisper server
+bob whisper status                  # show PID and uptime
+bob whisper logs                    # tail the whisper log
+bob ps                              # shows whisper row alongside llama-swap and litellm
+bob status                          # now includes a whisper UP/down line
+```
+
+**Audio quality tips:**
+- Use headphones to prevent the mic picking up speaker output.
+- The energy-gate in `bob-voice-capture.py` silences blank audio before it reaches whisper.
+- Whisper base.en is fast (~200 ms on GPU). For other languages, swap `sttModel` to a multilingual model and re-run `bob setup-voice`.
+
+## Vision (Phase 2)
+
+Vision uses Qwen2-VL-7B (a 5 GB GGUF + a ~1.5 GB mmproj) to describe images and answer visual questions. The model loads on demand and unloads after 30 seconds of idle to free VRAM for chat/coder.
+
+**Setup:** `bob setup-voice` also downloads the mmproj. The GGUF itself downloads via `bob fetch` (it's part of the 16gb model profile). Flip the flag in `config/bob.psd1`:
+```powershell
+vision = @{ enabled = $true; visionRole = 'vision' }
+```
+
+**Commands:**
+```powershell
+bob describe C:\path\to\image.png
+bob describe C:\path\to\image.png "What text is visible?"
+bob screenshot
+bob screenshot "What application is open and what does it show?"
+```
+
+`bob describe` resizes the image to max 1024 px on the longest edge before encoding (large screenshots fit comfortably in the 4096-token context). `bob screenshot` captures the primary display, saves a temp PNG, calls `bob describe`, then deletes the temp file.
+
+**Known limitation:** `--flash-attn on` is incompatible with multimodal projection — `gen-llama-swap.ps1` automatically omits it when `mmproj` is set, so no manual config is needed.
 
 ## Qwen3 Thinking Mode
 

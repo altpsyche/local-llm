@@ -18,6 +18,15 @@ $litellmExe = Join-Path $repo 'tools\venv-litellm\Scripts\litellm.exe'
 if (Test-Path $litellmExe) { & "$PSScriptRoot\start-litellm.ps1" -NoWindow }
 else { Write-Host "LiteLLM venv not found — skipping proxy. Run scripts\bootstrap-litellm.ps1" -ForegroundColor DarkGray }
 
+# Auto-start whisper STT server if voice is enabled in bob.psd1.
+$whisperExe = Join-Path $repo 'bin\whisper-server.exe'
+$bobCfg     = Get-BobConfig
+if ($bobCfg.voice.enabled -and (Test-Path $whisperExe)) {
+    & "$PSScriptRoot\start-whisper.ps1" -NoWindow
+} elseif ($bobCfg.voice.enabled) {
+    Write-Host "voice.enabled = `$true but whisper-server.exe missing — run: bob setup-voice" -ForegroundColor Yellow
+}
+
 if (Test-PortInUse -Port $port) {
   Write-Warning "Port $port already in use — the endpoint is probably already running ('bob stop' to free it)."; return
 }

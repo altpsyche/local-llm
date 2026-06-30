@@ -18,6 +18,8 @@ This is a hands-on tour of every feature in the stack, structured as a typical w
 - [Feature 7: SearXNG (Private Web Search)](#feature-7-searxng-private-web-search)
 - [Feature 8: n8n (Workflow Automation)](#feature-8-n8n-workflow-automation)
 - [Feature 9: Langfuse (bob Observability)](#feature-9-langfuse-llm-observability)
+- [Feature 10: Voice Loop (STT + TTS)](#feature-10-voice-loop-stt--tts)
+- [Feature 11: Vision (Describe and Screenshot)](#feature-11-vision-describe-and-screenshot)
 - [Command Reference](#command-reference-everything-at-a-glance)
 - [Evening: Wrapping Up](#evening-wrapping-up)
 - [What to Try First](#what-to-try-first)
@@ -526,6 +528,70 @@ This is how you debug "why did the model respond like that?": you see the exact 
 
 ---
 
+## Feature 10: Voice Loop (STT + TTS)
+
+**Prerequisites:** Run `bob setup-voice` once (downloads whisper + piper + vision mmproj), then set `voice.enabled = $true` in `config/bob.psd1`. Restart with `bob up` so `bob up` auto-starts the whisper server.
+
+Voice adds microphone input (whisper.cpp STT on port 8082) and speaker output (piper TTS) to the terminal. All processing is local.
+
+### Try it: individual commands
+
+```powershell
+bob speak "Hello, I am Bob."                # synthesise text and play it
+bob listen                                   # record mic until 1.5 s silence, print transcript
+bob transcribe path\to\audio.wav            # transcribe a file instead of recording
+```
+
+### Try it: manual pipeline
+
+```powershell
+bob listen | bob chat | bob speak           # one turn: speak a question, hear the answer
+```
+
+### Try it: continuous voice loop
+
+```powershell
+bob voice           # runs until Ctrl+C: listen → chat → speak, repeat
+bob voice --pro     # same loop but routes chat to the cloud (DeepSeek API)
+```
+
+Bob listens for speech, transcribes it, sends the text to the chat model, then reads the response aloud. The energy gate in `bob-voice-capture.py` swallows silent moments so near-silence doesn't produce empty transcripts.
+
+**Tips:**
+- Use headphones to stop the mic from picking up the speaker.
+- The whisper `base.en` model runs in ~200 ms on GPU after the first load. Silence detection threshold is configurable via `silenceSec` in `config/bob.psd1`.
+
+---
+
+## Feature 11: Vision (Describe and Screenshot)
+
+**Prerequisites:** The vision GGUF is downloaded by `bob fetch` (it's part of the 16gb profile). The mmproj is downloaded by `bob setup-voice`. Set `vision.enabled = $true` in `config/bob.psd1`.
+
+Vision uses Qwen2-VL-7B to describe images and answer visual questions. The model loads on demand from the swap group and unloads after 30 s of idle.
+
+### Try it: describe an image file
+
+```powershell
+bob describe C:\path\to\photo.jpg
+bob describe C:\path\to\diagram.png "What does this diagram show?"
+```
+
+### Try it: describe your screen
+
+```powershell
+bob screenshot
+bob screenshot "What error is showing on screen?"
+bob screenshot "Summarise the code visible in the editor"
+```
+
+`bob screenshot` captures the primary display, resizes it to max 1024 px (so it fits in the 4096-token context), and sends it to the vision model. The temp PNG is deleted when the response finishes.
+
+### How it works
+
+Images are sent as `image_url` data URIs in the OpenAI chat completions format. They route through LiteLLM → llama-swap → a dedicated llama-server instance with `--mmproj` for the vision encoder. Flash attention is automatically disabled for the vision model (flash-attn is incompatible with multimodal projection in the current llama.cpp build; `gen-llama-swap.ps1` handles this transparently).
+
+---
+
 ## Command Reference: Everything at a Glance
 
 ### Inference
@@ -607,6 +673,27 @@ This is how you debug "why did the model respond like that?": you see the exact 
 
 LiteLLM runs on port 8081 and starts automatically with `bob up`. All bundled clients default to `:8081`. Direct `:8080` (llama-swap) still works for local models but bypasses retry and Langfuse.
 
+### Voice (Phase 2)
+
+| Task | Command |
+|---|---|
+| One-time setup | `bob setup-voice` |
+| Speak text aloud | `bob speak "text"` |
+| Record mic → transcript | `bob listen` |
+| Transcribe audio file | `bob transcribe file.wav` |
+| Continuous voice loop | `bob voice` |
+| Voice loop (cloud model) | `bob voice --pro` |
+| Whisper server status | `bob whisper status` |
+
+### Vision (Phase 2)
+
+| Task | Command |
+|---|---|
+| Describe an image file | `bob describe C:\path\to\img.png` |
+| Ask a question about an image | `bob describe img.png "What text is visible?"` |
+| Describe current screen | `bob screenshot` |
+| Ask about the screen | `bob screenshot "What error is showing?"` |
+
 ### Diagnostics
 
 | Task | Command |
@@ -653,6 +740,11 @@ If this was your first read-through, here's a short sequence that touches every 
 13. Open http://localhost:8888: do a search, set it as a browser shortcut
 14. Open http://localhost:5678: create a webhook workflow that calls the LLM
 15. Enable Langfuse tracing: set `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` env vars + `langfuseEnabled = $true` in `user.psd1` + `bob gen && bob litellm`, make a request, open http://localhost:3001 and look at the trace
-16. `bob stop`: shut down cleanly
+16. `bob setup-voice` then `bob speak "Hello"`: test TTS — you should hear a response
+17. `bob listen`: say a few words into the mic — the transcript should print
+18. `bob voice`: run one full loop (speak a question, hear the answer back), then Ctrl+C
+19. `bob describe C:\Windows\Web\Wallpaper\Windows\img0.jpg`: describe the default Windows wallpaper using the vision model
+20. `bob screenshot "What is on my screen?"`: take a live screenshot and describe it
+21. `bob stop`: shut down cleanly
 
 For more detail on any feature: [USAGE.md](USAGE.md). For troubleshooting the Docker services: [USAGE.md § Docker troubleshooting](USAGE.md#troubleshooting-docker).

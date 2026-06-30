@@ -64,7 +64,11 @@ foreach ($m in $models) {
   if ($m.gguf -match 'gemma' -and $m.kv -eq $true) {
     Write-Warning "[$($m.role)] Gemma model with kv=`$true — KV quant causes quality regression. Set kvQuant='' in config/user.psd1 or set kv=`$false on the model."
   }
-  $parts = @('${srv}', "-m `${env.LLAMA_LOCAL_ROOT}/models/$($m.gguf)")
+  # Flash-attn is incompatible with multimodal projection (mmproj); auto-expand srv without it.
+  $srvRef = if ($m.mmproj -and $fa -ne '') {
+    (@('${env.LLAMA_LOCAL_ROOT}/bin/llama-server.exe', '--port ${PORT}', "-ngl $ngl", $batch, $ub, $numa, $par, $thr) | Where-Object { $_ -ne '' }) -join ' '
+  } else { '${srv}' }
+  $parts = @($srvRef, "-m `${env.LLAMA_LOCAL_ROOT}/models/$($m.gguf)")
   if ($null -ne $m.ctx)              { $parts += "-c $(Fmt $m.ctx)" }
   if ($m.kv)                         { $parts += '${kv}' }
   if ($m.embedding)                  { $parts += '--embedding' }
@@ -89,14 +93,23 @@ foreach ($m in $models) {
       $parts += '-ngld 99'
     }
   }
+  if ($m.mmproj) {
+    Assert-NoQuote $m.mmproj "model '$($m.role)' mmproj"
+    $parts += "--mmproj `${env.LLAMA_LOCAL_ROOT}/models/$($m.mmproj)"
+  }
   $m | Add-Member -NotePropertyName _cmd -NotePropertyValue ($parts -join ' ')
 }
 
 # --- group assertions (catch hand-edit mistakes in the PSD1) ---
+$activeMembers = [System.Collections.Generic.List[string]]::new()
 foreach ($mem in $members) {
-  if ($roleNames -notcontains $mem) { throw "group member '$mem' is not a model in profile '$name'" }
+  if ($roleNames -notcontains $mem) {
+    Write-Warning "group member '$mem' not in profile '$name' — skipping in swap group (add it to this profile to enable)"
+    continue
+  }
   $mObj = $models | Where-Object role -eq $mem
   if ($mObj.pinned) { throw "model '$mem' is pinned but also listed in group.members — pinned models must stay out of the swap group" }
+  $activeMembers.Add($mem)
 }
 
 # --- emit YAML (deterministic; matches the schema llama-swap reads) ---
@@ -137,7 +150,7 @@ foreach ($m in $models) {
 [void]$sb.Append("groups:$nl")
 [void]$sb.Append("  $($cfg.group.name):$nl")
 [void]$sb.Append("    swap: $(Fmt $cfg.group.swap)$nl")
-[void]$sb.Append("    members: [$(@($members) -join ', ')]$nl")
+[void]$sb.Append("    members: [$(@($activeMembers) -join ', ')]$nl")
 
 Set-Content -LiteralPath $out -Value $sb.ToString() -NoNewline -Encoding utf8
 Write-Host "generated $out  (profile: $name)" -ForegroundColor Green

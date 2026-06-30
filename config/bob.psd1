@@ -31,11 +31,17 @@ You are Bob, a personal AI assistant running privately on this machine. You are 
   }
 
   voice = @{
-    enabled   = $false             # flip to $true after Phase 2 setup
-    sttPort   = 8082
-    sttModel  = 'whisper-base.en'
-    ttsEngine = 'piper'            # piper | llama-tts
-    ttsVoice  = 'en_US-lessac-medium'
+    enabled     = $true              # Phase 2 voice active
+    sttPort     = 8082
+    sttModel    = 'whisper-base.en'
+    ttsEngine   = 'piper'            # piper | llama-tts
+    ttsVoice    = 'en_US-lessac-medium'
+    silenceSec  = 1.5                # seconds of silence before mic stops recording
+  }
+
+  vision = @{
+    enabled    = $true               # Phase 2 vision active (requires bob fetch for models)
+    visionRole = 'vision'
   }
 
   proactive = @{

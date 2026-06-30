@@ -16,32 +16,40 @@ $rest = @($argv | Select-Object -Skip 1)   # always an array, even for a single 
 
 function Invoke-BobStream {
   # Stream a chat completion to stdout. Returns the full assistant text.
+  # -Raw: suppress spinner + ANSI output, return clean text only (used by bob voice).
   param(
     [string]$Model,
     [object[]]$Messages,
     [int]$MaxTokens = 512,
-    [string]$ApiBase
+    [string]$ApiBase,
+    [switch]$Raw
   )
   if (-not (Get-Command curl.exe -ErrorAction SilentlyContinue)) {
     throw "curl.exe not found (requires Windows 10 1803+)"
   }
   $body = @{ model=$Model; stream=$true; max_tokens=$MaxTokens; messages=$Messages } |
           ConvertTo-Json -Depth 8 -Compress
+  # Write body to a temp file — avoids Windows 32 KB command-line limit for large payloads (e.g. base64 images).
+  # Use UTF-8 without BOM — BOM breaks JSON parsers (litellm, llama-server).
+  $bodyTmp = [IO.Path]::GetTempFileName()
+  [IO.File]::WriteAllText($bodyTmp, $body, [System.Text.UTF8Encoding]::new($false))
   $full = [System.Text.StringBuilder]::new()
   $spinRs = $null; $spinPs = $null; $spinDone = $false
   try {
-    $spinRs = [runspacefactory]::CreateRunspace(); $spinRs.Open()
-    $spinPs = [powershell]::Create(); $spinPs.Runspace = $spinRs
-    $spinPs.AddScript({
-      $spin = [char[]]@('|','/','-','\'); $i = 0
-      while ($true) { [Console]::Write("`r  $($spin[$i++ % 4]) ..."); [System.Threading.Thread]::Sleep(120) }
-    }) | Out-Null
-    $spinPs.BeginInvoke() | Out-Null
+    if (-not $Raw) {
+      $spinRs = [runspacefactory]::CreateRunspace(); $spinRs.Open()
+      $spinPs = [powershell]::Create(); $spinPs.Runspace = $spinRs
+      $spinPs.AddScript({
+        $spin = [char[]]@('|','/','-','\'); $i = 0
+        while ($true) { [Console]::Write("`r  $($spin[$i++ % 4]) ..."); [System.Threading.Thread]::Sleep(120) }
+      }) | Out-Null
+      $spinPs.BeginInvoke() | Out-Null
+    }
 
     curl.exe --no-buffer --silent -X POST "$ApiBase/chat/completions" `
         -H 'Content-Type: application/json' `
         -H 'Authorization: Bearer sk-local' `
-        -d $body |
+        -d "@$bodyTmp" |
     ForEach-Object {
       if ($_ -match '^data: (.+)$') {
         $chunk = $Matches[1]
@@ -49,12 +57,12 @@ function Invoke-BobStream {
           try {
             $t = ($chunk | ConvertFrom-Json).choices[0].delta.content
             if ($t) {
-              if (-not $spinDone) {
+              if (-not $Raw -and -not $spinDone) {
                 $spinPs.Stop(); $spinRs.Close()
                 [Console]::Write("`r           `r")
                 $spinDone = $true
               }
-              Write-Host -NoNewline $t
+              if (-not $Raw) { Write-Host -NoNewline $t }
               [void]$full.Append($t)
             }
           } catch {}
@@ -65,11 +73,12 @@ function Invoke-BobStream {
     Write-Host "Chat failed: $_" -ForegroundColor Red
     Write-Host "Is endpoint up? bob serve"
   } finally {
-    if (-not $spinDone -and $spinPs) {
+    if (-not $Raw -and -not $spinDone -and $spinPs) {
       $spinPs.Stop()
       if ($spinRs) { $spinRs.Close() }
       [Console]::Write("`r           `r")
     }
+    Remove-Item $bodyTmp -ErrorAction SilentlyContinue
   }
   return $full.ToString()
 }
@@ -100,13 +109,20 @@ switch ($cmd) {
       Write-Host ("{0,-10} {1,-36} {2,-9} " -f $m.role, $label, $vram) -NoNewline
       Write-Host $state -ForegroundColor $color
     }
+    $sttPort = try { (Get-BobConfig).voice.sttPort ?? 8082 } catch { 8082 }
+    try {
+      $tcp = [Net.Sockets.TcpClient]::new('127.0.0.1', $sttPort); $tcp.Close()
+      Write-Host ("  {0,-10} {1,-36} {2}" -f 'whisper','(stt server)',"UP (port $sttPort)") -ForegroundColor Green
+    } catch {
+      Write-Host ("  {0,-10} {1,-36} {2}" -f 'whisper','(stt server)',"down (port $sttPort)") -ForegroundColor DarkGray
+    }
     Write-Host ""
   }
   'ps' {
     Write-Host "`nBob Processes`n"
     Write-Host ("{0,-15} {1,-8} {2,-10} {3,-10} {4}" -f 'Service','PID','RAM','Uptime','Status')
     Write-Host ('-' * 60)
-    foreach ($svc in @('llama-swap','litellm','open-webui')) {
+    foreach ($svc in @('llama-swap','litellm','open-webui','whisper')) {
       $pf = Join-Path $repo "logs\$svc.pid"
       if (Test-Path $pf) {
         $wPid = [int](Get-Content $pf -Raw)
@@ -278,9 +294,10 @@ switch ($cmd) {
     $isPro    = $rest -contains '--pro'
     $isThink  = $rest -contains '--think'
     $isCode   = $rest -contains '--code'
+    $isRaw    = $rest -contains '--raw'
     $maxTok   = $d.maxTokens ?? 512
     # Strip known flags; --max N is handled below
-    $restWork = [System.Collections.Generic.List[string]]($rest | Where-Object { $_ -notin '--pro','--think','--code' })
+    $restWork = [System.Collections.Generic.List[string]]($rest | Where-Object { $_ -notin '--pro','--think','--code','--raw' })
     for ($fi = 0; $fi -lt $restWork.Count; $fi++) {
       if ($restWork[$fi] -eq '--max' -and $fi+1 -lt $restWork.Count) {
         $maxTok = [int]$restWork[$fi+1]; $restWork.RemoveAt($fi+1); $restWork.RemoveAt($fi); break
@@ -322,8 +339,9 @@ switch ($cmd) {
     if ($restClean.Count -gt 0) {
       $prompt  = $restClean -join ' '
       $messages = @(@{ role='system'; content=$bobCfg.persona.systemPrompt }, @{ role='user'; content=$prompt })
-      Invoke-BobStream -Model $targetRole -Messages $messages -MaxTokens $maxTok -ApiBase $litellmBase | Out-Null
-      Write-Host ""; break
+      $reply = Invoke-BobStream -Model $targetRole -Messages $messages -MaxTokens $maxTok -ApiBase $litellmBase -Raw:$isRaw
+      if ($isRaw) { Write-Output $reply } else { Write-Host "" }
+      break
     }
 
     # --- REPL mode ---
@@ -406,6 +424,12 @@ switch ($cmd) {
       $wPid = [int](Get-Content $litellmPid -Raw -ErrorAction SilentlyContinue)
       if ($wPid) { Get-Process -Id $wPid -ErrorAction SilentlyContinue | Stop-Process -Force }
       Remove-Item $litellmPid -ErrorAction SilentlyContinue
+    }
+    $whisperPid = Join-Path $repo 'logs\whisper.pid'
+    if (Test-Path $whisperPid) {
+      $wPid = [int](Get-Content $whisperPid -Raw -ErrorAction SilentlyContinue)
+      if ($wPid) { Get-Process -Id $wPid -ErrorAction SilentlyContinue | Stop-Process -Force }
+      Remove-Item $whisperPid -ErrorAction SilentlyContinue
     }
     Write-Host "Stopped endpoint + proxy + services (VRAM freed)." -ForegroundColor Green
   }
@@ -544,6 +568,162 @@ N8N_PORT=$($dp.n8nPort ?? 5678)
     }
   }
   'budget' { & "$repo\scripts\bob-budget.ps1" }
+
+  # ── Phase 2: Voice + Vision ─────────────────────────────────────────────────
+  'setup-voice' { & "$repo\scripts\setup-voice.ps1" $(if ($rest -contains '-Force') { '-Force' }) }
+
+  'listen' {
+    $bobCfg  = Get-BobConfig
+    $venvPy  = Join-Path $repo 'tools\venv-litellm\Scripts\python.exe'
+    $capture = Join-Path $repo 'scripts\bob-voice-capture.py'
+    $env:PYTHONIOENCODING = 'utf-8'
+    & $venvPy $capture --port ($bobCfg.voice.sttPort ?? 8082) --silence-sec ($bobCfg.voice.silenceSec ?? 1.5)
+    $env:PYTHONIOENCODING = $null
+  }
+
+  'transcribe' {
+    if (-not $rest.Count) { Write-Host "usage: bob transcribe <audio-file>"; break }
+    $bobCfg  = Get-BobConfig
+    $venvPy  = Join-Path $repo 'tools\venv-litellm\Scripts\python.exe'
+    $capture = Join-Path $repo 'scripts\bob-voice-capture.py'
+    $env:PYTHONIOENCODING = 'utf-8'
+    & $venvPy $capture --file $rest[0] --port ($bobCfg.voice.sttPort ?? 8082)
+    $env:PYTHONIOENCODING = $null
+  }
+
+  'speak' {
+    $bobCfg = Get-BobConfig
+    $voice  = Join-Path $repo "bin\voices\$($bobCfg.voice.ttsVoice ?? 'en_US-lessac-medium').onnx"
+    $piperExe = Join-Path $repo 'bin\piper.exe'
+    if (-not (Test-Path $piperExe)) { Write-Host "piper.exe not found — run: bob setup-voice" -ForegroundColor Yellow; break }
+    if (-not (Test-Path $voice))    { Write-Host "Voice model not found at $voice — run: bob setup-voice" -ForegroundColor Yellow; break }
+    $text = if ($rest.Count) { $rest -join ' ' } else { $input | Out-String }
+    if (-not $text -or -not $text.Trim()) { Write-Host "Nothing to speak." -ForegroundColor DarkGray; break }
+    $tmpTxt = [IO.Path]::GetTempFileName()
+    $tmpWav = $tmpTxt + '.wav'
+    try {
+      Set-Content $tmpTxt -Value $text -Encoding utf8 -NoNewline
+      Get-Content $tmpTxt | & $piperExe --model $voice --output_file $tmpWav --quiet 2>&1 | Out-Null
+      if ($LASTEXITCODE -ne 0) { throw "piper exited with code $LASTEXITCODE" }
+      (New-Object System.Media.SoundPlayer $tmpWav).PlaySync()
+    } finally {
+      Remove-Item $tmpTxt, $tmpWav -ErrorAction SilentlyContinue
+    }
+  }
+
+  'describe' {
+    if (-not $rest.Count) { Write-Host "usage: bob describe <image> [prompt]"; break }
+    $imagePath = $rest[0]
+    if (-not (Test-Path $imagePath)) { Write-Host "File not found: $imagePath" -ForegroundColor Red; break }
+    $bobCfg   = Get-BobConfig
+    $prompt   = if ($rest.Count -gt 1) { $rest[1..($rest.Count-1)] -join ' ' } else { 'Describe this image.' }
+    # Resize image to max 1024px on longest edge — large screenshots exceed context limits.
+    Add-Type -AssemblyName System.Drawing
+    $srcBmp  = [Drawing.Bitmap]::new($imagePath)
+    $maxDim  = 1024
+    $scale   = [Math]::Min($maxDim / $srcBmp.Width, $maxDim / $srcBmp.Height)
+    $scale   = [Math]::Min($scale, 1.0)   # never upscale
+    $w = [int]($srcBmp.Width  * $scale)
+    $h = [int]($srcBmp.Height * $scale)
+    $resizedTmp = $null
+    if ($scale -lt 1.0) {
+      $dstBmp = [Drawing.Bitmap]::new($w, $h)
+      $g = [Drawing.Graphics]::FromImage($dstBmp)
+      $g.InterpolationMode = [Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+      $g.DrawImage($srcBmp, 0, 0, $w, $h)
+      $g.Dispose(); $srcBmp.Dispose()
+      $resizedTmp = [IO.Path]::GetTempFileName() + '.png'
+      $dstBmp.Save($resizedTmp, [Drawing.Imaging.ImageFormat]::Png)
+      $dstBmp.Dispose()
+      $imagePath = $resizedTmp
+    } else {
+      $srcBmp.Dispose()
+    }
+    try {
+      $b64  = [Convert]::ToBase64String([IO.File]::ReadAllBytes($imagePath))
+      $ext  = [IO.Path]::GetExtension($imagePath).TrimStart('.').ToLower()
+      $mime = if ($ext -eq 'jpg') { 'jpeg' } else { $ext }
+      $messages = @(@{
+        role    = 'user'
+        content = @(
+          @{ type = 'image_url'; image_url = @{ url = "data:image/$mime;base64,$b64" } },
+          @{ type = 'text';      text      = $prompt }
+        )
+      })
+      $vRole = $bobCfg.vision.visionRole ?? 'vision'
+      Invoke-BobStream -Model $vRole -Messages $messages -MaxTokens ($d.maxTokens ?? 512) -ApiBase $litellmBase | Out-Null
+      Write-Host ""
+    } finally {
+      if ($resizedTmp) { Remove-Item $resizedTmp -ErrorAction SilentlyContinue }
+    }
+  }
+
+  'screenshot' {
+    Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+    $screen = [Windows.Forms.Screen]::PrimaryScreen.Bounds
+    $bmp    = [Drawing.Bitmap]::new($screen.Width, $screen.Height)
+    $g      = [Drawing.Graphics]::FromImage($bmp)
+    $g.CopyFromScreen($screen.Location, [Drawing.Point]::Empty, $screen.Size)
+    $tmp = [IO.Path]::GetTempFileName() + '.png'
+    $bmp.Save($tmp, [Drawing.Imaging.ImageFormat]::Png)
+    $g.Dispose(); $bmp.Dispose()
+    try {
+      $descArgs = @('describe', $tmp) + $rest
+      & "$PSScriptRoot\bob.ps1" @descArgs
+    } finally {
+      Remove-Item $tmp -ErrorAction SilentlyContinue
+    }
+  }
+
+  'voice' {
+    $bobCfg = Get-BobConfig
+    $pro    = $rest -contains '--pro'
+    Write-Host "Bob voice loop — Ctrl+C to exit. Use headphones to avoid echo." -ForegroundColor Cyan
+    try {
+      while ($true) {
+        Write-Host "Listening..." -ForegroundColor DarkGray
+        $transcript = & "$PSScriptRoot\bob.ps1" listen
+        if (-not $transcript -or -not $transcript.Trim()) { continue }
+        Write-Host "> $transcript" -ForegroundColor Yellow
+        $chatArgs = @('chat', '--raw') + $(if ($pro) { @('--pro') } else { @() }) + @($transcript)
+        $response = & "$PSScriptRoot\bob.ps1" @chatArgs
+        if ($response -and $response.Trim()) {
+          Write-Host "Bob: $response" -ForegroundColor Cyan
+          & "$PSScriptRoot\bob.ps1" speak $response
+        }
+      }
+    } finally {
+      Write-Host "`nVoice loop ended." -ForegroundColor DarkGray
+    }
+  }
+
+  'whisper' {
+    $subCmd  = if ($rest.Count -and $rest[0] -in 'stop','start','status') { $rest[0] } else { '' }
+    $whisperPidFile = Join-Path $repo 'logs\whisper.pid'
+    $sttPort = try { (Get-BobConfig).voice.sttPort ?? 8082 } catch { 8082 }
+    switch ($subCmd) {
+      'stop' {
+        if (Test-Path $whisperPidFile) {
+          $wPid = [int](Get-Content $whisperPidFile -Raw)
+          Get-Process -Id $wPid -ErrorAction SilentlyContinue | Stop-Process -Force
+          Remove-Item $whisperPidFile -ErrorAction SilentlyContinue
+          Write-Host "whisper-server stopped." -ForegroundColor Green
+        } else { Write-Host "whisper-server not running." -ForegroundColor DarkGray }
+      }
+      'status' {
+        if (Test-Path $whisperPidFile) {
+          $wPid = [int](Get-Content $whisperPidFile -Raw)
+          $proc = Get-Process -Id $wPid -ErrorAction SilentlyContinue
+          if ($proc) {
+            $uptime = ([DateTime]::Now - $proc.StartTime).ToString('hh\:mm\:ss')
+            Write-Host "whisper-server running  PID=$wPid  uptime=$uptime  http://localhost:$sttPort" -ForegroundColor Green
+          } else { Write-Host "whisper-server dead (stale PID $wPid)." -ForegroundColor Red }
+        } else { Write-Host "whisper-server not running." -ForegroundColor DarkGray }
+      }
+      default { & "$repo\scripts\start-whisper.ps1" $(if ($rest -contains '-NoWindow') { '-NoWindow' }) }
+    }
+  }
+
   default {
     $wp = $d.webuiPort ?? 3000
 @"
@@ -597,6 +777,19 @@ Ecosystem:
   bob litellm status                   Check if LiteLLM proxy is running
   bob services start|stop|status|logs  Docker services: Langfuse (:3001) SearXNG (:8888) n8n (:5678)
   bob eval <role> [task]               Benchmark model quality (mmlu, humaneval, gsm8k)
+
+Voice (requires: bob setup-voice + voice.enabled = `$true in bob.psd1):
+  bob setup-voice                      Download piper + whisper model, build whisper-server
+  bob listen                           Record mic until silence, print transcript
+  bob transcribe <file>                Transcribe audio file via whisper-server
+  bob speak ["text"]                   Synthesize text to audio (reads stdin if no arg)
+  bob voice [--pro]                    Continuous voice loop: listen -> chat -> speak
+  bob whisper [start]                  Start whisper-server (STT, port :8082)
+  bob whisper stop|status              Stop / check whisper-server
+
+Vision (requires: bob setup-voice + bob fetch + vision.enabled = `$true in bob.psd1):
+  bob describe <image> [prompt]        Describe image file (sends to Qwen2-VL vision role)
+  bob screenshot [prompt]              Capture screen and describe it
 "@
   }
 }

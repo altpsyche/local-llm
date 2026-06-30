@@ -13,6 +13,8 @@ A private AI stack for Windows. Models run on your NVIDIA GPU with no cloud depe
 | VS Code agent | Cline: reads/writes files and runs commands |
 | Terminal coding agent | aider: review the plan before any file is touched |
 | Shell prompt patterns | fabric: 254 named patterns, pipe any text through them |
+| Voice (STT + TTS) | `bob listen` · `bob speak` · `bob voice` loop (whisper + piper, run `bob setup-voice` once) |
+| Vision | `bob describe <image>` · `bob screenshot "prompt"` (Qwen2-VL-7B, loaded on demand) |
 | Private web search | SearXNG at `:8888`, powers Continue's `@web` |
 | LLM observability | Langfuse at `:3001`: traces, latency, token counts |
 | Workflow automation | n8n at `:5678`: visual workflows calling the local LLM |

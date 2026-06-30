@@ -18,6 +18,11 @@
 /models/*.gguf
 /models/*.part
 /models/.hf-cache/
+/models/whisper/
+
+# Phase 2 voice assets (reproduced by scripts/setup-voice.ps1)
+/bin/voices/
+/bin/espeak-ng-data/
 
 # Generated runtime config (reproduced by scripts/gen-llama-swap.ps1 from config/models.psd1)
 /config/llama-swap.yaml
