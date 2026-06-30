@@ -1,7 +1,7 @@
 #requires -Version 7
 # GENERATE config/llama-swap.yaml from config/models.psd1 (the single source of truth).
 # Deterministic, idempotent. Re-run any time; also runs automatically on `bob serve`.
-#   .\scripts\gen-llama-swap.ps1            # active profile (or $env:LLM_PROFILE)
+#   .\scripts\gen-llama-swap.ps1            # active profile (or $env:BOB_PROFILE)
 #   .\scripts\gen-llama-swap.ps1 12gb       # a specific profile
 param([string]$Profile)
 $ErrorActionPreference = "Stop"

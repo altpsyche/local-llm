@@ -80,7 +80,7 @@ if (-not (Test-Path $sxCfg)) {
     @'
 use_default_settings: true
 server:
-  secret_key: "local-llm-searxng"
+  secret_key: "bob-searxng"
   bind_address: "0.0.0.0:8080"
 search:
   safe_search: 0

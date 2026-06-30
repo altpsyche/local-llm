@@ -30,8 +30,8 @@ Installs Node.js, uv, Go, Python 3.12, CUDA Toolkit, cmake, and Docker Desktop. 
 
 **Step 2: build, configure, and start everything:**
 ```powershell
-git clone --recurse-submodules <your-remote> C:\local-llm
-cd C:\local-llm
+git clone --recurse-submodules <your-remote> C:\bob
+cd C:\bob
 .\setup.bat
 ```
 Fully automated from here. Builds the inference engine, downloads models, wires clients, and starts Docker services automatically.

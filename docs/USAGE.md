@@ -187,7 +187,7 @@ The server loads a model into VRAM when it first receives a request, and unloads
 
 Setting `mlockBig = $true` in `config/user.psd1` extends mlock to the swap-group models (planner, coder, chat), pinning CPU-offloaded weight pages against pagefile eviction. This requires `SeLockMemoryPrivilege` on Windows — run `bob mlock` to check status and grant the privilege automatically (UAC prompt; restart terminal after).
 
-To start automatically at login, put a shortcut to `up.ps1` in `shell:startup`, or create a Task Scheduler task set to "At log on" running `pwsh -File C:\local-llm\scripts\up.ps1 -NoOpen`.
+To start automatically at login, put a shortcut to `up.ps1` in `shell:startup`, or create a Task Scheduler task set to "At log on" running `pwsh -File C:\bob\scripts\up.ps1 -NoOpen`.
 
 ## Available models (16gb profile)
 
@@ -393,7 +393,7 @@ Four MCP servers are wired into Continue automatically via `config/continue/conf
 
 | Server | How to invoke | What it does |
 |--------|--------------|-------------|
-| `filesystem` | `@filesystem` then a path | Read files in `C:\Users\vsiva\dev` and `C:\local-llm` (strict whitelist; paths outside return permission denied) |
+| `filesystem` | `@filesystem` then a path | Read files in `C:\Users\vsiva\dev` and `C:\bob` (strict whitelist; paths outside return permission denied) |
 | `fetch` | `@url https://...` | Fetch any URL and include its text as context |
 | `github` | `@github` then a query | Search GitHub issues, PRs, and code |
 | `searxng-search` | `@web` then a query | Private web search via local SearXNG |

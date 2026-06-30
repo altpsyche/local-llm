@@ -174,8 +174,8 @@ Docker Desktop → Settings → General → uncheck **"Use containerd for pullin
 ## 2. Clone the repository
 
 ```powershell
-git clone --recurse-submodules <your-remote> C:\local-llm
-cd C:\local-llm
+git clone --recurse-submodules <your-remote> C:\bob
+cd C:\bob
 ```
 
 The `--recurse-submodules` flag fetches `external/llama.cpp`, `external/llama-swap`,
@@ -228,7 +228,7 @@ Convert to the cmake `CUDA_ARCHITECTURES` value (remove the dot):
 
 ## 4. Build llama.cpp
 
-All commands run from `C:\local-llm` unless noted.
+All commands run from `C:\bob` unless noted.
 
 ### 4.1 Locate cmake
 
@@ -277,7 +277,7 @@ This takes 5–20 minutes depending on your machine. Expected output ends with
 ### 4.4 Copy binaries and CUDA DLLs
 
 ```powershell
-cd C:\local-llm
+cd C:\bob
 
 # Copy the server binary
 Copy-Item external\llama.cpp\build\bin\Release\llama-server.exe bin\
@@ -302,7 +302,7 @@ The repository records the exact llama.cpp commit verified to work on Blackwell.
 ```powershell
 cd external\llama.cpp
 git checkout <commit-or-tag>
-cd C:\local-llm
+cd C:\bob
 git add external/llama.cpp
 git commit -m "pin llama.cpp to <commit>"
 ```
@@ -320,9 +320,9 @@ See [TUNING.md](TUNING.md#bumping-the-llamacpp-submodule) for bumping to a newer
 ## 5. Build llama-swap
 
 ```powershell
-cd C:\local-llm\external\llama-swap
+cd C:\bob\external\llama-swap
 go build -o ..\..\bin\llama-swap.exe .
-cd C:\local-llm
+cd C:\bob
 ```
 
 Verify: `bin\llama-swap.exe --version`.
@@ -455,10 +455,10 @@ New-Item -ItemType Directory -Force "$HOME\.continue" | Out-Null
 # Symlink (requires Developer Mode or admin — preferred)
 New-Item -ItemType SymbolicLink `
     -Path "$HOME\.continue\config.yaml" `
-    -Target "C:\local-llm\config\continue\config.yaml"
+    -Target "C:\bob\config\continue\config.yaml"
 
 # Fallback — plain copy (re-run this whenever you edit the repo config)
-Copy-Item "C:\local-llm\config\continue\config.yaml" "$HOME\.continue\config.yaml" -Force
+Copy-Item "C:\bob\config\continue\config.yaml" "$HOME\.continue\config.yaml" -Force
 ```
 
 ### 9.2 aider config
@@ -467,10 +467,10 @@ Copy-Item "C:\local-llm\config\continue\config.yaml" "$HOME\.continue\config.yam
 # Symlink
 New-Item -ItemType SymbolicLink `
     -Path "$HOME\.aider.conf.yml" `
-    -Target "C:\local-llm\config\aider\.aider.conf.yml"
+    -Target "C:\bob\config\aider\.aider.conf.yml"
 
 # Fallback — copy
-Copy-Item "C:\local-llm\config\aider\.aider.conf.yml" "$HOME\.aider.conf.yml" -Force
+Copy-Item "C:\bob\config\aider\.aider.conf.yml" "$HOME\.aider.conf.yml" -Force
 ```
 
 ### 9.3 Install VS Code extensions
@@ -487,9 +487,9 @@ code --install-extension saoudrizwan.claude-dev    # Cline
 ### 10.1 Build the binary
 
 ```powershell
-cd C:\local-llm\external\fabric
+cd C:\bob\external\fabric
 go build -o ..\..\bin\fabric.exe .\cmd\fabric\
-cd C:\local-llm
+cd C:\bob
 ```
 
 ### 10.2 Configure fabric to use the local endpoint
@@ -513,10 +513,10 @@ Replace `8081` if you changed `litellmPort` in `config/user.psd1`.
 # Symlink (preferred — patterns update automatically with submodule bumps)
 New-Item -ItemType SymbolicLink `
     -Path "$HOME\.config\fabric\patterns" `
-    -Target "C:\local-llm\external\fabric\data\patterns"
+    -Target "C:\bob\external\fabric\data\patterns"
 
 # Fallback — copy
-Copy-Item "C:\local-llm\external\fabric\data\patterns" "$HOME\.config\fabric\patterns" -Recurse
+Copy-Item "C:\bob\external\fabric\data\patterns" "$HOME\.config\fabric\patterns" -Recurse
 ```
 
 Verify: `bin\fabric.exe -l` lists 200+ patterns.

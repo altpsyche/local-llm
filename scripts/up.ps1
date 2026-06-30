@@ -10,7 +10,7 @@ $cfg        = Get-ModelsConfig
 $port        = $cfg.defaults.port ?? 8080
 $litellmPort = $cfg.defaults.litellmPort ?? 8081
 $webuiPort   = $cfg.defaults.webuiPort ?? 3000
-$secret     = $cfg.defaults.webuiSecret ?? 'local-llm-dev'
+$secret     = $cfg.defaults.webuiSecret ?? 'bob-dev'
 $logsDir    = Join-Path $repo 'logs'
 if (-not (Test-Path $logsDir)) { New-Item -ItemType Directory $logsDir | Out-Null }
 

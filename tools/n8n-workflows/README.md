@@ -1,6 +1,6 @@
 # n8n Starter Workflows
 
-Pre-built workflows for the local-llm stack. Import any `.json` file directly into n8n.
+Pre-built workflows for the bob stack. Import any `.json` file directly into n8n.
 
 ## How to import
 

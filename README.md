@@ -36,8 +36,8 @@ Git, Scoop, and PowerShell 7 are required before running these. Everything else 
 **Step 1: install prerequisites (once per machine)**
 
 ```powershell
-git clone --recurse-submodules <your-remote> C:\local-llm
-cd C:\local-llm
+git clone --recurse-submodules <your-remote> C:\bob
+cd C:\bob
 .\install_prereqs.bat
 ```
 

@@ -1,6 +1,6 @@
 # aider config — architect mode: planner model drafts, editor model applies.
 # aider auto-discovers .aider.conf.yml in your home dir, git root, or cwd.
-# Copy or symlink to your home dir, or run aider with --config C:\local-llm\config\aider\.aider.conf.yml
+# Copy or symlink to your home dir, or run aider with --config C:\bob\config\aider\.aider.conf.yml
 #
 # IMPORTANT: local OpenAI-compatible models must be prefixed "openai/" (case-sensitive).
 

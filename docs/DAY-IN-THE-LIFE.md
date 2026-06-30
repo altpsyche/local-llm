@@ -1,4 +1,4 @@
-# A Day with local-llm
+# A Day with bob
 
 This is a hands-on tour of every feature in the stack, structured as a typical working session. Follow it end-to-end the first time to see everything in action. After that, jump to any section as a quick reference.
 
@@ -53,7 +53,7 @@ You should see five models listed: `planner`, `coder`, `chat`, `fim`, `embed`. N
 > **Pro models:** If you've set `DEEPSEEK_API_KEY` and `ZHIPU_API_KEY`, three additional models are available via the LiteLLM proxy at `:8081`: `chat-pro`, `planner-pro`, `coder-pro`. These route directly to DeepSeek and Zhipu APIs — no local GPU required, no platform fee. See [USAGE.md § Pro models](USAGE.md#pro-models-api-backed-no-platform-fee).
 
 > **Tip:** To start everything (including Docker services) automatically at every login, create a Task Scheduler task set to "At log on" running:
-> `pwsh -File C:\local-llm\scripts\up.ps1 -NoOpen`
+> `pwsh -File C:\bob\scripts\up.ps1 -NoOpen`
 
 ### Start Docker services
 

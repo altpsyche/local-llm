@@ -394,7 +394,7 @@
   },
   "active": false,
   "settings": { "executionOrder": "v1" },
-  "meta": { "templateCredsSetupCompleted": true, "instanceId": "local-llm" },
+  "meta": { "templateCredsSetupCompleted": true, "instanceId": "bob" },
   "id": "11111111-1111-1111-1111-111111111100",
   "tags": []
 }

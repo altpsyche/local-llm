@@ -38,7 +38,7 @@ The `defaults` block in `config/models.psd1` controls the server launch flags an
 | `numa` | `''` | NUMA strategy (`--numa`). Options: `''` (off), `'isolate'`, `'distribute'`, `'numactl'`. On 7950X3D: try `'isolate'` first. |
 | `port` | `8080` | llama-swap API port. |
 | `webuiPort` | `3000` | Open WebUI port. |
-| `webuiSecret` | `'local-llm-dev'` | Open WebUI session key. Change before exposing on a LAN. |
+| `webuiSecret` | `'bob-dev'` | Open WebUI session key. Change before exposing on a LAN. |
 | `maxTokens` | `512` | Default `max_tokens` for `bob chat`. |
 
 **KV cache type options** (valid for both `kvQuantK` and `kvQuantV`): `f16`, `bf16`, `q8_0`, `q5_1`, `q5_0`, `q4_1`, `q4_0`, `iq4_nl`.

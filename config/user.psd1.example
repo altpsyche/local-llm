@@ -1,6 +1,6 @@
 # config/user.psd1 — Copy this file to user.psd1 and uncomment what you want to change.
 # This file is gitignored. Values here shadow defaults in models.psd1.
-# Re-run `llm gen` after editing. Changes take effect on next `llm serve`.
+# Re-run `bob gen` after editing. Changes take effect on next `bob serve`.
 @{
     defaults = @{
         # ── Inference: GPU / CPU split ──────────────────────────────────────────
@@ -55,15 +55,15 @@
         # webuiPort = 3001      # Open WebUI on alternate port.
 
         # ── Other ────────────────────────────────────────────────────────────────
-        # maxTokens = 2048      # Increase for longer `llm chat` responses.
+        # maxTokens = 2048      # Increase for longer `bob chat` responses.
         # webuiSecret = 'my-real-secret-here'   # Set before exposing WebUI on LAN.
         # flashAttn = $false    # Disable flash attention (CPU-only inference).
 
         # ── Langfuse tracing ─────────────────────────────────────────────────────
-        # Enable after `llm services start` and setting API keys from Langfuse UI:
+        # Enable after `bob services start` and setting API keys from Langfuse UI:
         #   $env:LANGFUSE_PUBLIC_KEY = 'pk-lf-...'
         #   $env:LANGFUSE_SECRET_KEY = 'sk-lf-...'
-        # Then run `llm gen` to regenerate config/litellm.yaml with callbacks active.
+        # Then run `bob gen` to regenerate config/litellm.yaml with callbacks active.
         # langfuseEnabled = $true
     }
 
@@ -71,7 +71,7 @@
     # Override planner's -ngl to set an explicit GPU/CPU layer split.
     # At ngl=99 (default), llama.cpp auto-fits as many layers as possible.
     # At ngl=31, exactly 31 layers go to GPU, the rest to CPU RAM.
-    # Benchmark with: llm gen && llm serve && llm bench  (compare tg128)
+    # Benchmark with: bob gen && bob serve && bob bench  (compare tg128)
     #
     # profiles = @{
     #   '16gb' = @{
@@ -80,11 +80,11 @@
     # }
 
     # ── API Pro Models (optional) ────────────────────────────────────────────────
-    # Pro models (chat-pro / planner-pro / coder-pro) route litellm → API provider
+    # Pro models (chat-pro / planner-pro / coder-pro) route liteLLM → API provider
     # directly — no llama-swap hop. Direct APIs have no platform fee (unlike OpenRouter).
     # All three roles currently use DeepSeek — one key covers all.
     # Multiple providers are supported; enable additional peers and set the relevant env var.
-    # Re-run `llm gen` after editing. No restart needed for litellm; `llm litellm stop && llm litellm start` to reload.
+    # Re-run `bob gen` after editing. No restart needed for litellm; `bob liteLLM stop && bob liteLLM start` to reload.
     #
     # peers = @{
     #   deepseek = @{
