@@ -44,6 +44,14 @@ $litellmExe = Join-Path $repo 'tools\venv-litellm\Scripts\litellm.exe'
 if (Test-Path $litellmExe) { & "$PSScriptRoot\start-litellm.ps1" -NoWindow }
 else { Write-Host "LiteLLM venv not found — skipping proxy. Run scripts\bootstrap-litellm.ps1" -ForegroundColor DarkGray }
 
+# 2b) Whisper STT server — auto-start when voice.enabled = $true and binary is present
+$bobVoice = try { (Get-BobConfig).voice } catch { $null }
+$whisperBin = Join-Path $repo 'bin\whisper-server.exe'
+if ($bobVoice.enabled -and (Test-Path $whisperBin)) {
+    & "$PSScriptRoot\start-whisper.ps1" -NoWindow
+    Write-Host "Whisper STT: http://localhost:$($bobVoice.sttPort ?? 8082)   (voice enabled)" -ForegroundColor Green
+}
+
 # 3) Open WebUI — hidden window, log to logs/open-webui.log
 if (Test-Path $webui) {
   $owEnv = @(

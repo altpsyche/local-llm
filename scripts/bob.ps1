@@ -724,6 +724,8 @@ N8N_PORT=$($dp.n8nPort ?? 5678)
     $voiceTok  = $bobCfg.voice.maxTokens ?? 256
     Write-Host "Bob voice loop — Ctrl+C to exit. Use headphones to avoid echo." -ForegroundColor Cyan
     Write-Host "Model: $voiceRole" -ForegroundColor DarkGray
+    # Conversation history persists for the duration of the voice session.
+    $messages = @(@{ role = 'system'; content = $voiceSys })
     try {
       while ($true) {
         Write-Host "Listening..." -ForegroundColor DarkGray
@@ -731,16 +733,14 @@ N8N_PORT=$($dp.n8nPort ?? 5678)
         if (-not $transcript -or -not $transcript.Trim()) { continue }
         Write-Host "> $transcript" -ForegroundColor Yellow
         # /no_think: Qwen3 skips reasoning scratchpad — voice needs fast replies.
-        $messages = @(
-          @{ role = 'system'; content = $voiceSys },
-          @{ role = 'user';   content = "$transcript /no_think" }
-        )
+        $messages += @{ role = 'user'; content = "$transcript /no_think" }
         $response = Invoke-BobStream -Model $voiceRole -Messages $messages -MaxTokens $voiceTok -ApiBase $litellmBase -Raw
         # Strip trailing non-ASCII residue (Qwen3 leaks special-token bytes at end of raw stream).
         $response = [regex]::Replace($response.Trim(), '[-￿]+$', '')
         $response = Format-ForSpeech $response
         if ($response) {
           Write-Host "Bob: $response" -ForegroundColor Cyan
+          $messages += @{ role = 'assistant'; content = $response }
           & "$PSScriptRoot\bob.ps1" speak $response
         }
       }
