@@ -35,13 +35,44 @@ Voice (Phase 2 — run `bob setup-voice` once to download whisper + piper; flip 
   bob listen                           Record mic until silence → print transcript (whisper STT)
   bob transcribe <file>                Transcribe an audio file via whisper
   bob speak ["text"]                   Synthesise text to audio and play it (piper TTS); accepts stdin
-  bob voice [--pro]                    Continuous loop: listen → chat → speak (Ctrl+C to stop)
+  bob voice [--pro] [--agent]          Continuous loop: listen → chat → speak (--agent: route through full tool loop)
   bob whisper start|stop|status|logs  Manage the whisper STT server (port 8082)
   bob piper [stop|status]              Start/control piper TTS HTTP server (:8083, OpenAI-compatible)
 
 Vision (Phase 2 — requires vision model download; model loads on demand, TTL 30 s):
   bob describe <image> [--pro] ["prompt"]  Describe an image file (local Qwen2-VL or --pro cloud vision)
   bob screenshot [--pro] ["prompt"]        Take a screenshot and describe it (--pro for cloud vision)
+
+Agent (Phase 3 — Hermes 3 8B, local tool use, optional scheduled tasks):
+  bob agent "goal"                     One-shot: reason + call tools until done, print answer
+  bob agent --role chat "goal"         Use a different role (e.g. chat = Qwen3) instead of agent
+  bob agent --agency confirm "goal"    Prompt before each tool execution
+  bob agent serve                      Start HTTP server (:8084) — POST /v1/agent/completions for n8n/WebUI
+  bob clip <url>                       Fetch URL → summarise → store to memory (one LLM call)
+  bob tools list                       List all available tool modules with enabled/disabled status
+  bob tools test <name>                Run a tool's self-test (e.g. bob tools test git)
+  bob tools info <name>                Show full JSON schema for a tool
+  bob setup check                      Verify all 13 agent deps (venv, model, tools, task, services)
+  bob agent schedule add <name> --cron "* * * * *" --goal "summarise my git log"
+  bob agent schedule list              List scheduled tasks with next-run times
+  bob agent schedule run <name>        Run a scheduled task immediately
+  bob agent schedule enable/disable <name>
+  bob agent schedule remove <name>
+  bob agent log                        Tail the agent log (logs/bob-agent.log)
+  bob agent install                    Register BobAgent Windows Scheduled Task
+  bob agent uninstall                  Remove BobAgent task
+  bob agent status                     Show BobAgent task state (running/ready/disabled)
+
+Plugins (drop-in scripts in plugins/<name>/invoke.ps1 or .py):
+  bob plugins list                     List installed plugins with type and description
+  bob summarise [file]                 Summarise a file or piped text via LLM
+  bob summarise [file] --length short|medium|long
+  bob draft "<prompt>"                 Draft text from a one-liner (email, PR, Slack, doc)
+  bob draft "<prompt>" --type email|pr|slack|doc
+  bob search "<query>"                 Search files in current dir, synthesise results via LLM
+  bob search "<query>" --path <dir>    Search in a specific directory
+  bob search "<query>" --raw           Show raw grep output, skip LLM
+  bob play <search query>              Open Spotify (or YouTube Music) with a search query
 
 Inference:
   bob serve                            Start API endpoint (interactive, Ctrl+C to stop)
@@ -223,6 +254,7 @@ To start automatically at login, put a shortcut to `up.ps1` in `shell:startup`, 
 | `fim` | autocomplete (pinned) | Qwen-Coder-3B Q8_0 |
 | `embed` | RAG embeddings (pinned) | bge-m3 Q8 |
 | `vision` | image description and visual Q&A | Qwen2-VL-7B Q4_K_M + mmproj (Phase 2) |
+| `agent` | local tool use and autonomous tasks | Hermes-3-Llama-3.1-8B Q5_K_M |
 
 Every model's GGUF file, HuggingFace source, context size, and launch flags are defined once in [config/models.psd1](../config/models.psd1). The downloader and the runtime config both read from it. Clients reference the role names above (`coder`, `planner`, etc.), so swapping the backing model for a role never requires touching any client configuration.
 
@@ -534,6 +566,197 @@ bob screenshot --pro "Explain the code on screen"   # cloud vision for complex s
 ```
 
 **Known limitation:** `--flash-attn on` is incompatible with multimodal projection — `gen-llama-swap.ps1` automatically omits it when `mmproj` is set, so no manual config is needed.
+
+## Agent (Phase 3)
+
+The agent system runs Hermes 3 (8B) in a loop: the model reasons about what tools to call, executes them, and iterates until it has a final answer. All processing is local — tools include web search (SearXNG), git, file access, shell commands, and memory.
+
+### Running a goal
+
+```powershell
+bob agent "what did I commit today and what files changed?"
+bob agent "search the web for the latest Unreal Engine 5 release notes and summarise them"
+bob agent "check git status, find any TODO comments in modified files, and list them"
+```
+
+The agent prints tool calls to stderr (cyan) and results (dark gray), then the final answer to stdout. Pipe to suppress:
+
+```powershell
+bob agent "summarise the last 10 commits" 2>$null
+```
+
+**Agency modes** — how much the agent asks before acting:
+
+| Mode | Behaviour | Use when |
+|------|-----------|----------|
+| `show` (default) | Prints tool calls + results, runs automatically | Normal interactive use |
+| `confirm` | Prompts `Execute? [y/N]` before each tool execution | Untrusted goals or destructive tools |
+| `silent` | No output during execution; only the final answer | Scheduler, scripts, piped output |
+
+Override for a single run: `bob agent --agency confirm "goal"`.  
+Set permanently in `config/bob.psd1` → `agent.agency`.
+
+### Available tools
+
+| Tool | What it does | Needs |
+|------|-------------|-------|
+| `memory` | Store and recall facts from Bob's memory DB | `embed` model running |
+| `web` | Search via SearXNG, fetch URLs | SearXNG running (:8888) |
+| `git` | `git_status`, `git_log`, `git_diff` on any repo | git on PATH |
+| `file` | `file_read` (within allowed paths), `file_write` (disabled by default) | `allowedReadPaths` set |
+| `shell` | Run PowerShell commands (always prompts user — ignores agency mode) | Interactive terminal |
+| `fabric` | Run any fabric pattern on text input | fabric on PATH |
+
+Manage tools in `config/bob.psd1` → `agent.tools`. Add or remove names from the list; each maps to `scripts/tools/<name>.py`.
+
+### Scheduling background goals
+
+```powershell
+# Add a daily git summary at 09:00
+bob agent schedule add morning-summary --cron "0 9 * * *" --goal "check git log for today's work and write a one-paragraph summary to data/daily-summary.txt"
+
+# List schedules
+bob agent schedule list
+
+# Run immediately (ignores cron, runs now)
+bob agent schedule run morning-summary
+
+# Enable/disable without removing
+bob agent schedule disable morning-summary
+bob agent schedule enable morning-summary
+
+# Remove permanently
+bob agent schedule remove morning-summary
+```
+
+Schedules are stored in `data/schedules.json`. The BobAgent Windows Scheduled Task fires every minute and checks which entries are due (5-field cron, 60 s double-fire guard). `bob agent install` registers it; `bob agent status` shows its state.
+
+The scheduler runs with `agency = 'silent'`. Results are stored in `data/schedules.json` under `lastRunResult`. If `notify = true` is set on an entry, a Windows toast notification fires with the result.
+
+### Memory clip
+
+```powershell
+bob clip https://example.com/article
+```
+
+One-shot web clip: fetches the URL, strips HTML, sends to the chat model for a 3–5 sentence summary, prints it, then stores `url: summary` to Bob's memory DB. No agent loop — one LLM call, fast.
+
+### Tool calling format
+
+Hermes 3 uses its own tool-calling format: tool schemas are injected into the system prompt and the model responds with `<tool_call>{"name": "...", "arguments": {...}}</tool_call>` XML. Bob's agent loop handles this transparently — Qwen3 or other OpenAI-format models also work by setting `agent.toolFormat = 'openai'` in `config/bob.psd1`.
+
+### Check agent health
+
+```powershell
+bob setup check
+```
+
+Verifies all 13 agent dependencies in order: venv, Python packages, config.json, tools directory, schedules file, fabric, SearXNG, n8n, LiteLLM proxy, BobAgent task, Hermes 3 model file, tool files, litellm.yaml. Prints ✓ or ✗ with a fix command for each failure.
+
+## Plugins (Phase 3)
+
+Plugins are direct CLI commands that live in `plugins/<name>/invoke.ps1` or `invoke.py`. Unlike agent tools (which the LLM decides to call autonomously), plugins are invoked explicitly by you — `bob search "..."` runs immediately.
+
+Python plugins run in `venv-litellm`; PowerShell plugins run directly. Each plugin is self-contained: a directory with one invoke file and an optional `description.txt`.
+
+```powershell
+bob plugins list    # show all installed plugins
+```
+
+### bob summarise
+
+Summarise a file or piped text via the local chat model.
+
+```powershell
+# From a file
+bob summarise README.md
+bob summarise docs/USAGE.md --length short
+
+# From stdin
+cat meeting-notes.txt | bob summarise
+git diff | bob summarise --length long
+
+# Length options: short (2-3 sentences), medium (paragraph, default), long (structured with key points)
+bob summarise report.md --length long
+```
+
+Content is capped at 12 000 characters before sending to the model (truncation noted in output).
+
+### bob draft
+
+Draft text from a one-line prompt. Use `--type` to set the tone and format; the right model role is chosen automatically (`planner` for email/doc, `chat` for slack, etc.).
+
+```powershell
+# Email
+bob draft "apologise for missing the deadline, propose a new date of Thursday" --type email
+
+# PR description
+bob draft "add streaming support to the chat completions endpoint" --type pr
+
+# Slack message
+bob draft "let the team know the prod deploy is done and to monitor for errors" --type slack
+
+# Technical documentation
+bob draft "explain how the plugin fallback works in bob.ps1" --type doc
+
+# Free-form (no type)
+bob draft "write a LinkedIn post about building a local AI assistant"
+```
+
+Output is clean and ready to paste — no preamble, no "Here is your draft:" wrapper.
+
+### bob search
+
+Search files in the current directory (or `--path`) using ripgrep, then feed the results to the local LLM for synthesis. Use `--raw` to see raw grep output without LLM synthesis.
+
+```powershell
+# Search current directory
+bob search "TODO"
+bob search "error handling"
+
+# Search a specific directory
+bob search "API endpoints" --path src/
+
+# Filter by extension
+bob search "config loading" --ext .py
+
+# Raw output (no LLM, just grep)
+bob search "memory" --raw
+
+# The LLM output references file names and line numbers from the grep results
+```
+
+Requires ripgrep (`rg`) for best results; falls back to Windows `findstr` if `rg` is not on PATH.
+
+### bob play
+
+Open Spotify with a search query (if Spotify is installed). Falls back to YouTube Music in the browser.
+
+```powershell
+bob play lofi hip hop
+bob play pink floyd dark side of the moon
+bob play focus instrumental for coding
+bob play --ytm jazz piano    # force YouTube Music even if Spotify is installed
+```
+
+Spotify detection checks `%APPDATA%\Spotify\Spotify.exe` and the Windows Store location.
+
+### Adding your own plugins
+
+Create `plugins/<name>/invoke.ps1` or `invoke.py` — any language, just read `$args` (PowerShell) or `sys.argv` (Python) and write to stdout.
+
+```
+plugins/
+  my-plugin/
+    invoke.py          # or invoke.ps1
+    description.txt    # one-line description shown by bob plugins list
+```
+
+Python plugins have `venv-litellm` available — `from bob_core import load_config, get_llm_client` gives you config and an LLM client pointed at the local proxy. See `plugins/summarise/invoke.py` for a complete example.
+
+There is no registration step. `bob my-plugin` dispatches to the plugin automatically via the default-case fallback in `bob.ps1`.
+
+---
 
 ## Qwen3 Thinking Mode
 
@@ -984,6 +1207,8 @@ Scores well below these ranges usually mean the chat template wasn't applied cor
 `bob up` starts Open WebUI on port 3000, pre-wired to the local inference endpoint and embedding model. There's no manual admin setup. If you want it without the inference stack, use `bob webui`.
 
 Open WebUI uses the `embed` model for document search automatically. Add documents through the workspace panel; they're indexed locally and available in any chat via the RAG interface. You can create model presets in Workspace → Models, for example a "Planner" preset with low temperature for precise answers, or a "Chat" preset for general conversation.
+
+> **Agent model in WebUI:** Selecting the `agent` model in Open WebUI runs raw Hermes 3 inference — tool schemas are not injected and `<tool_call>` blocks appear as plain text. For full tool use, run `bob agent "goal"` in the terminal, or start `bob agent serve` and call `http://localhost:8084/v1/agent/completions` from n8n or any HTTP client.
 
 ## Customizing your setup: config/user.psd1
 

@@ -257,7 +257,7 @@
       "continueOnFail": true,
       "parameters": {
         "method": "POST",
-        "url": "http://host.docker.internal:8080/v1/chat/completions",
+        "url": "http://host.docker.internal:8081/v1/chat/completions",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [

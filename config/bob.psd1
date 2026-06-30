@@ -20,6 +20,7 @@ You are Bob, a personal AI assistant running privately on this machine. You are 
     proThinkRole = 'planner-pro'   # `bob think --pro` / `bob chat --think --pro`
     codeRole     = 'coder'         # `bob code`
     proCodeRole  = 'coder-pro'     # `bob code --pro` / `bob chat --code --pro`
+    agentRole    = 'agent'         # `bob agent` — Hermes 3 function-calling model
     autoFallback = $false          # $true = fall back to local if cloud fails
   }
 
@@ -57,8 +58,22 @@ Keep answers brief and direct. One to three sentences is ideal.
     visionProRole = 'vision-pro'     # routes to DeepSeek V4 (supports vision) via --pro flag
   }
 
-  proactive = @{
-    enabled      = $false          # Phase 3
-    scheduleFile = 'data\schedules.json'
+  agent = @{
+    enabled           = $false              # flip to $true to activate scheduled tasks
+    agency            = 'show'             # 'silent' | 'show' | 'confirm'
+    toolFormat        = 'hermes'           # 'hermes' (XML tool_call) | 'openai' (JSON tool_calls)
+    maxSteps          = 10
+    maxHistoryMsgs    = 40                 # sliding window — prevents token overflow on long runs
+    tools             = @('memory', 'web', 'git', 'file', 'shell', 'fabric', 'play', 'summarise', 'draft', 'search')
+    allowedReadPaths  = @()    # defaults to repo root at runtime; add more paths in user.psd1
+    allowedWritePaths = @()                # file_write disabled by default
+    agentPort         = 8084   # bob agent serve HTTP port (for WebUI/n8n integration)
+    scheduleFile      = 'data\schedules.json'
+    logFile           = 'logs\bob-agent.log'
+    toastAppId        = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\powershell.exe'
+    maxResultChars    = 500
+    # MCP integration hook (Phase 4+):
+    # mcpEnabled = $false
+    # mcpServers = @('filesystem', 'fetch', 'github', 'searxng')
   }
 }

@@ -1,0 +1,1 @@
+Summarise a file or piped text via local LLM

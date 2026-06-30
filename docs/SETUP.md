@@ -61,6 +61,7 @@ After setup, open a new terminal to pick up the PATH change, then run `bob up`.
 9. `.\scripts\install-cli.ps1` puts the `llm` command on PATH.
 10. **Memory lock:** reads `config/user.psd1` to check if `mlockBig = $true` is set. If it is, runs `scripts\grant-mlock.ps1` automatically (UAC prompt; one-time per machine). If `mlockBig` is not set but ≥ 32 GB RAM is free, prints a tip on how to enable it. Otherwise reports why it was skipped. Open a new terminal after setup completes for the privilege to take effect.
 11. `.\scripts\setup-docker.ps1` pulls and starts the Docker services stack (Langfuse, SearXNG, n8n). Runs automatically if Docker Desktop is installed; skipped gracefully if not.
+12. **Agent scheduler:** `.\scripts\install-cli.ps1` also registers tab completions. After setup, run `bob agent install` once to register the `BobAgent` Windows Scheduled Task (runs background agent goals on cron schedules). This is separate from `setup.bat` because the scheduled task references the final install location. Run `bob agent status` to confirm it's registered.
 
 To pin llama.cpp to a specific commit or bump to a newer version, see [MANUAL-INSTALL.md § 4](MANUAL-INSTALL.md#4-build-llamacpp) and [TUNING.md](TUNING.md#bumping-the-llamacpp-submodule).
 
@@ -101,11 +102,15 @@ For a detailed walkthrough of what `setup-docker.ps1` does internally, including
 
 ```powershell
 bob up                    # starts llama-swap (:8080) + LiteLLM proxy (:8081) + Open WebUI (:3000)
-bob models                # should list: planner, coder, chat, fim, embed
+bob models                # should list: planner, coder, chat, fim, embed, vision, agent
 bob bench                 # performance check (see expected numbers below)
 bob chat coder "hi"       # end-to-end sanity check (routes via :8081 LiteLLM proxy)
 bob diagnose              # re-run hardware summary at any time; flags any unresolved issues
+bob setup check      # verify all 13 deps: venv, Python packages (openai, requests), agent model, tool files, services, task
+bob plugins list     # should show: summarise, draft, search, play (built-in plugins)
 ```
+
+**Agent system:** `bob setup check` validates all agent dependencies including the Hermes 3 model file, tool scripts, and scheduled task registration. If any check fails, it prints the exact fix command.
 
 **Pro models** (optional): set `DEEPSEEK_API_KEY` and `ZHIPU_API_KEY` environment variables, then run `bob gen`. The pro models (`chat-pro`, `planner-pro`, `coder-pro`) will be available via the LiteLLM proxy at `:8081`. See [USAGE.md § Pro models](USAGE.md#pro-models-api-backed-no-platform-fee).
 

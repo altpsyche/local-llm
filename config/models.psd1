@@ -111,7 +111,7 @@
   # Swap policy. members = ROLE names that share VRAM (only one resident at a time;
   # loading one evicts the others). Pinned models (fim/embed) are NOT listed here —
   # their ttl:0 keeps them alongside whichever big model is active.
-  group = @{ name = 'ondemand'; swap = $true; members = @('planner', 'coder', 'chat', 'vision') }
+  group = @{ name = 'ondemand'; swap = $true; members = @('planner', 'coder', 'chat', 'vision', 'agent') }
 
   # ── API Pro Models ───────────────────────────────────────────────────────────
   # Routes {role}-pro model names through liteLLM directly to external API providers.
@@ -165,6 +165,7 @@
       fim     = @{ repo = 'Qwen/Qwen2.5-Coder-3B-Instruct-GGUF';       path = 'qwen2.5-coder-3b-instruct-q8_0.gguf';   gguf = 'qwen-coder-3b-q8_0.gguf';    ctx = 8192;  sizeGB = 3.4; ttl = 0; pinned = $true; mlock = $true }
       embed   = @{ repo = 'gpustack/bge-m3-GGUF';                      path = 'bge-m3-Q8_0.gguf';                      gguf = 'bge-m3-q8_0.gguf';           sizeGB = 0.6; embedding = $true; ttl = 0; pinned = $true; mlock = $true }
       vision  = @{ repo = 'bartowski/Qwen2-VL-7B-Instruct-GGUF';       path = 'Qwen2-VL-7B-Instruct-Q4_K_M.gguf';     gguf = 'qwen2-vl-7b-q4_k_m.gguf';   mmproj = 'mmproj-Qwen2-VL-7B-Instruct-f16.gguf'; ctx = 4096; sizeGB = 5.2; ttl = 30; pinned = $false; supportsVision = $true }
+      agent   = @{ repo = 'NousResearch/Hermes-3-Llama-3.1-8B-GGUF'; path = 'Hermes-3-Llama-3.1-8B.Q5_K_M.gguf'; gguf = 'hermes-3-8b-q5_k_m.gguf'; ctx = 8192; kv = $true; sizeGB = 6.0; flags = @('--temp','0.1','--jinja') }
     }
 
     # Better quants for RTX 3090 / 4090 / 4080 Super (24 GB). Q5_K_M planner + Q6_K coder/chat.
@@ -179,6 +180,7 @@
       fim     = @{ repo = 'bartowski/Qwen2.5-Coder-3B-Instruct-GGUF';       path = 'Qwen2.5-Coder-3B-Instruct-Q8_0.gguf';  gguf = 'qwen-coder-3b-q8_0.gguf';    ctx = 8192;  sizeGB = 3.4; ttl = 0; pinned = $true; mlock = $true }
       embed   = @{ repo = 'gpustack/bge-m3-GGUF';                           path = 'bge-m3-Q8_0.gguf';                     gguf = 'bge-m3-q8_0.gguf';           sizeGB = 0.6; embedding = $true; ttl = 0; pinned = $true; mlock = $true }
       vision  = @{ repo = 'bartowski/Qwen2-VL-7B-Instruct-GGUF';            path = 'Qwen2-VL-7B-Instruct-Q5_K_M.gguf';    gguf = 'qwen2-vl-7b-q5_k_m.gguf';   mmproj = 'mmproj-Qwen2-VL-7B-Instruct-f16.gguf'; ctx = 4096; sizeGB = 6.3; ttl = 30; pinned = $false; supportsVision = $true }
+      agent   = @{ repo = 'NousResearch/Hermes-3-Llama-3.1-8B-GGUF';        path = 'Hermes-3-Llama-3.1-8B.Q6_K.gguf';     gguf = 'hermes-3-8b-q6_k.gguf';      ctx = 8192; kv = $true; sizeGB = 7.0; flags = @('--temp','0.1','--jinja') }
     }
 
     # Near-lossless quants for 32+ GB cards (RTX 5090, A6000, etc.). Still swaps big models
@@ -194,6 +196,7 @@
       fim     = @{ repo = 'bartowski/Qwen2.5-Coder-3B-Instruct-GGUF';       path = 'Qwen2.5-Coder-3B-Instruct-Q8_0.gguf';  gguf = 'qwen-coder-3b-q8_0.gguf';    ctx = 8192;  sizeGB = 3.4; ttl = 0; pinned = $true; mlock = $true }
       embed   = @{ repo = 'gpustack/bge-m3-GGUF';                           path = 'bge-m3-Q8_0.gguf';                     gguf = 'bge-m3-q8_0.gguf';           sizeGB = 0.6; embedding = $true; ttl = 0; pinned = $true; mlock = $true }
       vision  = @{ repo = 'bartowski/Qwen2-VL-7B-Instruct-GGUF';            path = 'Qwen2-VL-7B-Instruct-Q6_K.gguf';      gguf = 'qwen2-vl-7b-q6_k.gguf';     mmproj = 'mmproj-Qwen2-VL-7B-Instruct-f16.gguf'; ctx = 4096; sizeGB = 7.3; ttl = 30; pinned = $false; supportsVision = $true }
+      agent   = @{ repo = 'NousResearch/Hermes-3-Llama-3.1-8B-GGUF';        path = 'Hermes-3-Llama-3.1-8B.Q8_0.gguf';     gguf = 'hermes-3-8b-q8_0.gguf';      ctx = 8192; kv = $true; sizeGB = 8.5; flags = @('--temp','0.1','--jinja') }
     }
 
     # Tight fit for ~8GB cards (RTX 3070, 4060, etc.). One big model at a time alongside
@@ -207,6 +210,7 @@
       chat    = @{ repo = 'Qwen/Qwen3-4B-GGUF';                       path = 'Qwen3-4B-Q4_K_M.gguf';                  gguf = 'qwen3-4b-q4_k_m.gguf';       ctx = 4096; kv = $true; sizeGB = 2.6; setParams = @{ temperature = 0.7; top_p = 0.9 }; tokenizer = 'Qwen/Qwen3-4B' }
       fim     = @{ repo = 'Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF';   path = 'qwen2.5-coder-1.5b-instruct-q8_0.gguf'; gguf = 'qwen-coder-1.5b-q8_0.gguf'; ctx = 2048; sizeGB = 1.9; ttl = 0; pinned = $true; mlock = $true }
       embed   = @{ repo = 'gpustack/bge-m3-GGUF';                     path = 'bge-m3-Q8_0.gguf';                      gguf = 'bge-m3-q8_0.gguf';           sizeGB = 0.6; embedding = $true; ttl = 0; pinned = $true; mlock = $true }
+      agent   = @{ repo = 'NousResearch/Hermes-3-Llama-3.1-8B-GGUF'; path = 'Hermes-3-Llama-3.1-8B.Q4_K_M.gguf';    gguf = 'hermes-3-8b-q4_k_m.gguf';    ctx = 4096; kv = $true; sizeGB = 5.0; flags = @('--temp','0.1','--jinja') }
     }
 
     # Smaller quants + shorter context for ~12GB cards.
@@ -220,6 +224,7 @@
       chat    = @{ repo = 'Qwen/Qwen3-8B-GGUF';                       path = 'Qwen3-8B-Q4_K_M.gguf';                  gguf = 'qwen3-8b-q4_k_m.gguf';       ctx = 8192; kv = $true; sizeGB = 5.0; setParams = @{ temperature = 0.7; top_p = 0.9 }; tokenizer = 'Qwen/Qwen3-8B' }
       fim     = @{ repo = 'Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF';    path = 'qwen2.5-coder-1.5b-instruct-q8_0.gguf'; gguf = 'qwen-coder-1.5b-q8_0.gguf'; ctx = 4096; sizeGB = 1.9; ttl = 0; pinned = $true; mlock = $true }
       embed   = @{ repo = 'gpustack/bge-m3-GGUF';                      path = 'bge-m3-Q8_0.gguf';                      gguf = 'bge-m3-q8_0.gguf';           sizeGB = 0.6; embedding = $true; ttl = 0; pinned = $true; mlock = $true }
+      agent   = @{ repo = 'NousResearch/Hermes-3-Llama-3.1-8B-GGUF';  path = 'Hermes-3-Llama-3.1-8B.Q4_K_M.gguf';    gguf = 'hermes-3-8b-q4_k_m.gguf';    ctx = 8192; kv = $true; sizeGB = 5.0; flags = @('--temp','0.1','--jinja') }
     }
   }
 }

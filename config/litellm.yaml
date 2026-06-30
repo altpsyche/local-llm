@@ -27,6 +27,11 @@ model_list:
       model: openai/embed
       api_base: http://localhost:8080/v1
       api_key: sk-local
+  - model_name: agent
+    litellm_params:
+      model: openai/agent
+      api_base: http://localhost:8080/v1
+      api_key: sk-local
   - model_name: vision
     litellm_params:
       model: openai/vision

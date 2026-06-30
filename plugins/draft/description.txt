@@ -1,0 +1,1 @@
+Draft emails, PR descriptions, Slack messages, or docs from a one-liner

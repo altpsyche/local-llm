@@ -71,5 +71,5 @@ services:
       N8N_HOST: localhost
       N8N_PROTOCOL: http
       WEBHOOK_URL: http://localhost:${N8N_PORT}
-      N8N_ENCRYPTION_KEY: bob-n8n-key
+      N8N_ENCRYPTION_KEY: local-llm-n8n-key
       GENERIC_TIMEZONE: ${N8N_TIMEZONE:-UTC}

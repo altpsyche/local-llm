@@ -62,6 +62,44 @@ Run `bob gen` after editing either file. Changes take effect on the next `bob se
 
 **Personal overrides without touching git**: create `config/user.psd1` (gitignored) to shadow any of these values without modifying the tracked file. See [config/user.psd1.example](../config/user.psd1.example) for all available knobs with examples.
 
+### Agent behavior (`config/bob.psd1`)
+
+The agent system is configured separately in `config/bob.psd1`. The key settings:
+
+| Key | Default | Effect |
+|-----|---------|--------|
+| `agent.toolFormat` | `'hermes'` | Tool calling protocol. `'hermes'` = inject tool schemas in system prompt, parse `<tool_call>` XML from content (Hermes 3 native format). `'openai'` = use OpenAI `tools` parameter (Qwen3 and other OpenAI-compatible models). |
+| `agent.agency` | `'show'` | `'silent'` = run without output. `'show'` = print tool calls and results to stderr. `'confirm'` = prompt before each tool execution. |
+| `agent.maxSteps` | `10` | Maximum tool-call iterations before stopping. |
+| `agent.tools` | `@('memory','web','git','file','shell','fabric')` | Enabled tool modules. Each maps to `scripts/tools/<name>.py`. |
+| `agent.allowedReadPaths` | (repo root) | Paths `file_read` may access. Defaults to the repo root at runtime. Add more in `config/user.psd1`. |
+| `agent.allowedWritePaths` | `@()` | Paths `file_write` may access. Empty = write disabled. Opt in via `user.psd1`. |
+
+Override any of these in `config/user.psd1` under the `bob.agent` key:
+
+```powershell
+# config/user.psd1
+@{
+  bob = @{
+    agent = @{
+      agency           = 'confirm'   # always ask before executing tools
+      allowedReadPaths = @('C:\local-llm', 'D:\projects')
+      tools            = @('memory', 'web', 'git', 'file')   # remove shell and fabric
+    }
+  }
+}
+```
+
+**Switching the agent model:** `agentRole` in `bob.psd1` routing defaults to `'agent'` (Hermes 3 8B). If you switch to a model that uses OpenAI-format tool calling (like Qwen3), also set `agent.toolFormat = 'openai'` in `user.psd1` and run `bob gen`.
+
+### Plugins
+
+Plugins live in `plugins/<name>/invoke.ps1` or `invoke.py`. There is nothing to configure in `bob.psd1` — they are discovered and dispatched automatically. The only tuning surface is within each plugin itself.
+
+Python plugins read config from `data/config.json` via `bob_core.load_config()` and can use any routing role. To override the model a plugin uses for a specific invocation, most accept a `--role` flag (check `--help` on each plugin).
+
+To disable a plugin without deleting it, rename `invoke.py` to `invoke.py.disabled` — the fallback check won't find it.
+
 ## Per-model launch flags (Blackwell / 16GB)
 
 These flags are assembled from the `defaults` block above. The resulting command for a 16 GB profile with default settings is:

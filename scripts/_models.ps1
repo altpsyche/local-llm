@@ -86,6 +86,27 @@ function Get-BobConfig {
       }
     }
   }
+  # Inject model defaults for unified cross-config access (ports, etc.)
+  try {
+    $md = (Get-ModelsConfig).defaults
+    $base['litellmPort'] = [int]($md.litellmPort ?? 8081)
+    $base['port']        = [int]($md.port ?? 8080)
+    $base['searxngPort'] = [int]($md.searxngPort ?? 8888)
+    $base['n8nPort']     = [int]($md.n8nPort ?? 5678)
+    $base['webuiPort']   = [int]($md.webuiPort ?? 3000)
+    $base['litellmKey']  = $md.litellmKey ?? 'sk-local'
+  } catch {}
+  # Default allowedReadPaths to repo root if empty — avoids hardcoded paths in bob.psd1
+  if ($base.agent -and -not $base.agent.allowedReadPaths) {
+    $base.agent['allowedReadPaths'] = @($script:ModelsRepo)
+  }
+  # Export for Python tools — auto-generated, gitignored via /data/
+  try {
+    $jsonPath = Join-Path $script:ModelsRepo 'data\config.json'
+    $jsonDir = Split-Path $jsonPath
+    if (-not (Test-Path $jsonDir)) { New-Item $jsonDir -ItemType Directory -Force | Out-Null }
+    $base | ConvertTo-Json -Depth 10 | Set-Content $jsonPath -Encoding UTF8
+  } catch {}
   return $base
 }
 
@@ -239,6 +260,34 @@ function Test-PortInUse {
     $c.Close()
     return $true
   } catch { return $false }
+}
+
+function Test-CronDue {
+  # Returns $true if a 5-field cron expression is due at $Now, given $LastRun.
+  # 60-second guard prevents double-firing when the task runs multiple times per minute.
+  param(
+    [Parameter(Mandatory)][string]$Cron,
+    [Parameter(Mandatory)][DateTime]$Now,
+    [DateTime]$LastRun = [DateTime]::MinValue
+  )
+  if ($LastRun -ne [DateTime]::MinValue -and ($Now - $LastRun).TotalSeconds -lt 60) {
+    return $false
+  }
+  $f = $Cron -split '\s+'
+  if ($f.Count -ne 5) { Write-Warning "Test-CronDue: expected 5 fields, got $($f.Count) in '$Cron'"; return $false }
+  function Test-CronField([string]$field, [int]$val) {
+    if ($field -eq '*') { return $true }
+    foreach ($part in $field -split ',') {
+      if ($part -match '^(\d+)-(\d+)$' -and $val -ge [int]$Matches[1] -and $val -le [int]$Matches[2]) { return $true }
+      elseif ($part -match '^\d+$' -and [int]$part -eq $val) { return $true }
+    }
+    return $false
+  }
+  return (Test-CronField $f[0] $Now.Minute)  -and
+         (Test-CronField $f[1] $Now.Hour)    -and
+         (Test-CronField $f[2] $Now.Day)     -and
+         (Test-CronField $f[3] $Now.Month)   -and
+         (Test-CronField $f[4] ([int]$Now.DayOfWeek))
 }
 
 function Set-ActiveProfile {

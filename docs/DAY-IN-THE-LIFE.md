@@ -20,6 +20,8 @@ This is a hands-on tour of every feature in the stack, structured as a typical w
 - [Feature 9: Langfuse (bob Observability)](#feature-9-langfuse-llm-observability)
 - [Feature 10: Voice Loop (STT + TTS)](#feature-10-voice-loop-stt--tts)
 - [Feature 11: Vision (Describe and Screenshot)](#feature-11-vision-describe-and-screenshot)
+- [Feature 12: Bob Agent (Local Tool Use)](#feature-12-bob-agent-local-tool-use)
+- [Feature 13: Plugins (summarise, draft, search, play)](#feature-13-plugins-summarise-draft-search-play)
 - [Command Reference](#command-reference-everything-at-a-glance)
 - [Evening: Wrapping Up](#evening-wrapping-up)
 - [What to Try First](#what-to-try-first)
@@ -51,7 +53,7 @@ Check that everything is running:
 bob status
 ```
 
-You should see five models listed: `planner`, `coder`, `chat`, `fim`, `embed`. None are loaded into VRAM yet; they load on first use and stay there until idle. `fim` (autocomplete) and `embed` (search indexing) are pinned and never unload.
+You should see seven models listed: `planner`, `coder`, `chat`, `fim`, `embed`, `vision`, `agent`. None are loaded into VRAM yet; they load on first use and stay there until idle. `fim` (autocomplete) and `embed` (search indexing) are pinned and never unload.
 
 > **Pro models:** If you've set `DEEPSEEK_API_KEY` and `ZHIPU_API_KEY`, three additional models are available via the LiteLLM proxy at `:8081`: `chat-pro`, `planner-pro`, `coder-pro`. These route directly to DeepSeek and Zhipu APIs — no local GPU required, no platform fee. See [USAGE.md § Pro models](USAGE.md#pro-models-api-backed-no-platform-fee).
 
@@ -551,8 +553,9 @@ bob listen | bob chat | bob speak           # one turn: speak a question, hear t
 ### Try it: continuous voice loop
 
 ```powershell
-bob voice           # runs until Ctrl+C: listen → chat → speak, repeat
-bob voice --pro     # same loop but routes chat to the cloud (DeepSeek API)
+bob voice              # runs until Ctrl+C: listen → chat → speak, repeat
+bob voice --pro        # same loop but routes chat to the cloud (DeepSeek API)
+bob voice --agent      # routes each voice turn through the full agent tool loop (Hermes 3 + tools)
 ```
 
 Bob listens for speech, transcribes it, sends the text to the chat model, then reads the response aloud. The energy gate in `bob-voice-capture.py` swallows silent moments so near-silence doesn't produce empty transcripts.
@@ -599,6 +602,177 @@ bob screenshot --pro "Explain the code on screen in detail"
 Images are sent as `image_url` data URIs in the OpenAI chat completions format. They route through LiteLLM → llama-swap → a dedicated llama-server instance with `--mmproj` for the vision encoder. Flash attention is automatically disabled for the vision model (flash-attn is incompatible with multimodal projection in the current llama.cpp build; `gen-llama-swap.ps1` handles this transparently).
 
 `--pro` skips llama-swap entirely and routes directly to the DeepSeek API via the `vision-pro` LiteLLM entry. No separate key needed — it uses `DEEPSEEK_API_KEY`.
+
+---
+
+## Feature 12: Bob Agent (Local Tool Use)
+
+**What it is:** An autonomous agent loop that uses Hermes 3 (8B) locally. You give it a goal; it decides which tools to call, executes them, and iterates until it has a final answer. Everything — the reasoning, the tool calls, the results — stays on your machine.
+
+**Prerequisites:** `bob up` is running. The `agent` model (Hermes 3) is included in the 16 GB profile — it loaded on first use. Run `bob setup check` to verify everything is wired.
+
+### Try it: one-shot goals
+
+```powershell
+bob agent "what is the git status of this repo?"
+```
+
+You'll see the agent's thinking process in your terminal:
+```
+  → git_status({})
+    M config/bob.psd1
+    M scripts/bob_loop.py
+    M scripts/tools/git.py
+
+The repo has three modified files: config/bob.psd1, scripts/bob_loop.py, and scripts/tools/git.py.
+```
+
+Cyan lines (`→`) show tool calls. Dark gray shows the tool output. The final answer prints to stdout.
+
+### Try it: multi-step reasoning
+
+```powershell
+bob agent "what were the last 5 commits and what files changed in the most recent one?"
+```
+
+The agent calls `git_log` and `git_diff` in the same step, then synthesises the answer from both results.
+
+### Try it: web research
+
+```powershell
+bob agent "search for the latest llama.cpp release and summarise what changed"
+```
+
+The agent calls `web_search` (via SearXNG — no cloud, no tracking), fetches the top result with `web_fetch`, then summarises.
+
+> SearXNG must be running: `bob services start`
+
+### Try it: memory + reasoning
+
+```powershell
+bob agent "recall what I'm currently working on and suggest what to tackle next based on git status"
+```
+
+The agent calls `memory_recall` to pull context from your memory DB, then `git_status` to see the current state, then reasons over both.
+
+### Try it: confirm mode (safest)
+
+```powershell
+bob agent --agency confirm "check git status and draft a commit message for the staged changes"
+```
+
+With `confirm`, the agent pauses before each tool call and asks `Execute? [y/N]`. Useful when you want to supervise every step.
+
+### Schedule a background goal
+
+```powershell
+# Summarise git activity every morning at 09:00
+bob agent schedule add morning-summary --cron "0 9 * * *" --goal "check git log for today and write a one-paragraph summary"
+bob agent schedule list
+```
+
+The `BobAgent` Windows Scheduled Task (registered with `bob agent install`) runs every minute and fires any due entries. Results are stored in `data/schedules.json`. The scheduler always runs in `silent` mode — no terminal output.
+
+### Save a web page to memory
+
+```powershell
+bob clip https://news.ycombinator.com/item?id=12345678
+```
+
+Fetches the page, strips HTML, summarises in 3–5 sentences, prints the summary, and stores `url: summary` to Bob's memory DB. Not an agent loop — one LLM call, very fast.
+
+### Serve via HTTP (for n8n and Open WebUI)
+
+```powershell
+bob agent serve     # starts FastAPI on :8084 — keep this terminal open
+```
+
+Exposes the full agent tool loop as a REST endpoint:
+
+```
+POST http://localhost:8084/v1/agent/completions
+Body: {"goal": "what is the git status?"}
+Returns: {"result": "...", "error": null}
+```
+
+Wire into n8n with an HTTP Request node: URL `http://host.docker.internal:8084/v1/agent/completions`, method POST, body `{"goal": "{{ $json.goal }}"}`. The port is configurable via `agent.agentPort` in `config/bob.psd1`.
+
+> **Note:** Selecting the `agent` model directly in Open WebUI runs raw Hermes 3 inference without tool injection — `<tool_call>` blocks appear as plain text. Use `bob agent serve` for full tool use from WebUI via a custom function or n8n workflow.
+
+### Check agent health
+
+```powershell
+bob setup check
+```
+
+Prints ✓ or ✗ for all 13 agent dependencies (venv, Python packages, model file, tool files, services, scheduled task). Prints the exact fix command for anything that fails.
+
+---
+
+## Feature 13: Plugins (summarise, draft, search, play)
+
+**What it is:** Drop-in CLI commands you call directly. Unlike agent tools (which the LLM calls autonomously), plugins run when you say so. Four are built-in; you can add your own by dropping a script in `plugins/<name>/`.
+
+```powershell
+bob plugins list    # see what's installed
+```
+
+### bob summarise
+
+```powershell
+# Summarise a file
+bob summarise docs/USAGE.md
+bob summarise docs/USAGE.md --length short
+
+# Pipe text to it
+cat meeting-notes.txt | bob summarise
+git diff | bob summarise --length long
+```
+
+Useful after a long meeting, for a quick digest of a changelog, or to compress a big file before you read it.
+
+### bob draft
+
+```powershell
+# Draft an email
+bob draft "apologise for missing the deadline, new date is Thursday" --type email
+
+# Draft a PR description
+bob draft "add streaming support to the chat completions endpoint" --type pr
+
+# Draft a Slack message
+bob draft "let the team know the prod deploy is done, ask them to monitor errors" --type slack
+
+# Free-form draft
+bob draft "write a short bio for my GitHub profile"
+```
+
+Output is clean and paste-ready — no "Here is a draft:" wrapper.
+
+### bob search
+
+```powershell
+# Search the current directory
+bob search "TODO"
+bob search "error handling" --path src/
+bob search "config loading" --ext .py
+
+# Skip LLM — just show raw grep results
+bob search "litellm" --raw
+```
+
+Runs ripgrep (or `findstr` as fallback), then the LLM summarises what it found and points to specific files and line numbers.
+
+### bob play
+
+```powershell
+bob play lofi hip hop
+bob play pink floyd the wall
+bob play focus instrumental for coding
+bob play --ytm jazz piano    # force YouTube Music
+```
+
+Opens Spotify via URI protocol if installed, otherwise opens YouTube Music in your browser. No API keys, no account needed.
 
 ---
 
@@ -693,6 +867,7 @@ LiteLLM runs on port 8081 and starts automatically with `bob up`. All bundled cl
 | Transcribe audio file | `bob transcribe file.wav` |
 | Continuous voice loop | `bob voice` |
 | Voice loop (cloud model) | `bob voice --pro` |
+| Voice loop (full tool use) | `bob voice --agent` |
 | Whisper server status | `bob whisper status` |
 | Start piper HTTP server | `bob piper` |
 | Stop piper HTTP server | `bob piper stop` |
@@ -708,6 +883,37 @@ LiteLLM runs on port 8081 and starts automatically with `bob up`. All bundled cl
 | Describe current screen | `bob screenshot` |
 | Ask about the screen | `bob screenshot "What error is showing?"` |
 | Screenshot with cloud vision | `bob screenshot --pro "Explain the code on screen"` |
+
+### Agent (Phase 3)
+
+| Task | Command |
+|---|---|
+| Run a goal | `bob agent "your goal here"` |
+| Run with confirmation | `bob agent --agency confirm "goal"` |
+| Run silently (scripts) | `bob agent --agency silent "goal"` |
+| Clip a URL to memory | `bob clip <url>` |
+| List tool modules | `bob tools list` |
+| Check all agent deps | `bob setup check` |
+| View agent log | `bob agent log` |
+| Add a scheduled goal | `bob agent schedule add name --cron "0 9 * * *" --goal "..."` |
+| List scheduled goals | `bob agent schedule list` |
+| Run a schedule now | `bob agent schedule run name` |
+| Install BobAgent task | `bob agent install` |
+| BobAgent task status | `bob agent status` |
+
+### Plugins
+
+| Task | Command |
+|---|---|
+| List installed plugins | `bob plugins list` |
+| Summarise a file | `bob summarise <file>` |
+| Summarise piped text | `cat file.txt \| bob summarise` |
+| Draft an email | `bob draft "<prompt>" --type email` |
+| Draft a PR description | `bob draft "<prompt>" --type pr` |
+| Draft a Slack message | `bob draft "<prompt>" --type slack` |
+| Search files + LLM synthesis | `bob search "<query>"` |
+| Search files (raw output) | `bob search "<query>" --raw` |
+| Play music (Spotify / YouTube Music) | `bob play <search query>` |
 
 ### Diagnostics
 
@@ -761,6 +967,15 @@ If this was your first read-through, here's a short sequence that touches every 
 19. `bob piper`: start the piper HTTP server on `:8083` (used by Open WebUI for browser TTS)
 20. `bob describe C:\Windows\Web\Wallpaper\Windows\img0.jpg`: describe the default Windows wallpaper using the vision model
 21. `bob screenshot "What is on my screen?"`: take a live screenshot and describe it
-22. `bob stop`: shut down cleanly
+22. `bob agent "what is the git status of this repo?"`: run your first agent goal — watch it call git_status and reason about the result
+23. `bob agent --agency confirm "check the last 3 commits and summarise them"`: try confirm mode to supervise tool calls
+24. `bob clip https://news.ycombinator.com`: clip a page to memory (fetch → summarise → store)
+25. `bob setup check`: verify all 13 agent dependencies are green
+26. `bob plugins list`: see the four built-in plugins (summarise, draft, search, play)
+27. `cat docs/USAGE.md | bob summarise --length short`: summarise a large file in 2-3 sentences
+28. `bob draft "apologise for missing the deadline, new date Thursday" --type email`: draft a paste-ready email
+29. `bob search "TODO" --path scripts/`: search for TODOs in the scripts folder, get an LLM synthesis
+30. `bob play lofi hip hop`: open Spotify (or YouTube Music if Spotify isn't installed) with a search query
+31. `bob stop`: shut down cleanly
 
 For more detail on any feature: [USAGE.md](USAGE.md). For troubleshooting the Docker services: [USAGE.md § Docker troubleshooting](USAGE.md#troubleshooting-docker).

@@ -1,0 +1,1 @@
+Search files in current directory and synthesise results via local LLM
