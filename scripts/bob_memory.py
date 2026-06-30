@@ -29,6 +29,7 @@ _DEFAULT_DB = Path(__file__).parent.parent / "data" / "bob.db"
 EMBED_URL = "http://localhost:8081/v1/embeddings"
 LITELLM_BASE = "http://localhost:8081/v1"
 EMBED_MODEL = "embed"
+_HEADERS = {"Authorization": "Bearer sk-local"}
 
 
 def get_db(db_path: Path) -> sqlite_utils.Database:
@@ -56,7 +57,7 @@ def get_db(db_path: Path) -> sqlite_utils.Database:
 
 
 def embed(text: str) -> list[float]:
-    resp = requests.post(EMBED_URL, json={"model": EMBED_MODEL, "input": [text]}, timeout=15)
+    resp = requests.post(EMBED_URL, json={"model": EMBED_MODEL, "input": [text]}, headers=_HEADERS, timeout=15)
     resp.raise_for_status()
     return resp.json()["data"][0]["embedding"]
 
@@ -179,6 +180,7 @@ def cmd_summarize_session(messages_file: str, model: str, db_path: Path) -> None
     resp = requests.post(
         f"{LITELLM_BASE}/chat/completions",
         json={"model": model, "messages": summary_prompt, "max_tokens": 256},
+        headers=_HEADERS,
         timeout=60,
     )
     resp.raise_for_status()

@@ -39,7 +39,9 @@ function Invoke-BobStream {
     $spinPs.BeginInvoke() | Out-Null
 
     curl.exe --no-buffer --silent -X POST "$ApiBase/chat/completions" `
-        -H 'Content-Type: application/json' -d $body |
+        -H 'Content-Type: application/json' `
+        -H 'Authorization: Bearer sk-local' `
+        -d $body |
     ForEach-Object {
       if ($_ -match '^data: (.+)$') {
         $chunk = $Matches[1]
