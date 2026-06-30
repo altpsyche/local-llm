@@ -685,9 +685,14 @@ N8N_PORT=$($dp.n8nPort ?? 5678)
         $transcript = & "$PSScriptRoot\bob.ps1" listen
         if (-not $transcript -or -not $transcript.Trim()) { continue }
         Write-Host "> $transcript" -ForegroundColor Yellow
-        $chatArgs = @('chat', '--raw') + $(if ($pro) { @('--pro') } else { @() }) + @($transcript)
+        # Append /no_think so Qwen3 skips its reasoning scratchpad — voice needs fast,
+        # conversational replies and the thinking end-token leaks as garbage in raw mode.
+        $voicePrompt = "$transcript /no_think"
+        $chatArgs = @('chat', '--raw') + $(if ($pro) { @('--pro') } else { @() }) + @($voicePrompt)
         $response = & "$PSScriptRoot\bob.ps1" @chatArgs
-        if ($response -and $response.Trim()) {
+        # Strip trailing non-ASCII residue (Qwen3 leaks special-token bytes at end of raw stream).
+        $response = [regex]::Replace($response.Trim(), '[-￿]+$', '')
+        if ($response) {
           Write-Host "Bob: $response" -ForegroundColor Cyan
           & "$PSScriptRoot\bob.ps1" speak $response
         }

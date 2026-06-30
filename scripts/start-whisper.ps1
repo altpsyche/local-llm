@@ -6,7 +6,11 @@ param([switch]$NoWindow)
 $ErrorActionPreference = "Stop"
 $repo = Split-Path $PSScriptRoot -Parent
 $exe  = Join-Path $repo 'bin\whisper-server.exe'
-$mdl  = Join-Path $repo 'models\whisper\ggml-base.en.bin'
+
+. "$PSScriptRoot\_models.ps1"
+$bobCfg  = Get-BobConfig
+$sttPort = $bobCfg.voice.sttPort ?? 8082
+$mdl     = Join-Path $repo "models\whisper\ggml-$($bobCfg.voice.sttModel ?? 'small').bin"
 
 if (-not (Test-Path $exe)) {
     throw "whisper-server.exe not found — run: bob setup-voice"
@@ -14,10 +18,6 @@ if (-not (Test-Path $exe)) {
 if (-not (Test-Path $mdl)) {
     throw "Whisper model not found at $mdl — run: bob setup-voice"
 }
-
-. "$PSScriptRoot\_models.ps1"
-$bobCfg  = Get-BobConfig
-$sttPort = $bobCfg.voice.sttPort ?? 8082
 
 $pidFile = Join-Path $repo 'logs\whisper.pid'
 if (Test-Path $pidFile) {

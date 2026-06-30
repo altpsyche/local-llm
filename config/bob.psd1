@@ -33,9 +33,9 @@ You are Bob, a personal AI assistant running privately on this machine. You are 
   voice = @{
     enabled     = $true              # Phase 2 voice active
     sttPort     = 8082
-    sttModel    = 'whisper-base.en'
+    sttModel    = 'small'
     ttsEngine   = 'piper'            # piper | llama-tts
-    ttsVoice    = 'en_US-lessac-medium'
+    ttsVoice    = 'en_GB-alan-medium'
     silenceSec  = 1.5                # seconds of silence before mic stops recording
   }
 
