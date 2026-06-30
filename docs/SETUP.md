@@ -39,6 +39,7 @@ Fully automated from here. Builds the inference engine, downloads models, wires 
 `setup.bat` is idempotent. If something fails partway through, fix the issue and re-run it; completed steps are skipped.
 
 - `setup.bat -SkipModels` builds and configures everything but skips the downloads
+- `setup.bat -SkipVoice` skips the voice + vision step (whisper build + model downloads)
 - `setup.bat -Launch` starts the stack automatically when setup finishes
 - `setup.bat -Profile 12gb` selects the smaller model profile before downloading anything
 
@@ -108,7 +109,7 @@ bob diagnose              # re-run hardware summary at any time; flags any unres
 
 **Pro models** (optional): set `DEEPSEEK_API_KEY` and `ZHIPU_API_KEY` environment variables, then run `bob gen`. The pro models (`chat-pro`, `planner-pro`, `coder-pro`) will be available via the LiteLLM proxy at `:8081`. See [USAGE.md § Pro models](USAGE.md#pro-models-api-backed-no-platform-fee).
 
-**Voice and Vision (Phase 2, optional):** run `bob setup-voice` to download whisper STT, piper TTS, and the Qwen2-VL mmproj file. Then set `voice.enabled = $true` and `vision.enabled = $true` in `config/bob.psd1` and restart with `bob up`. See [USAGE.md § Voice](USAGE.md#voice-phase-2) and [USAGE.md § Vision](USAGE.md#vision-phase-2).
+**Voice and Vision (Phase 2):** included in `setup.bat` automatically (step 11 — builds whisper, downloads STT model, piper TTS, and vision mmproj). To skip: `setup.bat -SkipVoice`. See [USAGE.md § Voice](USAGE.md#voice-phase-2) and [USAGE.md § Vision](USAGE.md#vision-phase-2).
 
 **Memory lock** is handled automatically during setup (step 10). If you enable `mlockBig = $true` in `config/user.psd1` after setup, run `bob mlock` to grant `SeLockMemoryPrivilege` and restart your terminal.
 

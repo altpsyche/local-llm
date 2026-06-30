@@ -7,13 +7,13 @@
 #   .\scripts\setup.ps1 -SkipModels -SkipBuild # skip models + binary compilation (venvs + config only)
 #   .\scripts\setup.ps1 -Profile 12gb          # smaller models for ~12GB VRAM (see config/models.psd1)
 #   .\scripts\setup.ps1 -Launch                # start the stack (up.ps1) when finished
-param([switch]$SkipModels, [switch]$SkipBuild, [switch]$Launch, [string]$Profile)
+param([switch]$SkipModels, [switch]$SkipBuild, [switch]$SkipVoice, [switch]$Launch, [string]$Profile)
 $ErrorActionPreference = "Stop"
 $repo = Split-Path $PSScriptRoot -Parent
 . "$PSScriptRoot\_models.ps1"
 . "$PSScriptRoot\_common.ps1"   # Have, Install-WithWinget
 
-$script:stepTotal   = 11
+$script:stepTotal   = 12
 $script:stepCurrent = 0
 $script:stepSw      = $null
 $setupStart         = [Diagnostics.Stopwatch]::StartNew()
@@ -115,6 +115,13 @@ Step "fabric (shell AI patterns)"
 
 Step "Install 'llm' CLI command"
 & "$PSScriptRoot\install-cli.ps1"
+
+Step "Voice + Vision setup (Phase 2)" "builds whisper.cpp, downloads STT model + TTS voice + mmproj"
+if ($SkipVoice) {
+    Write-Host "  Skipped (-SkipVoice)." -ForegroundColor DarkGray
+} else {
+    & "$PSScriptRoot\setup-voice.ps1"
+}
 
 Step "Memory lock (mlock)"
 $cfgForMlock = Get-ModelsConfig

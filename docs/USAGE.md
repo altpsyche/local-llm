@@ -468,7 +468,7 @@ bob status                          # now includes a whisper UP/down line
 **Audio quality tips:**
 - Use headphones to prevent the mic picking up speaker output.
 - The energy-gate in `bob-voice-capture.py` silences blank audio before it reaches whisper.
-- Whisper base.en is fast (~200 ms on GPU). For other languages, swap `sttModel` to a multilingual model and re-run `bob setup-voice`.
+- Whisper small (multilingual, ~300 ms on GPU) is the default. It handles accented English and non-English languages. To upgrade to medium (better accuracy, ~1.4 GB), set `sttModel = 'medium'` in `bob.psd1` and re-run `bob setup-voice`.
 
 ## Vision (Phase 2)
 

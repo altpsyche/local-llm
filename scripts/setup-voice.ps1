@@ -9,15 +9,25 @@ $ErrorActionPreference = "Stop"
 $repo = Split-Path $PSScriptRoot -Parent
 . "$PSScriptRoot\_models.ps1"
 
-# Version-pinned URLs — verify on HuggingFace / GitHub if downloads fail.
+$bobCfg   = Get-BobConfig
+$sttModel = $bobCfg.voice.sttModel ?? 'small'          # e.g. 'small', 'base.en', 'medium'
+$ttsVoice = $bobCfg.voice.ttsVoice ?? 'en_GB-alan-medium'  # e.g. 'en_GB-alan-medium'
+
+# Derive piper voice HF URL from voice name.
+# Voice name format: {lang}_{REGION}-{name}-{quality}  e.g. en_GB-alan-medium
+# HF path: rhasspy/piper-voices / v1.0.0 / {lang} / {lang}_{REGION} / {name} / {quality} / {file}
+$voiceParts = $ttsVoice -split '-'   # ['en_GB', 'alan', 'medium']
+$voiceLang  = ($voiceParts[0] -split '_')[0]   # 'en'
+$voiceBase  = "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/$voiceLang/$($voiceParts[0])/$($voiceParts[1])/$($voiceParts[2])/$ttsVoice"
+
 $urls = @{
-    # whisper base.en model from ggerganov's official HF repo
-    whisperModel    = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin'
+    # whisper model from ggerganov's official HF repo — config-driven
+    whisperModel    = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-$sttModel.bin"
     # piper Windows AMD64 release (2023-11-14-2 is the stable release)
     piperZip        = 'https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_windows_amd64.zip'
-    # lessac medium voice model + config
-    piperVoice      = 'https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx'
-    piperVoiceJson  = 'https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json'
+    # piper voice model — config-driven (URL derived from voice name)
+    piperVoice      = "$voiceBase.onnx"
+    piperVoiceJson  = "$voiceBase.onnx.json"
 }
 
 function Download-File($url, $dest, $label) {
@@ -42,11 +52,12 @@ if ($Force -or -not (Test-Path $serverExe)) {
     Write-Host "  whisper-server.exe already built — skipping." -ForegroundColor DarkGray
 }
 
-# ── Step 2: download whisper base.en model ────────────────────────────────────
-Write-Host "`n[2/5] Whisper model (ggml-base.en.bin ~74 MB)" -ForegroundColor Yellow
-$whisperDir = Join-Path $repo 'models\whisper'
+# ── Step 2: download whisper model (config-driven) ───────────────────────────
+Write-Host "`n[2/5] Whisper model (ggml-$sttModel.bin)" -ForegroundColor Yellow
+$whisperDir  = Join-Path $repo 'models\whisper'
+$whisperFile = "ggml-$sttModel.bin"
 New-Item -ItemType Directory -Force $whisperDir | Out-Null
-Download-File $urls.whisperModel (Join-Path $whisperDir 'ggml-base.en.bin') 'ggml-base.en.bin'
+Download-File $urls.whisperModel (Join-Path $whisperDir $whisperFile) $whisperFile
 
 # ── Step 3: download piper binary + voice model ───────────────────────────────
 Write-Host "`n[3/5] Piper TTS binary + voice model" -ForegroundColor Yellow
@@ -80,8 +91,8 @@ if ($Force -or -not (Test-Path $piperExe)) {
 } else {
     Write-Host "  piper.exe already present — skipping." -ForegroundColor DarkGray
 }
-Download-File $urls.piperVoice     (Join-Path $voicesDir 'en_US-lessac-medium.onnx')      'en_US-lessac-medium.onnx'
-Download-File $urls.piperVoiceJson (Join-Path $voicesDir 'en_US-lessac-medium.onnx.json') 'en_US-lessac-medium.onnx.json'
+Download-File $urls.piperVoice     (Join-Path $voicesDir "$ttsVoice.onnx")      "$ttsVoice.onnx"
+Download-File $urls.piperVoiceJson (Join-Path $voicesDir "$ttsVoice.onnx.json") "$ttsVoice.onnx.json"
 
 # ── Step 4: install Python audio deps into venv-litellm ──────────────────────
 Write-Host "`n[4/5] Python audio deps (sounddevice, numpy)" -ForegroundColor Yellow
@@ -93,7 +104,6 @@ Write-Host "  sounddevice + numpy installed." -ForegroundColor Green
 
 # ── Step 5: smoke test ────────────────────────────────────────────────────────
 Write-Host "`n[5/5] Smoke test (start whisper-server, POST silence WAV)" -ForegroundColor Yellow
-$bobCfg  = Get-BobConfig
 $sttPort = $bobCfg.voice.sttPort ?? 8082
 
 # Create minimal 2-second silent WAV (44100 Hz mono 16-bit)
