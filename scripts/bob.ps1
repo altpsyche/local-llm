@@ -88,6 +88,15 @@ function Format-ForSpeech {
   # System prompts are advisory — this is the reliable safety net.
   param([string]$Text)
   $t = $Text
+  # Normalize typographic Unicode characters to spoken equivalents.
+  $t = $t.Replace([char]0x2014, ', ')    # em dash —
+  $t = $t.Replace([char]0x2013, ' to ')  # en dash –
+  $t = $t.Replace([char]0x2018, "'")     # left single quote
+  $t = $t.Replace([char]0x2019, "'")     # right single quote
+  $t = $t.Replace([char]0x201C, '"')     # left double quote
+  $t = $t.Replace([char]0x201D, '"')     # right double quote
+  $t = $t.Replace([char]0x2026, '...')    # ellipsis
+  $t = $t.Replace([char]0x00A0, ' ')      # non-breaking space
   $t = [regex]::Replace($t, '```[a-zA-Z]*\r?\n?', '')   # fenced code blocks — strip fence
   $t = $t.Replace('```', '')
   $t = [regex]::Replace($t, '`([^`]+)`', '$1')           # inline code
