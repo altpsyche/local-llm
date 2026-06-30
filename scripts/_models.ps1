@@ -14,9 +14,11 @@
 #   Get-BestCudaRoot [-CudaArch n]    -> best installed CUDA toolkit path for the arch, or $null
 #   Test-PortInUse -Port n [-Hostname h]  -> $true if port is in use
 #   $script:SizeTolPct                    -> 0.10 — ±10% size tolerance for GGUF validation
+#   Get-BobConfig                         -> raw hashtable from config/bob.psd1 (+ user.psd1 [bob] overrides)
 
 $script:ModelsRepo = Split-Path $PSScriptRoot -Parent
 $script:ModelsFile = Join-Path $script:ModelsRepo 'config\models.psd1'
+$script:BobFile    = Join-Path $script:ModelsRepo 'config\bob.psd1'
 $script:SizeTolPct = 0.10
 
 function Get-ModelsConfig {
@@ -65,6 +67,22 @@ function Get-ModelsConfig {
             $base.peers[$peerName][$k] = $user.peers[$peerName][$k]
           }
         }
+      }
+    }
+  }
+  return $base
+}
+
+function Get-BobConfig {
+  if (-not (Test-Path $script:BobFile)) { throw "bob config not found: $script:BobFile" }
+  $base = Import-PowerShellDataFile -LiteralPath $script:BobFile
+  $userFile = Join-Path (Split-Path $script:BobFile) 'user.psd1'
+  if (Test-Path $userFile) {
+    $user = Import-PowerShellDataFile -LiteralPath $userFile
+    if ($user.bob) {
+      foreach ($section in $user.bob.Keys) {
+        if (-not $base.Contains($section)) { $base[$section] = @{} }
+        foreach ($k in $user.bob[$section].Keys) { $base[$section][$k] = $user.bob[$section][$k] }
       }
     }
   }

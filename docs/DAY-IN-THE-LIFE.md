@@ -9,14 +9,15 @@ This is a hands-on tour of every feature in the stack, structured as a typical w
 ## Contents
 
 - [Morning: Starting Up](#morning-starting-up)
-- [Feature 1: Open WebUI (Browser Chat)](#feature-1-open-webui-browser-chat)
-- [Feature 2: Continue.dev (VS Code Autocomplete and Chat)](#feature-2-continuedev-vs-code-autocomplete-and-chat)
-- [Feature 3: Cline (VS Code Agentic Edits)](#feature-3-cline-vs-code-agentic-edits)
-- [Feature 4: Aider (Terminal Plan-then-Edit)](#feature-4-aider-terminal-plan-then-edit)
-- [Feature 5: Fabric (Shell Pattern Pipes)](#feature-5-fabric-shell-pattern-pipes)
-- [Feature 6: SearXNG (Private Web Search)](#feature-6-searxng-private-web-search)
-- [Feature 7: n8n (Workflow Automation)](#feature-7-n8n-workflow-automation)
-- [Feature 8: Langfuse (bob Observability)](#feature-8-langfuse-llm-observability)
+- [Feature 1: Bob Chat (Terminal Assistant)](#feature-1-bob-chat-terminal-assistant)
+- [Feature 2: Open WebUI (Browser Chat)](#feature-2-open-webui-browser-chat)
+- [Feature 3: Continue.dev (VS Code Autocomplete and Chat)](#feature-3-continuedev-vs-code-autocomplete-and-chat)
+- [Feature 4: Cline (VS Code Agentic Edits)](#feature-4-cline-vs-code-agentic-edits)
+- [Feature 5: Aider (Terminal Plan-then-Edit)](#feature-5-aider-terminal-plan-then-edit)
+- [Feature 6: Fabric (Shell Pattern Pipes)](#feature-6-fabric-shell-pattern-pipes)
+- [Feature 7: SearXNG (Private Web Search)](#feature-7-searxng-private-web-search)
+- [Feature 8: n8n (Workflow Automation)](#feature-8-n8n-workflow-automation)
+- [Feature 9: Langfuse (bob Observability)](#feature-9-langfuse-llm-observability)
 - [Command Reference](#command-reference-everything-at-a-glance)
 - [Evening: Wrapping Up](#evening-wrapping-up)
 - [What to Try First](#what-to-try-first)
@@ -79,7 +80,74 @@ The services are now available at:
 
 ---
 
-## Feature 1: Open WebUI (Browser Chat)
+## Feature 1: Bob Chat (Terminal Assistant)
+
+**What it is:** A multi-turn conversational assistant in your terminal. Bob knows your name and work context (from onboarding), can route to the right model based on what you're doing, and supports optional memory recall.
+
+### Start a conversation
+
+```powershell
+bob chat
+```
+
+Bob enters an interactive REPL:
+```
+Bob [chat | Qwen3-14B-Instruct-Q4_K_M]  (empty line to exit, !recall <query> to inject memory)
+
+>
+```
+
+Type anything. Bob streams the response. Keep typing to continue the conversation. An empty line exits.
+
+### Route to the right model
+
+```powershell
+bob chat            # default: chat (general conversation, Qwen3-14B)
+bob think           # planner: Qwen3-30B, deep reasoning, thinking mode on
+bob code            # coder: Qwen2.5-Coder-14B, code-focused
+bob chat --pro      # chat-pro: DeepSeek V4 via API (needs DEEPSEEK_API_KEY)
+bob think --pro     # planner-pro: DeepSeek R1 via API (strongest reasoning)
+bob code --pro      # coder-pro: DeepSeek V4 via API
+```
+
+### One-shot from the terminal
+
+No REPL — just pipe a question and get an answer:
+
+```powershell
+bob chat "what is the difference between a mutex and a semaphore?"
+bob think "design a plugin architecture for a game engine"
+bob code "write a PowerShell function that retries a script block N times with exponential backoff"
+bob chat --pro "explain CAP theorem with a concrete example"
+```
+
+### Memory
+
+Store facts you want Bob to remember across sessions:
+
+```powershell
+bob remember "working on a Unreal 5.4 game engine plugin called BobBot"
+bob remember "prefer explicit error messages over silent failures"
+bob recall "current project"   # semantic search — prints matching memories
+```
+
+Pull memories into a REPL conversation with `!recall`:
+
+```
+Bob [chat | Qwen3-14B] >
+> !recall current project
+  [injected 1 memory into context]
+> what am I working on?
+  Bob: You're working on a Unreal 5.4 game engine plugin called BobBot...
+```
+
+`!recall` injects into a replaceable context slot — calling it again swaps the slot rather than accumulating. Use `!memory` inside the REPL to check DB status without leaving.
+
+Memory requires enabling in `config/bob.psd1`: `memory = @{ enabled = $true }`. The `embed` model (BGE-M3) must be running; it's pinned by default.
+
+---
+
+## Feature 2: Open WebUI (Browser Chat)
 
 **What it is:** A full-featured chat interface in your browser, like ChatGPT but running locally.
 
@@ -120,7 +188,7 @@ The `embed` model indexes the document locally. Nothing leaves your machine.
 
 ---
 
-## Feature 2: Continue.dev (VS Code Autocomplete and Chat)
+## Feature 3: Continue.dev (VS Code Autocomplete and Chat)
 
 **What it is:** Two things inside VS Code: as-you-type autocomplete and a chat panel with access to your codebase.
 
@@ -174,7 +242,7 @@ At the bottom of the Continue chat panel, there's a model dropdown. Use `coder` 
 
 ---
 
-## Feature 3: Cline (VS Code Agentic Edits)
+## Feature 4: Cline (VS Code Agentic Edits)
 
 **What it is:** An AI agent inside VS Code that reads files, writes files, runs commands, and works across many turns without you guiding each step.
 
@@ -214,7 +282,7 @@ With this on, Cline uses `planner` (the larger reasoning model) to figure out th
 
 ---
 
-## Feature 4: Aider (Terminal Plan-then-Edit)
+## Feature 5: Aider (Terminal Plan-then-Edit)
 
 **What it is:** A terminal coding agent with a genuine planning step. `planner` describes what needs to change in plain English; `coder` turns that into file edits. You review the plan before any file is touched.
 
@@ -259,7 +327,7 @@ aider commits each accepted edit to git automatically. Work on a branch so `/und
 
 ---
 
-## Feature 5: Fabric (Shell Pattern Pipes)
+## Feature 6: Fabric (Shell Pattern Pipes)
 
 **What it is:** Named prompt patterns you pipe text through in the terminal. Instead of writing the same system prompt every time ("summarize this in bullet points, formatted as..."), you pipe to `fabric --pattern <name>`.
 
@@ -299,7 +367,7 @@ cat architecture-doc.md | fabric --pattern analyze_claims --model planner
 
 ---
 
-## Feature 6: SearXNG (Private Web Search)
+## Feature 7: SearXNG (Private Web Search)
 
 **What it is:** A self-hosted search engine at http://localhost:8888. You type a query, SearXNG sends it to Google, Bing, DuckDuckGo, and others in parallel, and shows you combined results. Your searches aren't linked to any account.
 
@@ -330,7 +398,7 @@ If `@web` returns nothing, check that Docker services are running: `bob services
 
 ---
 
-## Feature 7: n8n (Workflow Automation)
+## Feature 8: n8n (Workflow Automation)
 
 **What it is:** A visual workflow builder at http://localhost:5678. Connect triggers (a schedule, a webhook, a file change) to actions (call the local LLM, send an email, post to Slack) without writing scripts.
 
@@ -393,7 +461,7 @@ Invoke-RestMethod -Uri "http://localhost:5678/webhook/<your-id>" -Method POST `
 
 ---
 
-## Feature 8: Langfuse (bob Observability)
+## Feature 9: Langfuse (bob Observability)
 
 **What it is:** A dashboard at http://localhost:3001 that records every AI request routed through LiteLLM: the full prompt, response, latency, token counts, and retries. Useful for understanding what the model actually received (not what you think you sent), debugging unexpected answers, and seeing which workflows are expensive.
 
@@ -471,13 +539,21 @@ This is how you debug "why did the model respond like that?": you see the exact 
 | Stop everything | `bob stop` |
 | Tail logs | `bob logs` |
 
-### Chat from terminal
+### Chat from terminal (Bob identity)
 
 | Task | Command |
 |---|---|
-| Chat with coder | `bob chat coder "your question"` |
-| Chat with planner | `bob chat planner "design question"` |
-| Skip the scratchpad | `bob chat chat "quick question /no_think"` |
+| Interactive REPL (default role) | `bob chat` |
+| Interactive REPL with planner | `bob think` |
+| Interactive REPL with coder | `bob code` |
+| One-shot question | `bob chat "your question"` |
+| One-shot with cloud | `bob chat --pro "your question"` |
+| Legacy one-shot | `bob chat coder "your question"` |
+| Skip the scratchpad | `bob chat "quick question /no_think"` |
+| Store a memory | `bob remember "fact to remember"` |
+| Search memories | `bob recall "query"` |
+| Memory DB status | `bob memory status` |
+| Spending summary | `bob budget` |
 
 ### Docker services
 
@@ -564,16 +640,19 @@ If this was your first read-through, here's a short sequence that touches every 
 
 1. `bob up`: start the stack
 2. `bob diagnose`: confirm GPU, CUDA, and model files are all healthy
-3. Open http://localhost:3000: chat with Open WebUI, try `/no_think` on a simple question
-4. Open VS Code: accept an autocomplete suggestion, try `Ctrl+I` on a block of code
-5. Open the Continue panel (`Ctrl+L`): ask `@web what changed in the latest Python release?`
-6. Open the Cline panel: give it a small contained task ("add a docstring to this function")
-7. In a terminal: `cd C:\my-project && bob aider`: add a file with `/add`, ask for a change, review the plan
-8. In a terminal: `git diff --staged | fabric --pattern write_git_commit`
-9. `bob services start`: start Docker services
-10. Open http://localhost:8888: do a search, set it as a browser shortcut
-11. Open http://localhost:5678: create a webhook workflow that calls the LLM
-12. Enable Langfuse tracing: set `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` env vars + `langfuseEnabled = $true` in `user.psd1` + `bob gen && bob litellm`, make a request, open http://localhost:3001 and look at the trace
-13. `bob stop`: shut down cleanly
+3. `bob chat`: open the interactive REPL — type a question, get a streaming answer, empty line to exit
+4. `bob think "design a plugin architecture for a game engine"`: one-shot with the planner
+5. `bob remember "working on X project"` then `bob recall "current project"`: test memory store/search
+6. Open http://localhost:3000: chat with Open WebUI, try `/no_think` on a simple question
+7. Open VS Code: accept an autocomplete suggestion, try `Ctrl+I` on a block of code
+8. Open the Continue panel (`Ctrl+L`): ask `@web what changed in the latest Python release?`
+9. Open the Cline panel: give it a small contained task ("add a docstring to this function")
+10. In a terminal: `cd C:\my-project && bob aider`: add a file with `/add`, ask for a change, review the plan
+11. In a terminal: `git diff --staged | fabric --pattern write_git_commit`
+12. `bob services start`: start Docker services
+13. Open http://localhost:8888: do a search, set it as a browser shortcut
+14. Open http://localhost:5678: create a webhook workflow that calls the LLM
+15. Enable Langfuse tracing: set `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` env vars + `langfuseEnabled = $true` in `user.psd1` + `bob gen && bob litellm`, make a request, open http://localhost:3001 and look at the trace
+16. `bob stop`: shut down cleanly
 
 For more detail on any feature: [USAGE.md](USAGE.md). For troubleshooting the Docker services: [USAGE.md § Docker troubleshooting](USAGE.md#troubleshooting-docker).

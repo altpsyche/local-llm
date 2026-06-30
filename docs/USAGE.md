@@ -12,11 +12,24 @@ This document covers day-to-day use: starting and stopping the server, what each
 
 Run this once per machine. It links the VS Code Continue config and the aider config from the repo into your home directory, so both tools work without any in-app configuration. Open WebUI is wired automatically when you start the stack. If you don't have symlink privileges, the script copies the files instead; re-run it after editing the repo configs to sync the copies.
 
-## The `llm` command
+## The `bob` command
 
-`setup.bat` puts `llm` on your PATH. Open a terminal and these commands are available:
+`setup.bat` puts `bob` on your PATH. Open a terminal and these commands are available:
 
 ```
+Chat (Bob identity):
+  bob chat                             Interactive REPL — multi-turn conversation (empty line to exit)
+  bob chat [--pro] [--think] [--code]  REPL with routed role (local or cloud)
+  bob chat "question"                  One-shot with default role
+  bob chat <role> "prompt"             One-shot legacy syntax (still works)
+  bob think [--pro] ["prompt"]         Alias: planner / planner-pro
+  bob code  [--pro] ["prompt"]         Alias: coder / coder-pro
+  bob remember "fact"                  Store text to Bob's memory (SQLite + BGE-M3 embeddings)
+  bob recall "query"                   Semantic search over memory
+  bob memory status                    Memory DB size, entry count, last stored
+  bob memory clear [--yes]             Wipe all memories
+  bob budget                           Token and cost usage summary (LiteLLM + configured caps)
+
 Inference:
   bob serve                            Start API endpoint (interactive, Ctrl+C to stop)
   bob up [-NoOpen]                     Start endpoint + Open WebUI silently (no popup windows) [+ browser]
@@ -29,8 +42,6 @@ Inference:
 Models:
   bob models                           List models with backing names and load state
   bob show <role>                      Model details: file, VRAM, SHA256, disk status
-  bob chat <model> <prompt>            Streaming chat (tokens appear as they generate)
-    [--sys <system>] [--max <tokens>]
   bob bench [gguf]                     Throughput benchmark
 
 Management:
@@ -57,7 +68,7 @@ Ecosystem:
   bob eval <role> [task] [--shots N]   Benchmark model quality (humaneval, mmlu, gsm8k)
 ```
 
-If `llm` isn't found after setup, run `scripts\install-cli.ps1` and open a fresh terminal. That script also registers tab completions in your PowerShell profile (`bob <TAB>` completes subcommands, model roles, and profile names).
+If `bob` isn't found after setup, run `scripts\install-cli.ps1` and open a fresh terminal. That script also registers tab completions in your PowerShell profile (`bob <TAB>` completes subcommands, model roles, and profile names).
 
 ## What's ready after setup
 
@@ -273,6 +284,133 @@ client = OpenAI(base_url="http://localhost:8081/v1", api_key="sk-local")
 resp = client.embeddings.create(model="embed", input=["your text here"])
 vector = resp.data[0].embedding   # list of 1024 floats
 ```
+
+## Bob: the interactive assistant
+
+Phase 1 of the Bob roadmap wires a persona, interactive chat, and memory on top of the inference stack. All of this is opt-in; the raw API, Continue, aider, and every other client are unaffected.
+
+### Interactive REPL
+
+```powershell
+bob chat          # opens the REPL — multi-turn, history in session, empty line to exit
+bob think         # same but uses the planner (Qwen3-30B) — deeper reasoning
+bob code          # same but uses the coder (Qwen2.5-Coder-14B) — code focus
+```
+
+Banner on entry:
+```
+Bob [chat | Qwen3-14B-Instruct-Q4_K_M]  (empty line to exit, !recall <query> to inject memory)
+```
+
+**Routing flags** — combine freely:
+
+| Command | Routes to |
+|---------|----------|
+| `bob chat` | chat (local) |
+| `bob chat --pro` | chat-pro (DeepSeek API) |
+| `bob chat --think` | planner (local) |
+| `bob chat --think --pro` | planner-pro (DeepSeek R1) |
+| `bob chat --code` | coder (local) |
+| `bob chat --code --pro` | coder-pro (DeepSeek API) |
+| `bob think --pro` | planner-pro |
+| `bob code --pro` | coder-pro |
+
+**One-shot mode** — prompt as argument, no interactive loop:
+```powershell
+bob chat "explain what a semaphore is"
+bob chat --pro "what is the fastest sorting algorithm for nearly-sorted data?"
+bob think "design a caching layer for this service"
+bob code "write a PowerShell function that retries a command N times"
+```
+
+**Legacy syntax** still works unchanged:
+```powershell
+bob chat coder "write fizzbuzz in rust"
+bob chat planner "design a caching layer" --sys "Be concise." --max 1024
+```
+
+### Persona config
+
+Bob's name, system prompt, and routing defaults live in `config/bob.psd1` (committed to the repo — it's part of the product). Override any key in `config/user.psd1` under a `bob` section:
+
+```powershell
+# config/user.psd1
+@{
+  bob = @{
+    persona = @{
+      name = 'Bob'
+      systemPrompt = 'You are Bob...'
+    }
+    routing = @{
+      defaultRole = 'chat'
+      proRole     = 'chat-pro'
+    }
+  }
+}
+```
+
+### Memory
+
+Bob stores and retrieves facts using SQLite + BGE-M3 embeddings. The `embed` model is already pinned in VRAM so memory costs 0 extra VRAM.
+
+**Memory is disabled by default.** Enable it in `config/bob.psd1`:
+```powershell
+memory = @{ enabled = $true }
+```
+
+**Storing and querying from the terminal:**
+```powershell
+bob remember "I prefer dark mode in all editors"
+bob remember "working on a game engine plugin in Unreal 5.4"
+bob recall "editor preferences"     # semantic search, prints JSON results
+bob memory status                   # DB path, size, entry count
+bob memory clear --yes              # wipe all memories
+```
+
+**Using memory inside the REPL:**
+
+Memory is **explicit-only** inside `bob chat` — it never auto-injects. Use the `!recall` meta-command to pull relevant memories into the context window:
+
+```
+Bob [chat | Qwen3-14B] >
+> !recall work context
+  [injected 3 memories into context]
+> what am I working on?
+  Bob: You're working on a game engine plugin in Unreal 5.4...
+> !recall editor preferences
+  [injected 1 memory into context]    # replaces previous slot, doesn't accumulate
+> what IDE do I prefer?
+  Bob: You prefer dark mode in all editors...
+> !memory                             # show DB status without leaving REPL
+```
+
+`!recall` injects into a **single replaceable slot** in the conversation history — calling it again swaps the slot rather than adding another injection. Context window stays clean.
+
+Memory DB path defaults to `data/bob.db` (gitignored). Override in `config/bob.psd1 memory.dbPath`.
+
+### First run: onboarding
+
+`setup.bat` triggers an interactive onboarding flow at the end of setup if `config/user.psd1` has no `bob` section yet:
+
+```
+Bob: Hi. What's your name?
+> Siva
+Bob: What kind of work do you do most?
+> Game dev and AI tooling
+Bob: Got a DeepSeek API key? (Enter to skip)
+> sk-...
+Bob: Ready. Type 'bob chat' to start.
+```
+
+This writes your name and work context to `data/bob.db` (profile table) and your API key to `config/user.psd1` (gitignored). Run `scripts\onboard.ps1` manually to redo it.
+
+### Budget tracking
+
+```powershell
+bob budget    # shows LiteLLM spend (if proxy is running) + configured caps
+```
+
+Shows the `max_budget` and `budget_duration` from `config/litellm.yaml`, queries the LiteLLM proxy for spend data if it's running, and reports memory DB size at `$0 cost` (fully local). For detailed per-request cost breakdown, enable Langfuse tracing (see [Langfuse section](#langfuse-bob-observability)).
 
 ## Qwen3 Thinking Mode
 

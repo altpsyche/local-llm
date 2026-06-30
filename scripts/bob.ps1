@@ -14,6 +14,64 @@ $argv = @($args)
 $cmd  = if ($argv.Count) { $argv[0] } else { 'help' }
 $rest = @($argv | Select-Object -Skip 1)   # always an array, even for a single arg
 
+function Invoke-BobStream {
+  # Stream a chat completion to stdout. Returns the full assistant text.
+  param(
+    [string]$Model,
+    [object[]]$Messages,
+    [int]$MaxTokens = 512,
+    [string]$ApiBase
+  )
+  if (-not (Get-Command curl.exe -ErrorAction SilentlyContinue)) {
+    throw "curl.exe not found (requires Windows 10 1803+)"
+  }
+  $body = @{ model=$Model; stream=$true; max_tokens=$MaxTokens; messages=$Messages } |
+          ConvertTo-Json -Depth 8 -Compress
+  $full = [System.Text.StringBuilder]::new()
+  $spinRs = $null; $spinPs = $null; $spinDone = $false
+  try {
+    $spinRs = [runspacefactory]::CreateRunspace(); $spinRs.Open()
+    $spinPs = [powershell]::Create(); $spinPs.Runspace = $spinRs
+    $spinPs.AddScript({
+      $spin = [char[]]@('|','/','-','\'); $i = 0
+      while ($true) { [Console]::Write("`r  $($spin[$i++ % 4]) ..."); [System.Threading.Thread]::Sleep(120) }
+    }) | Out-Null
+    $spinPs.BeginInvoke() | Out-Null
+
+    curl.exe --no-buffer --silent -X POST "$ApiBase/chat/completions" `
+        -H 'Content-Type: application/json' -d $body |
+    ForEach-Object {
+      if ($_ -match '^data: (.+)$') {
+        $chunk = $Matches[1]
+        if ($chunk -ne '[DONE]') {
+          try {
+            $t = ($chunk | ConvertFrom-Json).choices[0].delta.content
+            if ($t) {
+              if (-not $spinDone) {
+                $spinPs.Stop(); $spinRs.Close()
+                [Console]::Write("`r           `r")
+                $spinDone = $true
+              }
+              Write-Host -NoNewline $t
+              [void]$full.Append($t)
+            }
+          } catch {}
+        }
+      }
+    }
+  } catch {
+    Write-Host "Chat failed: $_" -ForegroundColor Red
+    Write-Host "Is endpoint up? bob serve"
+  } finally {
+    if (-not $spinDone -and $spinPs) {
+      $spinPs.Stop()
+      if ($spinRs) { $spinRs.Close() }
+      [Console]::Write("`r           `r")
+    }
+  }
+  return $full.ToString()
+}
+
 switch ($cmd) {
   'status' {
     try { $apiModels = (Invoke-RestMethod "$base/models" -TimeoutSec 3).data }
@@ -214,72 +272,122 @@ switch ($cmd) {
     & "$repo\bin\llama-bench.exe" -m $m -ngl 99 -fa 1 -p 512 -n 128
   }
   'chat' {
-    if ($rest.Count -lt 2) {
-      Write-Host "usage: bob chat <model> <prompt...> [--sys <text>] [--max <N>]"
-      Write-Host "       bob chat coder 'write fizzbuzz in python'"; break
+    # --- Flag extraction ---
+    $isPro    = $rest -contains '--pro'
+    $isThink  = $rest -contains '--think'
+    $isCode   = $rest -contains '--code'
+    $maxTok   = $d.maxTokens ?? 512
+    # Strip known flags; --max N is handled below
+    $restWork = [System.Collections.Generic.List[string]]($rest | Where-Object { $_ -notin '--pro','--think','--code' })
+    for ($fi = 0; $fi -lt $restWork.Count; $fi++) {
+      if ($restWork[$fi] -eq '--max' -and $fi+1 -lt $restWork.Count) {
+        $maxTok = [int]$restWork[$fi+1]; $restWork.RemoveAt($fi+1); $restWork.RemoveAt($fi); break
+      }
     }
-    $model   = $rest[0]
-    $argList = @($rest | Select-Object -Skip 1)
-    $maxTok  = $d.maxTokens ?? 512
-    $sysPrompt = $null; $promptParts = @(); $i = 0
-    while ($i -lt $argList.Count) {
-      if ($argList[$i] -eq '--sys' -and $i+1 -lt $argList.Count) {
-        $sysPrompt = $argList[$i+1]; $i += 2
-      } elseif ($argList[$i] -eq '--max' -and $i+1 -lt $argList.Count) {
-        $maxTok = [int]$argList[$i+1]; $i += 2
-      } else { $promptParts += $argList[$i]; $i++ }
-    }
-    $prompt   = $promptParts -join ' '
-    $messages = @()
-    if ($sysPrompt) { $messages += @{ role='system'; content=$sysPrompt } }
-    $messages += @{ role='user'; content=$prompt }
-    $body = @{ model=$model; stream=$true; max_tokens=$maxTok; messages=$messages } |
-            ConvertTo-Json -Depth 5 -Compress
-    if (-not (Get-Command curl.exe -ErrorAction SilentlyContinue)) {
-      throw "curl.exe not found (requires Windows 10 1803+). Check: where.exe curl.exe"
-    }
-    $spinRs = $null; $spinPs = $null
-    try {
-      $spinRs = [runspacefactory]::CreateRunspace(); $spinRs.Open()
-      $spinPs = [powershell]::Create(); $spinPs.Runspace = $spinRs
-      $spinPs.AddScript({
-          $spin = [char[]]@('|','/','-','\'); $i = 0
-          while ($true) { [Console]::Write("`r  $($spin[$i++ % 4]) Generating..."); [System.Threading.Thread]::Sleep(120) }
-      }) | Out-Null
-      $spinPs.BeginInvoke() | Out-Null
-      $script:chatSpinDone = $false
+    $restClean = $restWork.ToArray()
 
-      curl.exe --no-buffer --silent -X POST "$litellmBase/chat/completions" `
-          -H 'Content-Type: application/json' -d $body |
-      ForEach-Object {
-        if ($_ -match '^data: (.+)$') {
-          $data = $Matches[1]
-          if ($data -ne '[DONE]') {
-            try {
-              $t = ($data | ConvertFrom-Json).choices[0].delta.content
-              if ($t) {
-                if (-not $script:chatSpinDone) {
-                    $spinPs.Stop(); $spinRs.Close()
-                    [Console]::Write("`r                    `r")
-                    $script:chatSpinDone = $true
-                }
-                Write-Host -NoNewline $t
-              }
-            } catch {}
-          }
-        }
+    # --- Legacy syntax: bob chat <knownRole> <prompt...> [--sys <text>] ---
+    $knownRoles = @('chat','coder','planner','fim','embed','chat-pro','coder-pro','planner-pro')
+    if ($restClean.Count -ge 2 -and $knownRoles -contains $restClean[0]) {
+      $model = $restClean[0]
+      $argList = @($restClean | Select-Object -Skip 1)
+      $sysPrompt = $null; $promptParts = @(); $i = 0
+      while ($i -lt $argList.Count) {
+        if ($argList[$i] -eq '--sys' -and $i+1 -lt $argList.Count) {
+          $sysPrompt = $argList[$i+1]; $i += 2
+        } else { $promptParts += $argList[$i]; $i++ }
       }
-      Write-Host ""
-    } catch {
-      Write-Host "Chat failed: $_" -ForegroundColor Red
-      Write-Host "Is endpoint up? bob serve"
-    } finally {
-      if (-not $script:chatSpinDone -and $spinPs) {
-          $spinPs.Stop()
-          if ($spinRs) { $spinRs.Close() }
-          [Console]::Write("`r                    `r")
-      }
+      $messages = @()
+      if ($sysPrompt) { $messages += @{ role='system'; content=$sysPrompt } }
+      $messages += @{ role='user'; content=($promptParts -join ' ') }
+      Invoke-BobStream -Model $model -Messages $messages -MaxTokens $maxTok -ApiBase $litellmBase | Out-Null
+      Write-Host ""; break
     }
+
+    # --- Smart routing ---
+    $bobCfg = Get-BobConfig
+    $targetRole = if     ($isPro -and $isThink) { 'planner-pro' }
+                  elseif ($isPro -and $isCode)  { 'coder-pro' }
+                  elseif ($isPro)               { $bobCfg.routing.proRole }
+                  elseif ($isThink)             { $bobCfg.routing.thinkRole }
+                  elseif ($isCode)              { $bobCfg.routing.codeRole }
+                  else                          { $bobCfg.routing.defaultRole }
+
+    $modelInfo   = (Get-Models).models | Where-Object role -eq $targetRole
+    $displayName = if ($modelInfo) { ($modelInfo.gguf -replace '\.gguf$','') } else { $targetRole }
+
+    # --- One-shot: prompt provided as arg ---
+    if ($restClean.Count -gt 0) {
+      $prompt  = $restClean -join ' '
+      $messages = @(@{ role='system'; content=$bobCfg.persona.systemPrompt }, @{ role='user'; content=$prompt })
+      Invoke-BobStream -Model $targetRole -Messages $messages -MaxTokens $maxTok -ApiBase $litellmBase | Out-Null
+      Write-Host ""; break
+    }
+
+    # --- REPL mode ---
+    Write-Host "Bob [$targetRole | $displayName]  (empty line to exit, !recall <query> to inject memory)" -ForegroundColor Cyan
+    Write-Host ""
+    $history    = [System.Collections.Generic.List[hashtable]]::new()
+    $history.Add(@{ role='system'; content=$bobCfg.persona.systemPrompt })
+    $memPs      = Join-Path $repo 'scripts\bob-memory.ps1'
+    $memEnabled = $bobCfg.memory.enabled -and (Test-Path $memPs)
+    $memSlotIdx = -1   # index of the single replaceable memory slot in $history
+
+    try {
+      while ($true) {
+        $userInput = Read-Host '>'
+        if ([string]::IsNullOrWhiteSpace($userInput)) { break }
+
+        # !recall <query> — explicit memory injection, replaces previous slot
+        if ($userInput -match '^!recall\s+(.+)$') {
+          if (-not $memEnabled) { Write-Host "  [memory not enabled — set memory.enabled = `$true in config/bob.psd1]" -ForegroundColor DarkGray; continue }
+          $q = $Matches[1].Trim()
+          try {
+            $memJson  = & $memPs recall $q 2>$null
+            $memItems = $memJson | ConvertFrom-Json -ErrorAction SilentlyContinue
+            if ($memItems -and $memItems.Count -gt 0) {
+              $memText = '[Memory: ' + ($memItems | ForEach-Object { $_.content } | Join-String -Separator ' | ') + ']'
+              if ($memSlotIdx -ge 0) { $history[$memSlotIdx] = @{ role='system'; content=$memText } }
+              else { $history.Add(@{ role='system'; content=$memText }); $memSlotIdx = $history.Count - 1 }
+              Write-Host "  [injected $($memItems.Count) memor$(if($memItems.Count -eq 1){'y'}else{'ies'}) into context]" -ForegroundColor DarkGray
+            } else { Write-Host "  [no memories matched '$q']" -ForegroundColor DarkGray }
+          } catch { Write-Host "  [memory recall failed: $_]" -ForegroundColor DarkGray }
+          continue
+        }
+
+        # !memory — show DB status
+        if ($userInput -eq '!memory') {
+          if ($memEnabled) { try { & $memPs status 2>$null } catch {} } else { Write-Host "  [memory not enabled]" -ForegroundColor DarkGray }
+          continue
+        }
+
+        $history.Add(@{ role='user'; content=$userInput })
+        $reply = Invoke-BobStream -Model $targetRole -Messages $history.ToArray() -MaxTokens $maxTok -ApiBase $litellmBase
+        Write-Host ""
+        if ($reply) { $history.Add(@{ role='assistant'; content=$reply }) }
+      }
+    } finally {
+      if ($memEnabled -and ($bobCfg.memory.autoSummarize -eq $true) -and ($history.Count -gt 2)) {
+        Write-Host "  [summarizing session...]" -ForegroundColor DarkGray
+        try {
+          $tmpFile = [System.IO.Path]::GetTempFileName() + ".json"
+          $history.ToArray() | ConvertTo-Json -Depth 4 | Set-Content $tmpFile -Encoding utf8
+          & $memPs summarize-session --messages-file $tmpFile 2>$null
+          Remove-Item $tmpFile -ErrorAction SilentlyContinue
+        } catch {}
+      }
+      Write-Host "" -ForegroundColor DarkGray
+    }
+  }
+  'code' {
+    # bob code [--pro] [prompt] — alias for bob chat --code [--pro] [prompt]
+    $fwd = @('--code') + $rest
+    & "$PSScriptRoot\bob.ps1" chat @fwd
+  }
+  'think' {
+    # bob think [--pro] [prompt] — alias for bob chat --think [--pro] [prompt]
+    $fwd = @('--think') + $rest
+    & "$PSScriptRoot\bob.ps1" chat @fwd
   }
   'stop' {
     Get-Process llama-swap,llama-server,open-webui -ErrorAction SilentlyContinue | Stop-Process -Force
@@ -416,6 +524,24 @@ N8N_PORT=$($dp.n8nPort ?? 5678)
     if ($pos.Count -ge 2) { $eArgs['Task'] = $pos[1] }
     & "$repo\scripts\eval.ps1" @eArgs
   }
+  'remember' {
+    if (-not $rest.Count) { Write-Host "usage: bob remember <text>"; break }
+    & "$repo\scripts\bob-memory.ps1" store ($rest -join ' ')
+  }
+  'recall' {
+    if (-not $rest.Count) { Write-Host "usage: bob recall <query>"; break }
+    & "$repo\scripts\bob-memory.ps1" recall ($rest -join ' ')
+  }
+  'memory' {
+    $sub   = if ($rest.Count) { $rest[0] } else { 'status' }
+    $mRest = @($rest | Select-Object -Skip 1)
+    switch ($sub) {
+      'status' { & "$repo\scripts\bob-memory.ps1" status }
+      'clear'  { & "$repo\scripts\bob-memory.ps1" clear @mRest }
+      default  { Write-Host "Usage: bob memory status|clear [--yes]" }
+    }
+  }
+  'budget' { & "$repo\scripts\bob-budget.ps1" }
   default {
     $wp = $d.webuiPort ?? 3000
 @"
@@ -430,11 +556,21 @@ Inference:
   bob ps                               Daemon processes with PID, RAM, uptime
   bob logs [-n N]                      Tail server log (default: last 50 lines)
 
+Chat:
+  bob chat                             Interactive REPL (chat role, Ctrl+C to exit)
+  bob chat [--pro] [--think] [--code]  REPL with routed role
+  bob chat "prompt"                    One-shot with default role
+  bob chat <role> "prompt"             One-shot legacy syntax (still works)
+  bob think [--pro] ["prompt"]         Alias: planner / planner-pro
+  bob code  [--pro] ["prompt"]         Alias: coder / coder-pro
+  bob remember "fact"                  Store text to memory
+  bob recall "query"                   Search memory
+  bob memory status|clear              Memory DB info / wipe
+  bob budget                           Token and cost usage summary
+
 Models:
   bob models                           List models with backing names and state
   bob show <role>                      Model info: file, VRAM, SHA256, disk status
-  bob chat <model> <prompt>            Streaming chat
-    [--sys <system>] [--max <tokens>]
   bob bench [gguf]                     Throughput benchmark
 
 Management:

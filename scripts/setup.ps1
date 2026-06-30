@@ -156,4 +156,14 @@ if ((Have 'docker') -or (Test-Path $dockerExe)) {
 if ($script:stepSw) { Write-Host "    done in $([int]$script:stepSw.Elapsed.TotalSeconds)s" -ForegroundColor DarkGray }
 Write-Host "`nSetup complete in $([int]$setupStart.Elapsed.TotalMinutes)m$($setupStart.Elapsed.Seconds)s." -ForegroundColor Green
 Write-Host "Open a new terminal, then:  bob up   (or  bob help  for all commands)" -ForegroundColor Green
+
+# Onboarding: run if no bob section in user.psd1 yet
+$userCfg = Join-Path $repo 'config\user.psd1'
+$needsOnboard = $true
+if (Test-Path $userCfg) {
+  $cfgRaw = Get-Content $userCfg -Raw -ErrorAction SilentlyContinue
+  if ($cfgRaw -match '\bbob\s*=') { $needsOnboard = $false }
+}
+if ($needsOnboard) { & "$PSScriptRoot\onboard.ps1" }
+
 if ($Launch) { & "$PSScriptRoot\up.ps1" }

@@ -22,5 +22,9 @@ Write-Host "Installing litellm[proxy]..." -ForegroundColor Cyan
 & "$venv\Scripts\pip.exe" install -r "$repo\tools\litellm-requirements.txt" --quiet
 if ($LASTEXITCODE -ne 0) { throw "pip install failed." }
 
+Write-Host "Installing sqlite-utils (bob memory)..." -ForegroundColor Cyan
+& "$venv\Scripts\pip.exe" install sqlite-utils --quiet
+if ($LASTEXITCODE -ne 0) { throw "pip install sqlite-utils failed." }
+
 Write-Host "LiteLLM installed at tools/venv-litellm/" -ForegroundColor Green
 Write-Host "Start proxy: bob litellm   (listens on http://localhost:8081/v1)" -ForegroundColor DarkGray
