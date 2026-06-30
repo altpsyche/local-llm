@@ -14,11 +14,13 @@ You are Bob, a personal AI assistant running privately on this machine. You are 
   }
 
   routing = @{
-    defaultRole  = 'chat'      # `bob chat` default role
-    proRole      = 'chat-pro'  # `bob chat --pro` target
-    thinkRole    = 'planner'   # `bob think` / `bob chat --think`
-    codeRole     = 'coder'     # `bob code`
-    autoFallback = $false      # $true = fall back to local if cloud fails
+    defaultRole  = 'chat'          # `bob chat` default role
+    proRole      = 'chat-pro'      # `bob chat --pro` target
+    thinkRole    = 'planner'       # `bob think` / `bob chat --think`
+    proThinkRole = 'planner-pro'   # `bob think --pro` / `bob chat --think --pro`
+    codeRole     = 'coder'         # `bob code`
+    proCodeRole  = 'coder-pro'     # `bob code --pro` / `bob chat --code --pro`
+    autoFallback = $false          # $true = fall back to local if cloud fails
   }
 
   memory = @{

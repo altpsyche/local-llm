@@ -325,12 +325,12 @@ switch ($cmd) {
 
     # --- Smart routing ---
     $bobCfg = Get-BobConfig
-    $targetRole = if     ($isPro -and $isThink) { 'planner-pro' }
-                  elseif ($isPro -and $isCode)  { 'coder-pro' }
-                  elseif ($isPro)               { $bobCfg.routing.proRole }
-                  elseif ($isThink)             { $bobCfg.routing.thinkRole }
-                  elseif ($isCode)              { $bobCfg.routing.codeRole }
-                  else                          { $bobCfg.routing.defaultRole }
+    $targetRole = if     ($isPro -and $isThink) { $bobCfg.routing.proThinkRole ?? 'planner-pro' }
+                  elseif ($isPro -and $isCode)  { $bobCfg.routing.proCodeRole  ?? 'coder-pro' }
+                  elseif ($isPro)               { $bobCfg.routing.proRole      ?? 'chat-pro' }
+                  elseif ($isThink)             { $bobCfg.routing.thinkRole    ?? 'planner' }
+                  elseif ($isCode)              { $bobCfg.routing.codeRole     ?? 'coder' }
+                  else                          { $bobCfg.routing.defaultRole  ?? 'chat' }
 
     $modelInfo   = (Get-Models).models | Where-Object role -eq $targetRole
     $displayName = if ($modelInfo) { ($modelInfo.gguf -replace '\.gguf$','') } else { $targetRole }
