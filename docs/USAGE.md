@@ -37,10 +37,11 @@ Voice (Phase 2 — run `bob setup-voice` once to download whisper + piper; flip 
   bob speak ["text"]                   Synthesise text to audio and play it (piper TTS); accepts stdin
   bob voice [--pro]                    Continuous loop: listen → chat → speak (Ctrl+C to stop)
   bob whisper start|stop|status|logs  Manage the whisper STT server (port 8082)
+  bob piper [stop|status]              Start/control piper TTS HTTP server (:8083, OpenAI-compatible)
 
 Vision (Phase 2 — requires vision model download; model loads on demand, TTL 30 s):
-  bob describe <image> ["prompt"]      Describe an image file or answer a question about it
-  bob screenshot ["prompt"]            Take a screenshot and describe it
+  bob describe <image> [--pro] ["prompt"]  Describe an image file (local Qwen2-VL or --pro cloud vision)
+  bob screenshot [--pro] ["prompt"]        Take a screenshot and describe it (--pro for cloud vision)
 
 Inference:
   bob serve                            Start API endpoint (interactive, Ctrl+C to stop)
@@ -236,8 +237,9 @@ Three additional model names are available via the LiteLLM proxy (`:8081`) when 
 | `chat-pro` | general conversation | DeepSeek | deepseek-chat (V4) | ~$0.27/M in |
 | `planner-pro` | heavy reasoning | DeepSeek | deepseek-reasoner (R1) | ~$0.55/M in |
 | `coder-pro` | coding | DeepSeek | deepseek-chat (V4) | ~$0.27/M in |
+| `vision-pro` | cloud vision | DeepSeek | deepseek-chat (V4, vision-capable) | ~$0.27/M in |
 
-**API keys** — all three roles currently route through DeepSeek, so only one key is needed. The system supports multiple providers; set additional keys to enable other peers:
+**API keys** — all four pro roles currently route through DeepSeek, so only one key is needed. The system supports multiple providers; set additional keys to enable other peers:
 
 ```powershell
 $env:DEEPSEEK_API_KEY = 'sk-...'   # platform.deepseek.com → API keys  (active: chat, coder, planner)
@@ -460,9 +462,27 @@ bob listen | bob chat | bob speak   # one-shot voice turn
 bob whisper start                   # start whisper STT server (port 8082)
 bob whisper stop                    # stop the whisper server
 bob whisper status                  # show PID and uptime
-bob whisper logs                    # tail the whisper log
-bob ps                              # shows whisper row alongside llama-swap and litellm
-bob status                          # now includes a whisper UP/down line
+bob ps                              # shows whisper and piper rows alongside other services
+bob status                          # includes whisper and piper UP/down lines
+```
+
+**Piper TTS HTTP server** (for Open WebUI integration):
+```powershell
+bob piper                           # start piper HTTP server on :8083 (OpenAI /v1/audio/speech)
+bob piper stop                      # stop the piper server
+bob piper status                    # show PID and uptime
+```
+Wire into Open WebUI: Admin Panel → Audio → Text-to-Speech Engine → `http://localhost:8083`
+
+Wire whisper into Open WebUI STT: Admin Panel → Audio → Speech-to-Text Engine → `http://localhost:8082`
+(Requires whisper-server to expose `/v1/audio/transcriptions` — verify with:
+`curl -X POST http://localhost:8082/v1/audio/transcriptions -F "file=@test.wav" -F "model=whisper-1"`)
+
+**Pipeline examples:**
+```powershell
+bob listen | bob chat | bob speak               # one-shot voice turn
+bob listen | bob chat --pro | bob speak         # voice turn routed to cloud
+cat article.txt | fabric --pattern extract_wisdom | bob speak   # read fabric output aloud
 ```
 
 **Audio quality tips:**
@@ -470,24 +490,48 @@ bob status                          # now includes a whisper UP/down line
 - The energy-gate in `bob-voice-capture.py` silences blank audio before it reaches whisper.
 - Whisper small (multilingual, ~300 ms on GPU) is the default. It handles accented English and non-English languages. To upgrade to medium (better accuracy, ~1.4 GB), set `sttModel = 'medium'` in `bob.psd1` and re-run `bob setup-voice`.
 
+**Voice response tuning (all in `config/bob.psd1` under the `voice` block):**
+
+| Key | Default | Effect |
+|-----|---------|--------|
+| `maxTokens` | `512` | Caps the voice reply length. Lower (e.g. `256`) for faster one-liners; raise if Bob cuts off mid-sentence on long answers. |
+| `silenceSec` | `1.5` | Seconds of mic silence before recording stops. Raise if Bob cuts off while you're still speaking. |
+| `systemPrompt` | *(voice-specific)* | The system prompt used only in `bob voice` — instructs the model to reply in plain spoken sentences with no markdown. Override in `config/user.psd1` under `bob.voice.systemPrompt`. |
+| `sttModel` | `'small'` | Whisper model size: `tiny`, `base`, `small`, `medium`. Larger = more accurate, slower. Re-run `bob setup-voice` after changing. |
+
+The voice loop also runs a `Format-ForSpeech` text sanitizer before sending to piper: it strips markdown symbols (`*`, `#`, `` ` ``, `_`, bullet dashes, numbered list markers, links) so stray markdown from the model never reaches the TTS engine. Combined with the voice system prompt, Bob should reply in natural spoken language without reading punctuation symbols aloud.
+
 ## Vision (Phase 2)
 
 Vision uses Qwen2-VL-7B (a 5 GB GGUF + a ~1.5 GB mmproj) to describe images and answer visual questions. The model loads on demand and unloads after 30 seconds of idle to free VRAM for chat/coder.
 
 **Setup:** `bob setup-voice` also downloads the mmproj. The GGUF itself downloads via `bob fetch` (it's part of the 16gb model profile). Flip the flag in `config/bob.psd1`:
 ```powershell
-vision = @{ enabled = $true; visionRole = 'vision' }
+vision = @{ enabled = $true; visionRole = 'vision'; visionProRole = 'vision-pro' }
 ```
 
 **Commands:**
 ```powershell
 bob describe C:\path\to\image.png
 bob describe C:\path\to\image.png "What text is visible?"
+bob describe C:\path\to\image.png --pro "Analyse this diagram in detail"   # DeepSeek V4 vision
 bob screenshot
 bob screenshot "What application is open and what does it show?"
+bob screenshot --pro "Explain the code on screen"                           # cloud vision
 ```
 
+`--pro` routes to DeepSeek V4 (deepseek-chat), which supports vision input, using the existing
+`DEEPSEEK_API_KEY`. Useful when Qwen2-VL output is insufficient or the image requires
+stronger OCR/reasoning.
+
 `bob describe` resizes the image to max 1024 px on the longest edge before encoding (large screenshots fit comfortably in the 4096-token context). `bob screenshot` captures the primary display, saves a temp PNG, calls `bob describe`, then deletes the temp file.
+
+**Pipeline examples:**
+```powershell
+bob screenshot | fabric --pattern analyze_claims    # screenshot → vision → fabric analysis
+bob describe img.png | fabric --pattern summarize   # describe image, pipe to fabric
+bob screenshot --pro "Explain the code on screen"   # cloud vision for complex screenshots
+```
 
 **Known limitation:** `--flash-attn on` is incompatible with multimodal projection — `gen-llama-swap.ps1` automatically omits it when `mmproj` is set, so no manual config is needed.
 
@@ -593,6 +637,7 @@ To get started, run `.\scripts\setup-clients.ps1` once, install the **Continue**
 | Chat, edit | `chat-pro` (DeepSeek V4, API) | general conversation via API |
 | Chat, edit, apply | `coder-pro` (DeepSeek V4, API) | coding via API |
 | Chat | `planner-pro` (DeepSeek R1, API) | heavy reasoning via API |
+| Chat | `vision` (Qwen2-VL-7B, local) | image description and visual Q&A |
 | Autocomplete | `fim` (Qwen-Coder-3B, pinned) | as-you-type ghost text completions |
 | Embed | `embed` (bge-m3, pinned) | `@codebase` and `@docs` RAG indexing |
 

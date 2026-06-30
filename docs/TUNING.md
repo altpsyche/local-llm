@@ -186,6 +186,31 @@ All model configuration lives in `config/models.psd1`. To add a new model or swa
 
 To add an entirely new VRAM tier, add a new key under `profiles` in the PSD1 file and switch to it with `bob profile <name>`. See [USAGE.md](USAGE.md#managing-model-profiles).
 
+## Voice response tuning
+
+Voice-specific settings live in the `voice` block of `config/bob.psd1`. They only affect `bob voice` (the continuous voice loop) — `bob chat` is unaffected.
+
+| Key | Default | Effect |
+|-----|---------|--------|
+| `maxTokens` | `512` | Max tokens the model generates per voice turn. Lower (e.g. `256`) for shorter, faster replies. Raise if the model cuts off mid-sentence on complex questions. |
+| `silenceSec` | `1.5` | Seconds of mic silence before recording stops. If Bob cuts you off while you're still speaking, raise to `2.0`. |
+| `sttModel` | `'small'` | Whisper model size: `tiny.en`, `base.en`, `small`, `medium`. Larger is more accurate but slower. Re-run `bob setup-voice` after changing to download the new model file. |
+| `systemPrompt` | *(see below)* | Prompt used only in the voice loop. Instructs the model to reply in natural spoken sentences, no markdown. Override per-machine in `config/user.psd1` under `bob.voice.systemPrompt`. |
+
+The default `voice.systemPrompt`:
+```
+You are Bob, a voice assistant. Reply in natural spoken sentences only.
+Never use markdown: no asterisks, no bullet points, no pound signs, no backticks, no numbered lists, no dashes as bullets, no special symbols.
+If you need to list things, say "first", "then", "finally" or similar spoken connectives.
+Keep answers brief and direct. One to three sentences is ideal.
+```
+
+In addition to the system prompt, the voice loop runs a `Format-ForSpeech` post-processor that strips any remaining markdown symbols before the text reaches piper. This catches model responses that ignore the instruction. The chain is: model output → strip `<think>` blocks → Format-ForSpeech (regex strip) → piper TTS.
+
+**Piper HTTP server (for Open WebUI TTS):** `bob piper` starts a FastAPI wrapper around piper on `:8083` that accepts OpenAI-compatible `POST /v1/audio/speech` requests. The OpenAI `voice` parameter is accepted but ignored — piper always uses the configured `ttsVoice` ONNX file. Wire it in Open WebUI: Admin Panel → Audio → Text-to-Speech Engine → `http://localhost:8083`.
+
+---
+
 ## System prompts
 
 System prompts are configured in two places:

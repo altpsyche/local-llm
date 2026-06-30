@@ -32,6 +32,7 @@ model_list:
       model: openai/vision
       api_base: http://localhost:8080/v1
       api_key: sk-local
+      supports_vision: true
   - model_name: chat-pro
     litellm_params:
       model: deepseek/deepseek-chat
@@ -50,6 +51,12 @@ model_list:
       api_base: https://api.deepseek.com
       api_key: os.environ/DEEPSEEK_API_KEY
       max_tokens: 8192
+  - model_name: vision-pro
+    litellm_params:
+      model: deepseek/deepseek-chat
+      api_base: https://api.deepseek.com
+      api_key: os.environ/DEEPSEEK_API_KEY
+      max_tokens: 2048
 
 litellm_settings:
   num_retries: 3

@@ -83,6 +83,31 @@ function Invoke-BobStream {
   return $full.ToString()
 }
 
+function Format-ForSpeech {
+  # Strip markdown formatting before passing text to a TTS engine.
+  # System prompts are advisory — this is the reliable safety net.
+  param([string]$Text)
+  $t = $Text
+  $t = [regex]::Replace($t, '```[a-zA-Z]*\r?\n?', '')   # fenced code blocks — strip fence
+  $t = $t.Replace('```', '')
+  $t = [regex]::Replace($t, '`([^`]+)`', '$1')           # inline code
+  $t = [regex]::Replace($t, '\*\*([^*]+)\*\*', '$1')     # **bold**
+  $t = [regex]::Replace($t, '\*([^*\n]+)\*', '$1')       # *italic*
+  $t = [regex]::Replace($t, '__([^_]+)__', '$1')         # __bold__
+  $t = [regex]::Replace($t, '_([^_\n]+)_', '$1')         # _italic_
+  $t = [regex]::Replace($t, '(?m)^#{1,6}\s+', '')        # headings
+  $t = [regex]::Replace($t, '(?m)^[ \t]*[-*+]\s+', '')   # unordered bullets
+  $t = [regex]::Replace($t, '(?m)^[ \t]*\d+\.\s+', '')   # numbered lists (keep the text)
+  $t = [regex]::Replace($t, '(?m)^[-*_]{3,}\s*$', '')    # horizontal rules
+  $t = [regex]::Replace($t, '\[([^\]]+)\]\([^\)]+\)', '$1')  # [link text](url)
+  $t = [regex]::Replace($t, '(?m)^>\s?', '')             # blockquotes
+  $t = $t.Replace('|', ' ')                              # table pipes → space
+  $t = [regex]::Replace($t, '[ \t]{2,}', ' ')            # collapse multiple spaces
+  $t = [regex]::Replace($t, '(\r?\n){3,}', "`n`n")       # collapse excess blank lines
+  return $t.Trim()
+}
+
+
 switch ($cmd) {
   'status' {
     try { $apiModels = (Invoke-RestMethod "$base/models" -TimeoutSec 3).data }
@@ -109,12 +134,20 @@ switch ($cmd) {
       Write-Host ("{0,-10} {1,-36} {2,-9} " -f $m.role, $label, $vram) -NoNewline
       Write-Host $state -ForegroundColor $color
     }
-    $sttPort = try { (Get-BobConfig).voice.sttPort ?? 8082 } catch { 8082 }
+    $bobVoice = try { (Get-BobConfig).voice } catch { $null }
+    $sttPort  = $bobVoice.sttPort ?? 8082
     try {
       $tcp = [Net.Sockets.TcpClient]::new('127.0.0.1', $sttPort); $tcp.Close()
       Write-Host ("  {0,-10} {1,-36} {2}" -f 'whisper','(stt server)',"UP (port $sttPort)") -ForegroundColor Green
     } catch {
       Write-Host ("  {0,-10} {1,-36} {2}" -f 'whisper','(stt server)',"down (port $sttPort)") -ForegroundColor DarkGray
+    }
+    $ttsPort = $bobVoice.ttsPort ?? 8083
+    try {
+      $tcp = [Net.Sockets.TcpClient]::new('127.0.0.1', $ttsPort); $tcp.Close()
+      Write-Host ("  {0,-10} {1,-36} {2}" -f 'piper','(tts server)',"UP (port $ttsPort)") -ForegroundColor Green
+    } catch {
+      Write-Host ("  {0,-10} {1,-36} {2}" -f 'piper','(tts server)',"down (port $ttsPort)") -ForegroundColor DarkGray
     }
     Write-Host ""
   }
@@ -122,7 +155,7 @@ switch ($cmd) {
     Write-Host "`nBob Processes`n"
     Write-Host ("{0,-15} {1,-8} {2,-10} {3,-10} {4}" -f 'Service','PID','RAM','Uptime','Status')
     Write-Host ('-' * 60)
-    foreach ($svc in @('llama-swap','litellm','open-webui','whisper')) {
+    foreach ($svc in @('llama-swap','litellm','open-webui','whisper','piper')) {
       $pf = Join-Path $repo "logs\$svc.pid"
       if (Test-Path $pf) {
         $wPid = [int](Get-Content $pf -Raw)
@@ -431,6 +464,12 @@ switch ($cmd) {
       if ($wPid) { Get-Process -Id $wPid -ErrorAction SilentlyContinue | Stop-Process -Force }
       Remove-Item $whisperPid -ErrorAction SilentlyContinue
     }
+    $piperPid = Join-Path $repo 'logs\piper.pid'
+    if (Test-Path $piperPid) {
+      $wPid = [int](Get-Content $piperPid -Raw -ErrorAction SilentlyContinue)
+      if ($wPid) { Get-Process -Id $wPid -ErrorAction SilentlyContinue | Stop-Process -Force }
+      Remove-Item $piperPid -ErrorAction SilentlyContinue
+    }
     Write-Host "Stopped endpoint + proxy + services (VRAM freed)." -ForegroundColor Green
   }
   'update' {
@@ -612,7 +651,9 @@ N8N_PORT=$($dp.n8nPort ?? 5678)
   }
 
   'describe' {
-    if (-not $rest.Count) { Write-Host "usage: bob describe <image> [prompt]"; break }
+    $pro  = $rest -contains '--pro'
+    $rest = @($rest | Where-Object { $_ -ne '--pro' })
+    if (-not $rest.Count) { Write-Host "usage: bob describe <image> [--pro] [prompt]"; break }
     $imagePath = $rest[0]
     if (-not (Test-Path $imagePath)) { Write-Host "File not found: $imagePath" -ForegroundColor Red; break }
     $bobCfg   = Get-BobConfig
@@ -650,7 +691,7 @@ N8N_PORT=$($dp.n8nPort ?? 5678)
           @{ type = 'text';      text      = $prompt }
         )
       })
-      $vRole = $bobCfg.vision.visionRole ?? 'vision'
+      $vRole = if ($pro) { $bobCfg.vision.visionProRole ?? 'vision-pro' } else { $bobCfg.vision.visionRole ?? 'vision' }
       Invoke-BobStream -Model $vRole -Messages $messages -MaxTokens ($d.maxTokens ?? 512) -ApiBase $litellmBase | Out-Null
       Write-Host ""
     } finally {
@@ -676,22 +717,28 @@ N8N_PORT=$($dp.n8nPort ?? 5678)
   }
 
   'voice' {
-    $bobCfg = Get-BobConfig
-    $pro    = $rest -contains '--pro'
+    $bobCfg   = Get-BobConfig
+    $pro      = $rest -contains '--pro'
+    $voiceSys  = $bobCfg.voice.systemPrompt ?? $bobCfg.persona.systemPrompt
+    $voiceRole = if ($pro) { $bobCfg.routing.proRole ?? 'chat-pro' } else { $bobCfg.routing.defaultRole ?? 'chat' }
+    $voiceTok  = $bobCfg.voice.maxTokens ?? 256
     Write-Host "Bob voice loop — Ctrl+C to exit. Use headphones to avoid echo." -ForegroundColor Cyan
+    Write-Host "Model: $voiceRole" -ForegroundColor DarkGray
     try {
       while ($true) {
         Write-Host "Listening..." -ForegroundColor DarkGray
         $transcript = & "$PSScriptRoot\bob.ps1" listen
         if (-not $transcript -or -not $transcript.Trim()) { continue }
         Write-Host "> $transcript" -ForegroundColor Yellow
-        # Append /no_think so Qwen3 skips its reasoning scratchpad — voice needs fast,
-        # conversational replies and the thinking end-token leaks as garbage in raw mode.
-        $voicePrompt = "$transcript /no_think"
-        $chatArgs = @('chat', '--raw') + $(if ($pro) { @('--pro') } else { @() }) + @($voicePrompt)
-        $response = & "$PSScriptRoot\bob.ps1" @chatArgs
+        # /no_think: Qwen3 skips reasoning scratchpad — voice needs fast replies.
+        $messages = @(
+          @{ role = 'system'; content = $voiceSys },
+          @{ role = 'user';   content = "$transcript /no_think" }
+        )
+        $response = Invoke-BobStream -Model $voiceRole -Messages $messages -MaxTokens $voiceTok -ApiBase $litellmBase -Raw
         # Strip trailing non-ASCII residue (Qwen3 leaks special-token bytes at end of raw stream).
         $response = [regex]::Replace($response.Trim(), '[-￿]+$', '')
+        $response = Format-ForSpeech $response
         if ($response) {
           Write-Host "Bob: $response" -ForegroundColor Cyan
           & "$PSScriptRoot\bob.ps1" speak $response
@@ -701,7 +748,6 @@ N8N_PORT=$($dp.n8nPort ?? 5678)
       Write-Host "`nVoice loop ended." -ForegroundColor DarkGray
     }
   }
-
   'whisper' {
     $subCmd  = if ($rest.Count -and $rest[0] -in 'stop','start','status') { $rest[0] } else { '' }
     $whisperPidFile = Join-Path $repo 'logs\whisper.pid'
@@ -726,6 +772,33 @@ N8N_PORT=$($dp.n8nPort ?? 5678)
         } else { Write-Host "whisper-server not running." -ForegroundColor DarkGray }
       }
       default { & "$repo\scripts\start-whisper.ps1" $(if ($rest -contains '-NoWindow') { '-NoWindow' }) }
+    }
+  }
+
+  'piper' {
+    $subCmd = if ($rest.Count -and $rest[0] -in 'stop','start','status') { $rest[0] } else { '' }
+    $piperPidFile = Join-Path $repo 'logs\piper.pid'
+    $ttsPort = try { (Get-BobConfig).voice.ttsPort ?? 8083 } catch { 8083 }
+    switch ($subCmd) {
+      'stop' {
+        if (Test-Path $piperPidFile) {
+          $wPid = [int](Get-Content $piperPidFile -Raw)
+          Get-Process -Id $wPid -ErrorAction SilentlyContinue | Stop-Process -Force
+          Remove-Item $piperPidFile -ErrorAction SilentlyContinue
+          Write-Host "piper-server stopped." -ForegroundColor Green
+        } else { Write-Host "piper-server not running." -ForegroundColor DarkGray }
+      }
+      'status' {
+        if (Test-Path $piperPidFile) {
+          $wPid = [int](Get-Content $piperPidFile -Raw)
+          $proc = Get-Process -Id $wPid -ErrorAction SilentlyContinue
+          if ($proc) {
+            $uptime = ([DateTime]::Now - $proc.StartTime).ToString('hh\:mm\:ss')
+            Write-Host "piper-server running  PID=$wPid  uptime=$uptime  http://localhost:$ttsPort" -ForegroundColor Green
+          } else { Write-Host "piper-server dead (stale PID $wPid)." -ForegroundColor Red }
+        } else { Write-Host "piper-server not running." -ForegroundColor DarkGray }
+      }
+      default { & "$repo\scripts\start-piper-server.ps1" $(if ($rest -contains '-NoWindow') { '-NoWindow' }) }
     }
   }
 
@@ -789,12 +862,14 @@ Voice (requires: bob setup-voice + voice.enabled = `$true in bob.psd1):
   bob transcribe <file>                Transcribe audio file via whisper-server
   bob speak ["text"]                   Synthesize text to audio (reads stdin if no arg)
   bob voice [--pro]                    Continuous voice loop: listen -> chat -> speak
-  bob whisper [start]                  Start whisper-server (STT, port :8082)
+  bob whisper [start]                  Start whisper-server (STT, :8082) — WebUI STT source
   bob whisper stop|status              Stop / check whisper-server
+  bob piper [start]                    Start piper TTS HTTP server (:8083) — WebUI TTS source
+  bob piper stop|status                Stop / check piper-server
 
 Vision (requires: bob setup-voice + bob fetch + vision.enabled = `$true in bob.psd1):
-  bob describe <image> [prompt]        Describe image file (sends to Qwen2-VL vision role)
-  bob screenshot [prompt]              Capture screen and describe it
+  bob describe <image> [--pro] [prompt]  Describe image (local Qwen2-VL or --pro DeepSeek V4)
+  bob screenshot [--pro] [prompt]        Capture screen and describe it (--pro for cloud vision)
 "@
   }
 }

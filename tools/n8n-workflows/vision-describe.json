@@ -1,0 +1,76 @@
+{
+  "name": "Vision: Describe Image",
+  "nodes": [
+    {
+      "id": "webhook-vision-01",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-400, 0],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vision-describe",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "llm-vision-01",
+      "name": "LLM: Describe Image",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-100, 0],
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8081/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Authorization", "value": "Bearer sk-local" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={\n  \"model\": \"vision\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": [\n        {\n          \"type\": \"image_url\",\n          \"image_url\": { \"url\": \"data:image/png;base64,{{ $json.image }}\" }\n        },\n        {\n          \"type\": \"text\",\n          \"text\": \"{{ $json.prompt ?? 'Describe this image.' }}\"\n        }\n      ]\n    }\n  ],\n  \"max_tokens\": 512\n}",
+        "options": { "timeout": 60000 }
+      }
+    },
+    {
+      "id": "respond-vision-01",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [200, 0],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"description\": $json.choices[0].message.content } }}"
+      }
+    },
+    {
+      "id": "sticky-vision-01",
+      "name": "Usage",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-400, -200],
+      "parameters": {
+        "width": 720,
+        "height": 160,
+        "color": 3,
+        "content": "## Vision: Describe Image\n\nPOST a base64-encoded image + optional prompt. Routed to Qwen2-VL-7B via LiteLLM.\n\n```powershell\n$img = [Convert]::ToBase64String([IO.File]::ReadAllBytes('screenshot.png'))\nInvoke-RestMethod http://localhost:5678/webhook/vision-describe `\n  -Method POST -ContentType 'application/json' `\n  -Body (ConvertTo-Json @{image=$img; prompt='Describe this image.'})\n```\n\nReturns: `{ \"description\": \"...\" }`"
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "LLM: Describe Image", "type": "main", "index": 0 }]] },
+    "LLM: Describe Image": { "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "meta": { "templateCredsSetupCompleted": true, "instanceId": "bob" },
+  "id": "22222222-2222-2222-2222-222222222201",
+  "tags": ["vision"]
+}

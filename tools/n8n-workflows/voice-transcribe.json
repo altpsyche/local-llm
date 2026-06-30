@@ -1,0 +1,84 @@
+{
+  "name": "Voice: Transcribe Audio",
+  "nodes": [
+    {
+      "id": "webhook-stt-01",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-400, 0],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "transcribe",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      }
+    },
+    {
+      "id": "whisper-stt-01",
+      "name": "Whisper: Transcribe",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-100, 0],
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8082/v1/audio/transcriptions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": []
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "model",
+              "value": "whisper-1"
+            }
+          ]
+        },
+        "options": { "timeout": 30000 }
+      }
+    },
+    {
+      "id": "respond-stt-01",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [200, 0],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"text\": $json.text } }}"
+      }
+    },
+    {
+      "id": "sticky-stt-01",
+      "name": "Usage",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-400, -220],
+      "parameters": {
+        "width": 680,
+        "height": 180,
+        "color": 4,
+        "content": "## Voice: Transcribe Audio\n\nPOST an audio file (WAV/MP3). Transcribed by whisper-server at :8082.\n\n**Prerequisite:** whisper-server must expose `/v1/audio/transcriptions`.\nVerify: `curl -X POST http://localhost:8082/v1/audio/transcriptions -F file=@test.wav -F model=whisper-1`\nStart server: `bob whisper`\n\n```bash\ncurl -X POST http://localhost:5678/webhook/transcribe -F \"file=@recording.wav\"\n```\n\nReturns: `{ \"text\": \"...\" }`"
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Whisper: Transcribe", "type": "main", "index": 0 }]] },
+    "Whisper: Transcribe": { "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "meta": { "templateCredsSetupCompleted": true, "instanceId": "bob" },
+  "id": "22222222-2222-2222-2222-222222222202",
+  "tags": ["voice"]
+}

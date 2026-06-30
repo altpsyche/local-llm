@@ -28,6 +28,7 @@ foreach ($m in $models) {
     $out.Add("      model: openai/$($m.role)")
     $out.Add("      api_base: http://localhost:$port/v1")
     $out.Add("      api_key: sk-local")
+    if ($m.supportsVision) { $out.Add("      supports_vision: true") }
 }
 
 # Pro models — route directly to each enabled peer's API (no intermediary)

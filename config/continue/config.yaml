@@ -35,6 +35,16 @@ models:
     systemMessage: "Be concise. /no_think"
     defaultCompletionOptions: { temperature: 0.7, maxTokens: 4096 }
 
+  - name: vision
+    provider: openai
+    model: vision                # -> LiteLLM -> llama-swap "vision" (Qwen2-VL-7B)
+    apiBase: http://localhost:8081/v1
+    apiKey: sk-local
+    contextLength: 4096
+    roles: [chat]
+    systemMessage: "You are a vision assistant. Describe images concisely and answer questions about them directly."
+    defaultCompletionOptions: { temperature: 0.2, maxTokens: 512 }
+
   - name: autocomplete
     provider: openai
     model: fim                   # -> llama-swap "fim" (Qwen2.5-Coder-3B, always pinned)

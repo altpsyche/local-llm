@@ -38,12 +38,23 @@ You are Bob, a personal AI assistant running privately on this machine. You are 
     sttModel    = 'small'
     ttsEngine   = 'piper'            # piper | llama-tts
     ttsVoice    = 'en_GB-alan-medium'
+    ttsPort     = 8083               # piper HTTP server port (bob piper / WebUI TTS)
     silenceSec  = 1.5                # seconds of silence before mic stops recording
+    maxTokens   = 512                # keep voice replies short
+    # System prompt for voice mode only — plain spoken language, no markdown.
+    # Overrides persona.systemPrompt in the voice loop.
+    systemPrompt = @'
+You are Bob, a voice assistant. Reply in natural spoken sentences only.
+Never use markdown: no asterisks, no bullet points, no pound signs, no backticks, no numbered lists, no dashes as bullets, no special symbols.
+If you need to list things, say "first", "then", "finally" or similar spoken connectives.
+Keep answers brief and direct. One to three sentences is ideal.
+'@
   }
 
   vision = @{
-    enabled    = $true               # Phase 2 vision active (requires bob fetch for models)
-    visionRole = 'vision'
+    enabled       = $true            # Phase 2 vision active (requires bob fetch for models)
+    visionRole    = 'vision'
+    visionProRole = 'vision-pro'     # routes to DeepSeek V4 (supports vision) via --pro flag
   }
 
   proactive = @{

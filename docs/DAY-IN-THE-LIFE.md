@@ -557,9 +557,13 @@ bob voice --pro     # same loop but routes chat to the cloud (DeepSeek API)
 
 Bob listens for speech, transcribes it, sends the text to the chat model, then reads the response aloud. The energy gate in `bob-voice-capture.py` swallows silent moments so near-silence doesn't produce empty transcripts.
 
+The voice loop uses a dedicated system prompt (`voice.systemPrompt` in `config/bob.psd1`) that instructs the model to reply in plain spoken sentences — no asterisks, no bullet points, no markdown. A `Format-ForSpeech` sanitizer also strips any remaining markdown symbols before the text reaches piper, so Bob never reads `**bold**` or `- item` aloud.
+
 **Tips:**
 - Use headphones to stop the mic from picking up the speaker.
-- The whisper `base.en` model runs in ~200 ms on GPU after the first load. Silence detection threshold is configurable via `silenceSec` in `config/bob.psd1`.
+- Whisper small runs in ~300 ms on GPU after the first load. Silence detection threshold is configurable via `silenceSec` in `config/bob.psd1`.
+- `voice.maxTokens` (default: `512`) caps reply length. Lower it for faster short answers.
+- To wire `bob voice` audio through Open WebUI instead: `bob piper` starts a piper HTTP server on `:8083`; wire it in WebUI Admin Panel → Audio → Text-to-Speech Engine.
 
 ---
 
@@ -574,7 +578,10 @@ Vision uses Qwen2-VL-7B to describe images and answer visual questions. The mode
 ```powershell
 bob describe C:\path\to\photo.jpg
 bob describe C:\path\to\diagram.png "What does this diagram show?"
+bob describe C:\path\to\diagram.png --pro "Analyse this architecture diagram in detail"
 ```
+
+The `--pro` flag routes to DeepSeek V4 (which supports vision input natively) using your existing `DEEPSEEK_API_KEY`. Use it when you need stronger OCR, complex diagrams, or longer analysis than the local model produces.
 
 ### Try it: describe your screen
 
@@ -582,13 +589,16 @@ bob describe C:\path\to\diagram.png "What does this diagram show?"
 bob screenshot
 bob screenshot "What error is showing on screen?"
 bob screenshot "Summarise the code visible in the editor"
+bob screenshot --pro "Explain the code on screen in detail"
 ```
 
-`bob screenshot` captures the primary display, resizes it to max 1024 px (so it fits in the 4096-token context), and sends it to the vision model. The temp PNG is deleted when the response finishes.
+`bob screenshot` captures the primary display, resizes it to max 1024 px (so it fits in the 4096-token context), and sends it to the vision model. The temp PNG is deleted when the response finishes. `--pro` passes the same screenshot to DeepSeek cloud vision.
 
 ### How it works
 
 Images are sent as `image_url` data URIs in the OpenAI chat completions format. They route through LiteLLM → llama-swap → a dedicated llama-server instance with `--mmproj` for the vision encoder. Flash attention is automatically disabled for the vision model (flash-attn is incompatible with multimodal projection in the current llama.cpp build; `gen-llama-swap.ps1` handles this transparently).
+
+`--pro` skips llama-swap entirely and routes directly to the DeepSeek API via the `vision-pro` LiteLLM entry. No separate key needed — it uses `DEEPSEEK_API_KEY`.
 
 ---
 
@@ -684,6 +694,9 @@ LiteLLM runs on port 8081 and starts automatically with `bob up`. All bundled cl
 | Continuous voice loop | `bob voice` |
 | Voice loop (cloud model) | `bob voice --pro` |
 | Whisper server status | `bob whisper status` |
+| Start piper HTTP server | `bob piper` |
+| Stop piper HTTP server | `bob piper stop` |
+| Piper server status | `bob piper status` |
 
 ### Vision (Phase 2)
 
@@ -691,8 +704,10 @@ LiteLLM runs on port 8081 and starts automatically with `bob up`. All bundled cl
 |---|---|
 | Describe an image file | `bob describe C:\path\to\img.png` |
 | Ask a question about an image | `bob describe img.png "What text is visible?"` |
+| Describe with cloud vision | `bob describe img.png --pro "Analyse this in detail"` |
 | Describe current screen | `bob screenshot` |
 | Ask about the screen | `bob screenshot "What error is showing?"` |
+| Screenshot with cloud vision | `bob screenshot --pro "Explain the code on screen"` |
 
 ### Diagnostics
 
@@ -743,8 +758,9 @@ If this was your first read-through, here's a short sequence that touches every 
 16. `bob setup-voice` then `bob speak "Hello"`: test TTS — you should hear a response
 17. `bob listen`: say a few words into the mic — the transcript should print
 18. `bob voice`: run one full loop (speak a question, hear the answer back), then Ctrl+C
-19. `bob describe C:\Windows\Web\Wallpaper\Windows\img0.jpg`: describe the default Windows wallpaper using the vision model
-20. `bob screenshot "What is on my screen?"`: take a live screenshot and describe it
-21. `bob stop`: shut down cleanly
+19. `bob piper`: start the piper HTTP server on `:8083` (used by Open WebUI for browser TTS)
+20. `bob describe C:\Windows\Web\Wallpaper\Windows\img0.jpg`: describe the default Windows wallpaper using the vision model
+21. `bob screenshot "What is on my screen?"`: take a live screenshot and describe it
+22. `bob stop`: shut down cleanly
 
 For more detail on any feature: [USAGE.md](USAGE.md). For troubleshooting the Docker services: [USAGE.md § Docker troubleshooting](USAGE.md#troubleshooting-docker).
