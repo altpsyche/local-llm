@@ -15,7 +15,7 @@ from pathlib import Path
 REPO = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
 
-from bob_core import load_config, get_llm_client, check_litellm
+from bob_core import load_config, get_llm_client, check_litellm, get_role
 
 
 SYSTEM_PROMPTS = {
@@ -46,13 +46,9 @@ SYSTEM_PROMPTS = {
     ),
 }
 
-TYPE_ROLE_MAP = {
-    "email": "defaultRole",
-    "pr": "thinkRole",
-    "slack": "defaultRole",
-    "doc": "thinkRole",
-    "default": "defaultRole",
-}
+# Long-form drafts (PR, docs) route to the thinking role; short-form to chat. The routing
+# table itself lives in bob_core.get_role (M8) — here we only pick the task.
+TYPE_TASK_MAP = {"pr": "think", "doc": "think"}
 
 
 def draft(prompt: str, type: str = "default", config: dict = None) -> str:
@@ -61,9 +57,7 @@ def draft(prompt: str, type: str = "default", config: dict = None) -> str:
     draft_type = type if type in SYSTEM_PROMPTS else "default"
     system_prompt = SYSTEM_PROMPTS[draft_type]
 
-    routing = config.get("routing", {})
-    role_key = TYPE_ROLE_MAP[draft_type]
-    role = routing.get(role_key) or routing.get("defaultRole", "chat")
+    role = get_role(config, TYPE_TASK_MAP.get(draft_type, "chat"))
 
     client = get_llm_client(config)
 
@@ -74,6 +68,7 @@ def draft(prompt: str, type: str = "default", config: dict = None) -> str:
             {"role": "user", "content": prompt},
         ],
         stream=False,
+        timeout=int((config or {}).get("agent", {}).get("requestTimeout", 600)),
     )
     return resp.choices[0].message.content or ""
 

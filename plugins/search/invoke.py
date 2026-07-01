@@ -16,7 +16,7 @@ from pathlib import Path
 REPO = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
 
-from bob_core import load_config, get_llm_client, check_litellm
+from bob_core import load_config, get_llm_client, check_litellm, get_role
 
 
 def run_rg(query: str, search_path: str, ext: str | None) -> str:
@@ -48,7 +48,7 @@ def run_rg(query: str, search_path: str, ext: str | None) -> str:
 
 def synthesise(query: str, matches: str, config: dict) -> str:
     """Synthesise ripgrep results via LLM. Returns analysis string."""
-    role = config.get("routing", {}).get("defaultRole", "chat")
+    role = get_role(config, "chat")
     client = get_llm_client(config)
 
     prompt = (
@@ -73,6 +73,7 @@ def synthesise(query: str, matches: str, config: dict) -> str:
             {"role": "user", "content": prompt},
         ],
         stream=False,
+        timeout=int((config or {}).get("agent", {}).get("requestTimeout", 600)),
     )
     return resp.choices[0].message.content or ""
 

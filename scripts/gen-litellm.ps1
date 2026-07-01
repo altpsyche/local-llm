@@ -85,7 +85,7 @@ if ($budgetPeer) {
 
 # Langfuse callbacks — enabled via defaults.langfuseEnabled in models.psd1 / user.psd1
 if ($cfg.defaults.langfuseEnabled) {
-    $langfusePort = $cfg.defaults.langfusePort ?? 3001
+    $langfusePort = $cfg.defaults.langfusePort ?? (Get-BobPortDefault 'langfusePort')
     $out.Add('  success_callback: ["langfuse"]')
     $out.Add('  failure_callback: ["langfuse"]')
     $out.Add("  langfuse_host: http://localhost:$langfusePort")

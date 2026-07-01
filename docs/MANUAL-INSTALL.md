@@ -437,7 +437,7 @@ $env:HF_TOKEN = "hf_..."
 
 After download, verify SHA256 checksums:
 ```powershell
-.\scripts\llm.ps1 verify-urls    # checks download URLs are still valid
+.\scripts\bob.ps1 verify-urls    # checks download URLs are still valid
 ```
 
 ---

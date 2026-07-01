@@ -64,14 +64,23 @@ Run `bob gen` after editing either file. Changes take effect on the next `bob se
 
 ### Agent behavior (`config/bob.psd1`)
 
-The agent system is configured separately in `config/bob.psd1`. The key settings:
+The agent system is configured separately in `config/bob.psd1`. Tools are **auto-discovered** from
+`scripts/tools/*.py` and `plugins/*/tool.py` — there is no allowlist; creating the file is the only
+registration step. To exclude a tool without deleting it, add its name to `agent.disabledTools`
+(a denylist). See [plugins/AUTHORING.md](../plugins/AUTHORING.md).
 
 | Key | Default | Effect |
 |-----|---------|--------|
 | `agent.toolFormat` | `'hermes'` | Tool calling protocol. `'hermes'` = inject tool schemas in system prompt, parse `<tool_call>` XML from content (Hermes 3 native format). `'openai'` = use OpenAI `tools` parameter (Qwen3 and other OpenAI-compatible models). |
 | `agent.agency` | `'show'` | `'silent'` = run without output. `'show'` = print tool calls and results to stderr. `'confirm'` = prompt before each tool execution. |
 | `agent.maxSteps` | `10` | Maximum tool-call iterations before stopping. |
-| `agent.tools` | `@('memory','web','git','file','shell','fabric')` | Enabled tool modules. Each maps to `scripts/tools/<name>.py`. |
+| `agent.maxHistoryMsgs` | `40` | Sliding window by **message count** — the first-pass overflow guard. |
+| `agent.maxContextTokens` | `6000` | Token budget for the message history (M7). Drops the oldest non-system turns first; always keeps the system message. `0` = fall back to count-only. Keep it below the agent model's context window. |
+| `agent.maxToolResultTokens` | `1000` | Per-tool-result cap (~4 chars/token) applied before a result is appended to history, so one huge tool output can't blow the budget. |
+| `agent.compactSchemasAfter` | `12` | Once more than this many tools are loaded, inject **compact** tool schemas (param descriptions dropped) so the fixed per-turn prompt doesn't grow unbounded with tool count. |
+| `agent.requestTimeout` | `600` | Client-side LLM call timeout (s). Must be **≥** the litellm proxy's `request_timeout` (600) so thinking models (planner/R1) aren't cut off mid-response. |
+| `agent.allowPrivateFetch` | `$false` | When `$false`, `web_fetch` blocks `file://`/non-http schemes and loopback/RFC-1918/link-local hosts (SSRF guard, M9). Set `$true` only if you deliberately need the agent to reach private hosts. |
+| `agent.disabledTools` | `@()` | Tool names (stem/dir) to **exclude** from discovery. Denylist, not allowlist. |
 | `agent.allowedReadPaths` | (repo root) | Paths `file_read` may access. Defaults to the repo root at runtime. Add more in `config/user.psd1`. |
 | `agent.allowedWritePaths` | `@()` | Paths `file_write` may access. Empty = write disabled. Opt in via `user.psd1`. |
 
@@ -82,15 +91,32 @@ Override any of these in `config/user.psd1` under the `bob.agent` key:
 @{
   bob = @{
     agent = @{
-      agency           = 'confirm'   # always ask before executing tools
+      agency           = 'confirm'          # always ask before executing tools
       allowedReadPaths = @('C:\local-llm', 'D:\projects')
-      tools            = @('memory', 'web', 'git', 'file')   # remove shell and fabric
+      disabledTools    = @('shell', 'fabric')   # exclude these; everything else auto-loads
     }
   }
 }
 ```
 
+**Agent HTTP server (`bob agent serve`, M5/M12/M15).** Exposes the agent loop as REST + SSE. Every
+endpoint requires `Authorization: Bearer <token>`.
+
+| Key | Default | Effect |
+|-----|---------|--------|
+| `agent.serveHost` | `'127.0.0.1'` | Bind address. Set `'0.0.0.0'` to expose on the LAN — **harden `allowPrivateFetch` first** (keep it `$false`). |
+| `agent.agentPort` | `8084` | Server port. |
+| `agent.apiTokens` | `@()` | Extra Bearer tokens accepted besides `litellmKey`. Add per-client tokens here. |
+| `agent.sessionDbPath` | `'data\sessions.db'` | SQLite store for multi-turn sessions (created on first server start). |
+| `agent.maxSessionTokens` | `0` | Per-session token budget; `0` = unlimited. Once reached, that session's completions return HTTP 402. |
+
+See [AGENT-SERVER.md](AGENT-SERVER.md) for the endpoint contract.
+
 **Switching the agent model:** `agentRole` in `bob.psd1` routing defaults to `'agent'` (Hermes 3 8B). If you switch to a model that uses OpenAI-format tool calling (like Qwen3), also set `agent.toolFormat = 'openai'` in `user.psd1` and run `bob gen`.
+
+**Memory in the agent loop:** when `memory.enabled = $true`, the agent recalls the top-`memory.recallK`
+memories for the goal and injects them into its system context (M14). Best-effort — a memory-server
+error is logged and skipped, never fatal.
 
 ### Plugins
 

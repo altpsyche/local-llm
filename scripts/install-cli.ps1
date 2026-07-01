@@ -1,6 +1,6 @@
 #requires -Version 7
 # Install the 'bob' command on PATH (a .cmd shim in scoop\shims pointing at scripts/bob.ps1).
-# Also installs a deprecated 'llm' shim that delegates to bob with a notice.
+# Removes the retired 'llm' shim if a previous install left one (bob is the single CLI now).
 # Works from any shell (cmd or PowerShell). Idempotent.
 $ErrorActionPreference = "Stop"
 $repo = Split-Path $PSScriptRoot -Parent

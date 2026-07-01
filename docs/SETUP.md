@@ -106,11 +106,11 @@ bob models                # should list: planner, coder, chat, fim, embed, visio
 bob bench                 # performance check (see expected numbers below)
 bob chat coder "hi"       # end-to-end sanity check (routes via :8081 LiteLLM proxy)
 bob diagnose              # re-run hardware summary at any time; flags any unresolved issues
-bob setup check      # verify all 13 deps: venv, Python packages (openai, requests), agent model, tool files, services, task
+bob doctor           # full pre-flight: deps + endpoint reachable, GPU/VRAM, writable dirs, config parse
 bob plugins list     # should show: summarise, draft, search, play (built-in plugins)
 ```
 
-**Agent system:** `bob setup check` validates all agent dependencies including the Hermes 3 model file, tool scripts, and scheduled task registration. If any check fails, it prints the exact fix command.
+**Agent system:** `bob doctor` (superset of `bob setup check`) validates all agent dependencies — the Hermes 3 model file, tool loading, scheduled task registration — plus a runtime pre-flight (endpoint, GPU/VRAM, writable `logs/`+`data/`, `config.json` parses). If any check fails, it prints the exact fix command. Run `bob setup check` for just the dependency subset.
 
 **Pro models** (optional): set `DEEPSEEK_API_KEY` and `ZHIPU_API_KEY` environment variables, then run `bob gen`. The pro models (`chat-pro`, `planner-pro`, `coder-pro`) will be available via the LiteLLM proxy at `:8081`. See [USAGE.md § Pro models](USAGE.md#pro-models-api-backed-no-platform-fee).
 

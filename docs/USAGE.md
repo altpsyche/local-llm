@@ -47,12 +47,14 @@ Agent (Phase 3 — Hermes 3 8B, local tool use, optional scheduled tasks):
   bob agent "goal"                     One-shot: reason + call tools until done, print answer
   bob agent --role chat "goal"         Use a different role (e.g. chat = Qwen3) instead of agent
   bob agent --agency confirm "goal"    Prompt before each tool execution
-  bob agent serve                      Start HTTP server (:8084) — POST /v1/agent/completions for n8n/WebUI
+  bob agent serve                      Start HTTP server (:8084, Bearer auth) — REST + SSE stream + sessions (n8n/WebUI)
+  bob agent "goal" --stream            Stream the final answer token-by-token to the terminal
   bob clip <url>                       Fetch URL → summarise → store to memory (one LLM call)
-  bob tools list                       List all available tool modules with enabled/disabled status
+  bob tools list                       List all discovered tool modules (auto-discovered; disable via agent.disabledTools)
   bob tools test <name>                Run a tool's self-test (e.g. bob tools test git)
   bob tools info <name>                Show full JSON schema for a tool
-  bob setup check                      Verify all 13 agent deps (venv, model, tools, task, services)
+  bob setup check                      Verify agent deps (venv, model, tools, task, services)
+  bob doctor                           Full pre-flight: setup checks + endpoint, GPU/VRAM, writable dirs, config parse
   bob agent schedule add <name> --cron "* * * * *" --goal "summarise my git log"
   bob agent schedule list              List scheduled tasks with next-run times
   bob agent schedule run <name>        Run a scheduled task immediately
@@ -607,7 +609,7 @@ Set permanently in `config/bob.psd1` → `agent.agency`.
 | `shell` | Run PowerShell commands (always prompts user — ignores agency mode) | Interactive terminal |
 | `fabric` | Run any fabric pattern on text input | fabric on PATH |
 
-Manage tools in `config/bob.psd1` → `agent.tools`. Add or remove names from the list; each maps to `scripts/tools/<name>.py`.
+Tools are **auto-discovered** from `scripts/tools/*.py` and `plugins/*/tool.py` — dropping in a file is the only registration step, there is no allowlist. To exclude one without deleting it, add its name to `config/bob.psd1` → `agent.disabledTools` (a denylist). `bob tools list` shows every discovered tool and its enabled/disabled status.
 
 ### Scheduling background goals
 
@@ -645,13 +647,30 @@ One-shot web clip: fetches the URL, strips HTML, sends to the chat model for a 3
 
 Hermes 3 uses its own tool-calling format: tool schemas are injected into the system prompt and the model responds with `<tool_call>{"name": "...", "arguments": {...}}</tool_call>` XML. Bob's agent loop handles this transparently — Qwen3 or other OpenAI-format models also work by setting `agent.toolFormat = 'openai'` in `config/bob.psd1`.
 
+### HTTP server (REST + SSE)
+
+```powershell
+bob agent serve            # binds agent.serveHost:agent.agentPort (default 127.0.0.1:8084)
+```
+
+Exposes the agent loop over HTTP for n8n/WebUI/other clients. Every endpoint except `/health`
+requires `Authorization: Bearer <token>` (the litellm key or an `agent.apiTokens` entry). Supports
+one-shot `POST /v1/agent/completions`, token-streaming `POST /v1/agent/completions/stream` (SSE), and
+multi-turn `POST/GET/DELETE /v1/sessions`. Full endpoint contract, event schema, and n8n wiring:
+[AGENT-SERVER.md](AGENT-SERVER.md).
+
 ### Check agent health
 
 ```powershell
-bob setup check
+bob setup check     # dependency + registration checks
+bob doctor          # the above, plus runtime: endpoint reachable, GPU/VRAM, writable dirs, config.json parses
 ```
 
-Verifies all 13 agent dependencies in order: venv, Python packages, config.json, tools directory, schedules file, fabric, SearXNG, n8n, LiteLLM proxy, BobAgent task, Hermes 3 model file, tool files, litellm.yaml. Prints ✓ or ✗ with a fix command for each failure.
+`bob setup check` verifies agent dependencies in order: venv, Python packages, config.json, tools
+directory, schedules file, fabric, SearXNG, n8n, LiteLLM proxy, BobAgent task, Hermes 3 model file,
+tool loading (delegated to the Python loader, honoring `agent.disabledTools`), litellm.yaml. Prints ✓
+or ✗ with a fix command for each failure. `bob doctor` runs all of those plus a runtime pre-flight —
+use it as the first thing to run when something's off.
 
 ## Plugins (Phase 3)
 

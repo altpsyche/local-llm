@@ -21,6 +21,32 @@ $script:ModelsFile = Join-Path $script:ModelsRepo 'config\models.psd1'
 $script:BobFile    = Join-Path $script:ModelsRepo 'config\bob.psd1'
 $script:SizeTolPct = 0.10
 
+# Single source of truth for service-port defaults (M6). models.psd1/bob.psd1 normally
+# supply these; this dict is the ONLY literal fallback when a key is somehow absent, so the
+# `?? <literal>` divergence traps that were scattered across every script collapse to one place.
+# Read via Get-BobPortDefault; never re-inline a port number elsewhere.
+$script:BobPortDefaults = @{
+  port         = 8080   # llama-swap API endpoint
+  litellmPort  = 8081   # LiteLLM proxy
+  sttPort      = 8082   # whisper STT server
+  ttsPort      = 8083   # piper TTS server
+  agentPort    = 8084   # bob agent serve HTTP
+  webuiPort    = 3000   # Open WebUI
+  langfusePort = 3001   # Langfuse observability
+  n8nPort      = 5678   # n8n automation
+  searxngPort  = 8888   # SearXNG search
+}
+
+function Get-BobPortDefault {
+  # Return the single-source default for a service port (M6). Throws on an unknown key so a
+  # typo fails loudly at author time rather than silently resolving to $null.
+  param([Parameter(Mandatory)][string]$Name)
+  if (-not $script:BobPortDefaults.Contains($Name)) {
+    throw "Get-BobPortDefault: unknown port key '$Name'. Known: $($script:BobPortDefaults.Keys -join ', ')"
+  }
+  return $script:BobPortDefaults[$Name]
+}
+
 function Get-ModelsConfig {
   if (-not (Test-Path $script:ModelsFile)) { throw "models config not found: $script:ModelsFile" }
   $base = Import-PowerShellDataFile -LiteralPath $script:ModelsFile
@@ -86,28 +112,109 @@ function Get-BobConfig {
       }
     }
   }
-  # Inject model defaults for unified cross-config access (ports, etc.)
+  # Inject model defaults for unified cross-config access (ports, etc.).
+  # Port fallbacks come from the one central dict (M6) — no re-inlined literals here.
   try {
     $md = (Get-ModelsConfig).defaults
-    $base['litellmPort'] = [int]($md.litellmPort ?? 8081)
-    $base['port']        = [int]($md.port ?? 8080)
-    $base['searxngPort'] = [int]($md.searxngPort ?? 8888)
-    $base['n8nPort']     = [int]($md.n8nPort ?? 5678)
-    $base['webuiPort']   = [int]($md.webuiPort ?? 3000)
+    $base['litellmPort'] = [int]($md.litellmPort ?? (Get-BobPortDefault 'litellmPort'))
+    $base['port']        = [int]($md.port        ?? (Get-BobPortDefault 'port'))
+    $base['searxngPort'] = [int]($md.searxngPort ?? (Get-BobPortDefault 'searxngPort'))
+    $base['n8nPort']     = [int]($md.n8nPort     ?? (Get-BobPortDefault 'n8nPort'))
+    $base['webuiPort']   = [int]($md.webuiPort   ?? (Get-BobPortDefault 'webuiPort'))
     $base['litellmKey']  = $md.litellmKey ?? 'sk-local'
   } catch {}
   # Default allowedReadPaths to repo root if empty — avoids hardcoded paths in bob.psd1
   if ($base.agent -and -not $base.agent.allowedReadPaths) {
     $base.agent['allowedReadPaths'] = @($script:ModelsRepo)
   }
-  # Export for Python tools — auto-generated, gitignored via /data/
+  # Export for Python tools — auto-generated, gitignored via /data/.
+  # M17: only regenerate when a source (.psd1) is newer than the output — the hot paths
+  #   (bob status, per-utterance voice turns, scheduled runs) then pay a cheap Test-Path +
+  #   timestamp compare instead of a full re-serialize + disk write every invocation.
+  # M2: write to a per-process temp file then atomically move into place, so concurrent
+  #   `bob` invocations can never observe a half-written config.json.
+  $jsonTmp = $null
   try {
     $jsonPath = Join-Path $script:ModelsRepo 'data\config.json'
     $jsonDir = Split-Path $jsonPath
     if (-not (Test-Path $jsonDir)) { New-Item $jsonDir -ItemType Directory -Force | Out-Null }
-    $base | ConvertTo-Json -Depth 10 | Set-Content $jsonPath -Encoding UTF8
-  } catch {}
+    $srcFiles = @($script:ModelsFile, $script:BobFile, $userFile) |
+                Where-Object { $_ -and (Test-Path $_) } | Get-Item
+    $srcMax = ($srcFiles | Measure-Object LastWriteTimeUtc -Maximum).Maximum
+    $stale  = (-not (Test-Path $jsonPath)) -or
+              ((Get-Item $jsonPath).LastWriteTimeUtc -lt $srcMax)
+    if ($stale) {
+      $jsonTmp = "$jsonPath.$PID.tmp"
+      $base | ConvertTo-Json -Depth 10 | Set-Content $jsonTmp -Encoding UTF8
+      Move-Item -LiteralPath $jsonTmp -Destination $jsonPath -Force
+    }
+  } catch {
+    if ($jsonTmp -and (Test-Path $jsonTmp)) { Remove-Item $jsonTmp -Force -ErrorAction SilentlyContinue }
+    Write-Warning "Failed to write data/config.json: $_  (Python tools may use stale config)"
+  }
   return $base
+}
+
+function Get-RoleForTask {
+  # M8 — single routing table for PowerShell callers. Resolve a model role from bob config
+  # for a task; -Pro prefers the *-pro variant. bob.ps1 chat/vision/voice all call this so
+  # adding a role means editing one place (mirrors bob_core.get_role on the Python side).
+  param(
+    $Config,
+    [Parameter(Mandatory)][ValidateSet('chat', 'code', 'think', 'vision', 'voice')][string]$Task,
+    [switch]$Pro
+  )
+  if (-not $Config) { $Config = Get-BobConfig }
+  $r = $Config.routing
+  switch ($Task) {
+    'vision' {
+      $v = $Config.vision
+      if ($Pro) { return ($v.visionProRole ?? 'vision-pro') } else { return ($v.visionRole ?? 'vision') }
+    }
+    'code' {
+      if ($Pro) { return ($r.proCodeRole ?? 'coder-pro') } else { return ($r.codeRole ?? 'coder') }
+    }
+    'think' {
+      if ($Pro) { return ($r.proThinkRole ?? 'planner-pro') } else { return ($r.thinkRole ?? 'planner') }
+    }
+    default {
+      # chat + voice share the default/pro chat roles.
+      if ($Pro) { return ($r.proRole ?? 'chat-pro') } else { return ($r.defaultRole ?? 'chat') }
+    }
+  }
+}
+
+function Assert-BobPortKeys {
+  # M6 — gen-time guard: every service port must be present in the merged config after
+  # injection. Catches a future config edit that drops a port key before Python trips on it.
+  param($Config)
+  if (-not $Config) { $Config = Get-BobConfig }
+  $required = @('port', 'litellmPort', 'webuiPort', 'searxngPort', 'n8nPort')
+  $missing = @($required | Where-Object { -not $Config.Contains($_) -or $null -eq $Config[$_] })
+  if ($missing) { throw "bob config missing required port key(s): $($missing -join ', ')" }
+}
+
+function Stop-ServiceByPid {
+  # M10 — one PID-file stop path (replaces copy-pasted read/Stop-Process/Remove-Item blocks).
+  # Reaps direct children too (uvicorn workers etc.). Returns $true if a live process was killed.
+  param(
+    [Parameter(Mandatory)][string]$Name,
+    [Parameter(Mandatory)][string]$PidFile
+  )
+  if (-not (Test-Path $PidFile)) { return $false }
+  $stopped = $false
+  $wPid = [int](Get-Content $PidFile -Raw -ErrorAction SilentlyContinue)
+  if ($wPid) {
+    try {
+      $proc = Get-Process -Id $wPid -ErrorAction Stop
+      Get-CimInstance Win32_Process -Filter "ParentProcessId=$wPid" -ErrorAction SilentlyContinue |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+      $proc | Stop-Process -Force
+      $stopped = $true
+    } catch {}
+  }
+  Remove-Item $PidFile -ErrorAction SilentlyContinue
+  return $stopped
 }
 
 function Get-EnabledPeers {

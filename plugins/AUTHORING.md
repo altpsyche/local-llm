@@ -108,17 +108,26 @@ TOOL_DEFS = [
 
 ## Registration Rule
 
-Every Layer 1 or Layer 2 tool must be added to `agent.tools` in `config/bob.psd1`:
+**No manual registration required.** The agent auto-discovers all tool files on startup:
+
+- `scripts/tools/<name>.py` — Layer 1 system tools
+- `plugins/<name>/tool.py` — Layer 2 plugin tools
+
+Creating the file is the only step. The agent will include it automatically on next start and print a startup summary:
+
+```
+[bob] tools: draft fabric file git memory play search shell summarise web (10)
+```
+
+To **exclude** a tool without deleting it, add its directory/stem name to `agent.disabledTools` in `config/bob.psd1`:
 
 ```powershell
 agent = @{
-    tools = @('memory', 'web', 'git', 'file', 'shell', 'fabric', 'play', 'summarise', 'draft', 'search')
+    disabledTools = @('play')   # file exists, agent won't load it
 }
 ```
 
-The loader silently skips names not in this list. **This is the only manual step.**
-
-For plugin tools (Layer 2), use the **directory name** (`play`, not `music`). The tool name exposed to the agent (e.g. `music_play`) is set inside `TOOL_DEFS` — it's independent of the directory name.
+For plugin tools (Layer 2), the tool name exposed to the agent (e.g. `music_play`) is set inside `TOOL_DEFS` — it's independent of the directory name (`play`).
 
 ---
 
@@ -144,5 +153,5 @@ python scripts/tools/tool_loader.py --info summarise
 |---|---|
 | Core logic only in `invoke.py`'s `main()` | Extract to a named function, import from tool.py |
 | Logic copied into both `invoke.py` and `tool.py` | One function, two callers |
-| New plugin tool not in `agent.tools` | Add to bob.psd1 — loader won't find it otherwise |
+| TOOL_DEFS name doesn't match DISPATCH key | Names must be identical — loader warns at startup |
 | Layer 2 capability placed in `scripts/tools/` | Use decision rule: does `bob <name>` exist? |
