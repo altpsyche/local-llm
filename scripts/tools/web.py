@@ -1,18 +1,42 @@
 """Bob tool: web_search (SearXNG) and web_fetch."""
+import ipaddress
 import re
-import sys
+import socket
+from urllib.parse import urlparse
 
 import requests
 
 _cfg: dict = {}
 _searxng_url: str = ""
+_allow_private_fetch: bool = False  # M9 — gate SSRF-prone fetches behind an explicit flag
 
 
 def configure(config: dict) -> None:
-    global _cfg, _searxng_url
+    global _cfg, _searxng_url, _allow_private_fetch
     _cfg = config
     port = config.get("searxngPort", 8888)
     _searxng_url = f"http://localhost:{port}/search"
+    _allow_private_fetch = bool(config.get("agent", {}).get("allowPrivateFetch", False))
+
+
+def _is_blocked_host(host: str) -> bool:
+    """True if the host resolves to a loopback/private/link-local/reserved address (SSRF risk).
+    DNS failures return False so requests raises its own clean error instead of being masked."""
+    if not host:
+        return True
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        return False
+    for info in infos:
+        try:
+            addr = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            continue
+        if (addr.is_loopback or addr.is_private or addr.is_link_local
+                or addr.is_reserved or addr.is_multicast or addr.is_unspecified):
+            return True
+    return False
 
 
 def _web_search(query: str, num_results: int = 5) -> str:
@@ -37,6 +61,15 @@ def _web_search(query: str, num_results: int = 5) -> str:
 
 
 def _web_fetch(url: str) -> str:
+    # M9 — allowlist http/https and block private/loopback targets unless explicitly opted in.
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        return f"web_fetch error: blocked scheme '{parsed.scheme or '(none)'}' (only http/https allowed)"
+    if not _allow_private_fetch and _is_blocked_host(parsed.hostname or ""):
+        return (
+            f"web_fetch error: blocked host '{parsed.hostname}' "
+            "(loopback/private address; set agent.allowPrivateFetch = $true to override)"
+        )
     try:
         r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
         r.raise_for_status()

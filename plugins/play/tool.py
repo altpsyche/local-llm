@@ -9,6 +9,7 @@ if SearXNG is unavailable.
 Spotify path: opens spotify:search: URI (Spotify handles playback).
 """
 import os
+import sys
 import urllib.parse
 from pathlib import Path
 
@@ -49,8 +50,10 @@ def _find_youtube_url(query: str) -> str | None:
             url = result.get("url", "")
             if "youtube.com/watch" in url:
                 return url
-    except Exception:
-        pass
+    except Exception as e:
+        # M16 — SearXNG lookup is best-effort (caller falls back to the search page),
+        # but log the swallow so a persistently-broken SearXNG isn't invisible.
+        print(f"[play] youtube lookup via SearXNG failed: {e}", file=sys.stderr)
     return None
 
 

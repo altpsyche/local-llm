@@ -63,11 +63,20 @@ Keep answers brief and direct. One to three sentences is ideal.
     agency            = 'show'             # 'silent' | 'show' | 'confirm'
     toolFormat        = 'hermes'           # 'hermes' (XML tool_call) | 'openai' (JSON tool_calls)
     maxSteps          = 10
-    maxHistoryMsgs    = 40                 # sliding window — prevents token overflow on long runs
-    tools             = @('memory', 'web', 'git', 'file', 'shell', 'fabric', 'play', 'summarise', 'draft', 'search')
+    maxHistoryMsgs    = 40                 # sliding window (message count) — first-pass overflow guard
+    maxContextTokens  = 6000               # M7: token budget for history; drops oldest turns first (0 = count-only). Keep < agent model ctx.
+    maxToolResultTokens = 1000             # M7: per-tool-result cap (~4 chars/token) before appending to history
+    compactSchemasAfter = 12               # M7: above this many tools, inject compact schemas (drop param descriptions) to bound prompt size
+    requestTimeout    = 600                # client-side LLM call timeout (s); must be >= litellm request_timeout so thinking models aren't cut off
+    allowPrivateFetch = $false             # M9: web_fetch blocks loopback/private/link-local hosts unless $true (SSRF guard)
+    disabledTools     = @()    # list tool names here to exclude them from the agent
     allowedReadPaths  = @()    # defaults to repo root at runtime; add more paths in user.psd1
     allowedWritePaths = @()                # file_write disabled by default
     agentPort         = 8084   # bob agent serve HTTP port (for WebUI/n8n integration)
+    serveHost         = '127.0.0.1'  # bob agent serve bind address; set '0.0.0.0' to expose on LAN (harden web_fetch first)
+    apiTokens         = @()    # M12: extra Bearer tokens accepted by the server (besides litellmKey); add per-client tokens here
+    sessionDbPath     = 'data\sessions.db'  # M12: SQLite store for multi-turn agent sessions
+    maxSessionTokens  = 0      # M12: per-session token budget for `bob agent serve` sessions (0 = unlimited)
     scheduleFile      = 'data\schedules.json'
     logFile           = 'logs\bob-agent.log'
     toastAppId        = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\powershell.exe'

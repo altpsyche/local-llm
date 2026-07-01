@@ -609,7 +609,7 @@ Images are sent as `image_url` data URIs in the OpenAI chat completions format. 
 
 **What it is:** An autonomous agent loop that uses Hermes 3 (8B) locally. You give it a goal; it decides which tools to call, executes them, and iterates until it has a final answer. Everything — the reasoning, the tool calls, the results — stays on your machine.
 
-**Prerequisites:** `bob up` is running. The `agent` model (Hermes 3) is included in the 16 GB profile — it loaded on first use. Run `bob setup check` to verify everything is wired.
+**Prerequisites:** `bob up` is running. The `agent` model (Hermes 3) is included in the 16 GB profile — it loaded on first use. Run `bob doctor` to verify everything is wired.
 
 ### Try it: one-shot goals
 
@@ -684,28 +684,32 @@ Fetches the page, strips HTML, summarises in 3–5 sentences, prints the summary
 ### Serve via HTTP (for n8n and Open WebUI)
 
 ```powershell
-bob agent serve     # starts FastAPI on :8084 — keep this terminal open
+bob agent serve     # starts FastAPI on 127.0.0.1:8084 — keep this terminal open
 ```
 
-Exposes the full agent tool loop as a REST endpoint:
+Exposes the agent loop as REST + SSE. Every endpoint except `/health` requires a Bearer token — the litellm key (`sk-local` by default) or any entry in `agent.apiTokens`:
 
 ```
 POST http://localhost:8084/v1/agent/completions
-Body: {"goal": "what is the git status?"}
-Returns: {"result": "...", "error": null}
+Header: Authorization: Bearer sk-local
+Body:   {"goal": "what is the git status?"}
+Returns: {"result": "...", "session_id": null, "error": null}
 ```
 
-Wire into n8n with an HTTP Request node: URL `http://host.docker.internal:8084/v1/agent/completions`, method POST, body `{"goal": "{{ $json.goal }}"}`. The port is configurable via `agent.agentPort` in `config/bob.psd1`.
+For token-by-token streaming, POST the same body to `/v1/agent/completions/stream` (Server-Sent Events). For a multi-turn conversation, create a session with `POST /v1/sessions` and pass its `session_id` on each call. Full endpoint contract + event schema: [AGENT-SERVER.md](AGENT-SERVER.md).
+
+Wire into n8n with an HTTP Request node: URL `http://host.docker.internal:8084/v1/agent/completions`, method POST, header `Authorization: Bearer sk-local`, body `{"goal": "{{ $json.goal }}"}`. Bind address and port are `agent.serveHost` / `agent.agentPort` in `config/bob.psd1` (loopback by default; set `serveHost = '0.0.0.0'` to expose on the LAN — keep `allowPrivateFetch = $false`).
 
 > **Note:** Selecting the `agent` model directly in Open WebUI runs raw Hermes 3 inference without tool injection — `<tool_call>` blocks appear as plain text. Use `bob agent serve` for full tool use from WebUI via a custom function or n8n workflow.
 
 ### Check agent health
 
 ```powershell
-bob setup check
+bob setup check     # dependency + registration checks
+bob doctor          # the above + runtime: endpoint reachable, GPU/VRAM, writable dirs, config.json parses
 ```
 
-Prints ✓ or ✗ for all 13 agent dependencies (venv, Python packages, model file, tool files, services, scheduled task). Prints the exact fix command for anything that fails.
+`bob setup check` prints ✓ or ✗ for each agent dependency (venv, Python packages, model file, tool loading, services, scheduled task) with the exact fix command for anything that fails. `bob doctor` is the superset — run it first when something's off.
 
 ---
 
@@ -891,9 +895,12 @@ LiteLLM runs on port 8081 and starts automatically with `bob up`. All bundled cl
 | Run a goal | `bob agent "your goal here"` |
 | Run with confirmation | `bob agent --agency confirm "goal"` |
 | Run silently (scripts) | `bob agent --agency silent "goal"` |
+| Stream the answer | `bob agent "goal" --stream` |
 | Clip a URL to memory | `bob clip <url>` |
 | List tool modules | `bob tools list` |
-| Check all agent deps | `bob setup check` |
+| Check agent deps | `bob setup check` |
+| Full pre-flight (deps + runtime) | `bob doctor` |
+| Serve over HTTP (REST + SSE) | `bob agent serve` |
 | View agent log | `bob agent log` |
 | Add a scheduled goal | `bob agent schedule add name --cron "0 9 * * *" --goal "..."` |
 | List scheduled goals | `bob agent schedule list` |
@@ -920,6 +927,7 @@ LiteLLM runs on port 8081 and starts automatically with `bob up`. All bundled cl
 | Task | Command |
 |---|---|
 | Hardware + CUDA + model health | `bob diagnose` |
+| Full agent + runtime pre-flight | `bob doctor` |
 | Running processes (PID, RAM) | `bob ps` |
 | Check model files on disk | `bob show coder` |
 | Throughput benchmark | `bob bench` |
@@ -970,7 +978,7 @@ If this was your first read-through, here's a short sequence that touches every 
 22. `bob agent "what is the git status of this repo?"`: run your first agent goal — watch it call git_status and reason about the result
 23. `bob agent --agency confirm "check the last 3 commits and summarise them"`: try confirm mode to supervise tool calls
 24. `bob clip https://news.ycombinator.com`: clip a page to memory (fetch → summarise → store)
-25. `bob setup check`: verify all 13 agent dependencies are green
+25. `bob doctor`: full pre-flight — verify agent deps + runtime (endpoint, GPU, writable dirs, config) are green
 26. `bob plugins list`: see the four built-in plugins (summarise, draft, search, play)
 27. `cat docs/USAGE.md | bob summarise --length short`: summarise a large file in 2-3 sentences
 28. `bob draft "apologise for missing the deadline, new date Thursday" --type email`: draft a paste-ready email

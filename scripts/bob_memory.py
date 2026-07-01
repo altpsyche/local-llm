@@ -32,7 +32,8 @@ EMBED_MODEL = "embed"
 _HEADERS = {"Authorization": "Bearer sk-local"}
 
 
-def get_db(db_path: Path) -> sqlite_utils.Database:
+def get_db(db_path) -> sqlite_utils.Database:
+    db_path = Path(db_path)  # accept str (e.g. bob_core._get_db_path) or Path
     db_path.parent.mkdir(parents=True, exist_ok=True)
     db = sqlite_utils.Database(db_path)
     db.execute("""
@@ -57,9 +58,12 @@ def get_db(db_path: Path) -> sqlite_utils.Database:
 
 
 def embed(text: str) -> list[float]:
-    resp = requests.post(EMBED_URL, json={"model": EMBED_MODEL, "input": [text]}, headers=_HEADERS, timeout=15)
-    resp.raise_for_status()
-    return resp.json()["data"][0]["embedding"]
+    try:
+        resp = requests.post(EMBED_URL, json={"model": EMBED_MODEL, "input": [text]}, headers=_HEADERS, timeout=15)
+        resp.raise_for_status()
+        return resp.json()["data"][0]["embedding"]
+    except (requests.RequestException, KeyError, IndexError, ValueError) as e:
+        raise RuntimeError(f"Embedding server unreachable or returned bad data at {EMBED_URL}: {e}") from e
 
 
 def cosine(a: list[float], b: list[float]) -> float:
@@ -71,40 +75,45 @@ def cosine(a: list[float], b: list[float]) -> float:
     return dot / (mag_a * mag_b)
 
 
-def cmd_store(text: str, source: str, db_path: Path) -> None:
-    vec = embed(text)
-    db = get_db(db_path)
+# ---------------------------------------------------------------------------
+# Importable core (M14) — one implementation for both the CLI (cmd_*) and
+# bob_core.memory_store/recall. Neither prints; callers format their own output.
+# ---------------------------------------------------------------------------
 
-    # Dedup: skip if a near-identical entry already exists (cosine >= 0.95)
-    existing = list(db.execute("SELECT id, embedding FROM memories").fetchall())
-    for eid, emb_json in existing:
+def store(content: str, db_path: Path, source: str = "user") -> tuple[int, bool]:
+    """Insert a memory. Returns (id, is_new); is_new=False when a near-duplicate
+    (cosine >= 0.95) already exists — that existing id is returned instead.
+    Raises RuntimeError if the embed server is unreachable.
+
+    Dedup is best-effort (M16): the read-then-insert is not transactional, so two
+    concurrent stores of the same text could both insert — benign for a personal DB."""
+    vec = embed(content)
+    db = get_db(db_path)
+    for eid, emb_json in db.execute("SELECT id, embedding FROM memories").fetchall():
         try:
             if cosine(vec, json.loads(emb_json)) >= 0.95:
-                print(f"Already stored (similar entry id={eid})")
-                return
+                return eid, False
         except Exception:
             continue
-
     db["memories"].insert({
-        "content": text,
+        "content": content,
         "embedding": json.dumps(vec),
         "source": source,
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
-    print(f"Stored memory (id={db.execute('SELECT last_insert_rowid()').fetchone()[0]})")
+    return db.execute("SELECT last_insert_rowid()").fetchone()[0], True
 
 
-def cmd_recall(query: str, top: int, threshold: float, db_path: Path) -> None:
+def recall(query: str, db_path: Path, k: int = 5, threshold: float = 0.3) -> list[dict]:
+    """Return up to k memories matching query as {id, content, score} dicts (highest score
+    first) and bump last_used/use_count on the hits. Raises RuntimeError if the embed server
+    is unreachable. Returns [] for an empty query or an empty DB."""
     if not query.strip():
-        print("[]")
-        return
-
+        return []
     db = get_db(db_path)
     rows = list(db.execute("SELECT id, content, embedding FROM memories").fetchall())
     if not rows:
-        print("[]")
-        return
-
+        return []
     q_vec = embed(query)
     scored = []
     for row_id, content, emb_json in rows:
@@ -114,10 +123,8 @@ def cmd_recall(query: str, top: int, threshold: float, db_path: Path) -> None:
             continue
         if score >= threshold:
             scored.append({"id": row_id, "content": content, "score": round(score, 4)})
-
     scored.sort(key=lambda x: x["score"], reverse=True)
-    results = scored[:top]
-
+    results = scored[:k]
     if results:
         now = datetime.now(timezone.utc).isoformat()
         for r in results:
@@ -125,7 +132,25 @@ def cmd_recall(query: str, top: int, threshold: float, db_path: Path) -> None:
                 "UPDATE memories SET last_used=?, use_count=use_count+1 WHERE id=?",
                 [now, r["id"]],
             )
+    return results
 
+
+def cmd_store(text: str, source: str, db_path: Path) -> None:
+    try:
+        mid, is_new = store(text, db_path, source=source)
+    except RuntimeError as e:
+        print(f"Cannot store memory — {e}", file=sys.stderr)
+        return
+    print(f"Stored memory (id={mid})" if is_new else f"Already stored (similar entry id={mid})")
+
+
+def cmd_recall(query: str, top: int, threshold: float, db_path: Path) -> None:
+    try:
+        results = recall(query, db_path, k=top, threshold=threshold)
+    except RuntimeError as e:
+        print(f"Cannot recall — {e}", file=sys.stderr)
+        print("[]")
+        return
     print(json.dumps(results, ensure_ascii=False))
 
 
@@ -177,14 +202,18 @@ def cmd_summarize_session(messages_file: str, model: str, db_path: Path) -> None
         {"role": "user", "content": json.dumps(turns)},
     ]
 
-    resp = requests.post(
-        f"{LITELLM_BASE}/chat/completions",
-        json={"model": model, "messages": summary_prompt, "max_tokens": 256},
-        headers=_HEADERS,
-        timeout=60,
-    )
-    resp.raise_for_status()
-    summary = resp.json()["choices"][0]["message"]["content"].strip()
+    try:
+        resp = requests.post(
+            f"{LITELLM_BASE}/chat/completions",
+            json={"model": model, "messages": summary_prompt, "max_tokens": 256},
+            headers=_HEADERS,
+            timeout=60,
+        )
+        resp.raise_for_status()
+        summary = resp.json()["choices"][0]["message"]["content"].strip()
+    except (requests.RequestException, KeyError, IndexError, ValueError) as e:
+        print(f"Session summary failed — LLM unreachable or bad response: {e}", file=sys.stderr)
+        return
     if summary:
         cmd_store(summary, source="session", db_path=db_path)
         print("Session summarized and stored.")

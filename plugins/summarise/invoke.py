@@ -14,7 +14,7 @@ from pathlib import Path
 REPO = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
 
-from bob_core import load_config, get_llm_client, check_litellm
+from bob_core import load_config, get_llm_client, check_litellm, get_role
 
 LENGTH_MAP = {
     "short": "2-3 sentences",
@@ -33,7 +33,7 @@ def summarise(content: str, length: str = "medium", config: dict = None) -> str:
     if len(content) > MAX_CHARS:
         content = content[:MAX_CHARS] + f"\n\n[...truncated at {MAX_CHARS} chars]"
 
-    role = config.get("routing", {}).get("defaultRole", "chat")
+    role = get_role(config, "chat")
     client = get_llm_client(config)
 
     resp = client.chat.completions.create(
@@ -52,6 +52,7 @@ def summarise(content: str, length: str = "medium", config: dict = None) -> str:
             },
         ],
         stream=False,
+        timeout=int((config or {}).get("agent", {}).get("requestTimeout", 600)),
     )
     return resp.choices[0].message.content or ""
 
