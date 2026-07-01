@@ -14,11 +14,12 @@ class TestSessionStore(unittest.TestCase):
         self.store = SessionStore(self.db)
 
     def tearDown(self):
-        self.store._conn.close()
-        try:
-            self.db.unlink()
-        except OSError:
-            pass
+        self.store.close()
+        for suffix in ("", "-wal", "-shm"):
+            try:
+                Path(str(self.db) + suffix).unlink()
+            except OSError:
+                pass
 
     def test_create_and_get(self):
         s = self.store.create(token_budget=100)
@@ -53,6 +54,64 @@ class TestSessionStore(unittest.TestCase):
         s = self.store.create()
         self.assertTrue(self.store.delete(s["id"]))
         self.assertIsNone(self.store.get(s["id"]))
+
+    # --- ownership (N1) ------------------------------------------------------
+    def test_create_stamps_owner(self):
+        s = self.store.create(owner_id="alice")
+        self.assertEqual(self.store.get(s["id"])["owner_id"], "alice")
+
+    def test_create_defaults_owner(self):
+        store = SessionStore(self.dir_default() / "d.db", default_owner="local")
+        try:
+            s = store.create()
+            self.assertEqual(store.get(s["id"])["owner_id"], "local")
+        finally:
+            store.close()
+
+    def test_get_owned_wrong_owner_is_none(self):
+        s = self.store.create(owner_id="alice")
+        self.assertIsNone(self.store.get_owned(s["id"], "bob"))
+        self.assertIsNotNone(self.store.get_owned(s["id"], "alice"))
+
+    def test_delete_owned_scopes_to_owner(self):
+        s = self.store.create(owner_id="alice")
+        self.assertFalse(self.store.delete_owned(s["id"], "bob"))
+        self.assertIsNotNone(self.store.get(s["id"]))
+        self.assertTrue(self.store.delete_owned(s["id"], "alice"))
+
+    def dir_default(self):
+        import tempfile
+        d = Path(tempfile.mkdtemp(prefix="bob-sess-def-"))
+        self.addCleanup(lambda: __import__("shutil").rmtree(d, ignore_errors=True))
+        return d
+
+    def test_migration_backfills_owner_from_old_schema(self):
+        import sqlite3
+        old = self.dir_default() / "old.db"
+        # Build a pre-N1 DB (no owner_id column), with one row carrying a legacy `client`.
+        conn = sqlite3.connect(str(old))
+        conn.execute(
+            "CREATE TABLE sessions (id TEXT PRIMARY KEY, created_at TEXT NOT NULL, "
+            "updated_at TEXT NOT NULL, history TEXT NOT NULL DEFAULT '[]', "
+            "token_budget INTEGER NOT NULL DEFAULT 0, tokens_spent INTEGER NOT NULL DEFAULT 0, client TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO sessions (id, created_at, updated_at, history, client) VALUES (?,?,?,?,?)",
+            ["legacy1", "t", "t", "[]", "carol"],
+        )
+        conn.execute(
+            "INSERT INTO sessions (id, created_at, updated_at, history, client) VALUES (?,?,?,?,?)",
+            ["legacy2", "t", "t", "[]", None],
+        )
+        conn.commit()
+        conn.close()
+
+        store = SessionStore(old, default_owner="local")
+        try:
+            self.assertEqual(store.get("legacy1")["owner_id"], "carol")   # from client
+            self.assertEqual(store.get("legacy2")["owner_id"], "local")   # backfilled default
+        finally:
+            store.close()
 
 
 if __name__ == "__main__":

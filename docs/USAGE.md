@@ -654,10 +654,11 @@ bob agent serve            # binds agent.serveHost:agent.agentPort (default 127.
 ```
 
 Exposes the agent loop over HTTP for n8n/WebUI/other clients. Every endpoint except `/health`
-requires `Authorization: Bearer <token>` (the litellm key or an `agent.apiTokens` entry). Supports
-one-shot `POST /v1/agent/completions`, token-streaming `POST /v1/agent/completions/stream` (SSE), and
-multi-turn `POST/GET/DELETE /v1/sessions`. Full endpoint contract, event schema, and n8n wiring:
-[AGENT-SERVER.md](AGENT-SERVER.md).
+requires `Authorization: Bearer <token>` (the litellm key or an `agent.apiTokens` entry). Each token
+maps to an owner, and sessions are owner-scoped — a token only sees sessions its owner created (N1).
+Supports one-shot `POST /v1/agent/completions`, token-streaming `POST /v1/agent/completions/stream`
+(SSE; cancels on client disconnect), and multi-turn `POST/GET/DELETE /v1/sessions`. Full endpoint
+contract, event schema, and n8n wiring: [AGENT-SERVER.md](AGENT-SERVER.md).
 
 ### Check agent health
 

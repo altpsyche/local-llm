@@ -19,6 +19,9 @@ _cfg: dict = {}
 def configure(config: dict) -> None:
     global _cfg
     _cfg = config
+    scripts_dir = str(Path(__file__).parent.parent.parent / "scripts")
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)  # N7 — allow bob_core._port import
 
 
 # ---------------------------------------------------------------------------
@@ -39,7 +42,8 @@ def _find_youtube_url(query: str) -> str | None:
     """Ask SearXNG for the first youtube.com/watch result for query."""
     try:
         import requests
-        port = _cfg.get("searxngPort", 8888)
+        from bob_core import _port  # N7 — single source of truth for ports
+        port = _port(_cfg, "searxngPort")
         r = requests.get(
             f"http://localhost:{port}/search",
             params={"q": f"{query} site:youtube.com", "format": "json", "pageno": 1},

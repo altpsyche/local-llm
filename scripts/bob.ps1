@@ -1013,7 +1013,7 @@ N8N_PORT=$($dp.n8nPort ?? (Get-BobPortDefault 'n8nPort'))
       break
     }
 
-    $knownSubs = @('schedule','log','tools','install','uninstall','status','enable','disable','serve')
+    $knownSubs = @('schedule','log','tools','install','uninstall','status','enable','disable','serve','mcp')
     $sub       = if ($rest.Count -and $rest[0] -in $knownSubs) { $rest[0] } else { 'run' }
     $subRest   = if ($sub -ne 'run') { @($rest | Select-Object -Skip 1) } else { @($rest) }
 
@@ -1182,7 +1182,14 @@ N8N_PORT=$($dp.n8nPort ?? (Get-BobPortDefault 'n8nPort'))
         $env:PYTHONIOENCODING = $null
       }
 
-      default { Write-Host "Usage: bob agent <goal>  |  bob agent schedule|log|tools|install|uninstall|status|serve" }
+      'mcp' {
+        # N10 — expose Bob's tools over the Model Context Protocol (stdio). Gated by agent.mcpEnabled.
+        $env:PYTHONIOENCODING = 'utf-8'
+        & $venvPy "$repo\scripts\bob_mcp_server.py"
+        $env:PYTHONIOENCODING = $null
+      }
+
+      default { Write-Host "Usage: bob agent <goal>  |  bob agent schedule|log|tools|install|uninstall|status|serve|mcp" }
     }
   }
 
@@ -1314,6 +1321,7 @@ Agent:
   bob agent install / uninstall        Register / remove BobAgent scheduled task
   bob agent status                     Show task state and recent log
   bob agent serve                      Start Bob agent HTTP server (:8084) for WebUI/n8n
+  bob agent mcp                        Expose Bob's tools over MCP (stdio; needs agent.mcpEnabled)
   bob clip <url> [--note text]         Fetch URL, summarize, and save to memory
   bob tools list                       List all available tools and their source
   bob tools test <name>                Run a tool's built-in test

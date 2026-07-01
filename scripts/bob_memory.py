@@ -8,7 +8,7 @@ Usage:
   bob_memory.py [--db PATH] init-profile --name "Siva" --work "game dev"
 
 Runs inside venv-litellm (has requests). Requires: sqlite-utils.
-Embed endpoint: http://localhost:8081/v1/embeddings (BGE-M3, model=embed).
+Embed endpoint resolved from config (litellmPort); BGE-M3, model=embed.
 """
 
 import argparse
@@ -26,10 +26,35 @@ except ImportError as e:
     sys.exit(1)
 
 _DEFAULT_DB = Path(__file__).parent.parent / "data" / "bob.db"
-EMBED_URL = "http://localhost:8081/v1/embeddings"
-LITELLM_BASE = "http://localhost:8081/v1"
 EMBED_MODEL = "embed"
-_HEADERS = {"Authorization": "Bearer sk-local"}
+
+# N7 — resolve the LiteLLM base URL + auth from config (single source of truth, CONTRIBUTING §8)
+# instead of hardcoding :8081. Memoized per process; falls back to the central port default
+# if config.json isn't present yet.
+_LITELLM: dict = {}
+
+
+def _litellm() -> "tuple[str, dict]":
+    """Return (base_url, headers) for the LiteLLM proxy, resolved from config and memoized.
+
+    If config.json isn't readable yet (missing or corrupt), return the central default WITHOUT
+    memoizing — so a later call re-reads once the real config exists, instead of poisoning the
+    process with the sk-local fallback (N-review H2)."""
+    cached = _LITELLM.get("v")
+    if cached is not None:
+        return cached
+    import bob_core
+    try:
+        cfg = bob_core.load_config()
+    except Exception:  # FileNotFoundError, JSONDecodeError, ... — fall back but don't cache it
+        base = f"http://localhost:{bob_core._PORT_DEFAULTS['litellmPort']}/v1"
+        return base, {"Authorization": "Bearer sk-local"}
+    val = (
+        f"http://localhost:{bob_core._port(cfg, 'litellmPort')}/v1",
+        {"Authorization": f"Bearer {bob_core._litellm_key(cfg)}"},
+    )
+    _LITELLM["v"] = val
+    return val
 
 
 def get_db(db_path) -> sqlite_utils.Database:
@@ -58,12 +83,14 @@ def get_db(db_path) -> sqlite_utils.Database:
 
 
 def embed(text: str) -> list[float]:
+    base, headers = _litellm()
+    url = f"{base}/embeddings"
     try:
-        resp = requests.post(EMBED_URL, json={"model": EMBED_MODEL, "input": [text]}, headers=_HEADERS, timeout=15)
+        resp = requests.post(url, json={"model": EMBED_MODEL, "input": [text]}, headers=headers, timeout=15)
         resp.raise_for_status()
         return resp.json()["data"][0]["embedding"]
     except (requests.RequestException, KeyError, IndexError, ValueError) as e:
-        raise RuntimeError(f"Embedding server unreachable or returned bad data at {EMBED_URL}: {e}") from e
+        raise RuntimeError(f"Embedding server unreachable or returned bad data at {url}: {e}") from e
 
 
 def cosine(a: list[float], b: list[float]) -> float:
@@ -202,11 +229,12 @@ def cmd_summarize_session(messages_file: str, model: str, db_path: Path) -> None
         {"role": "user", "content": json.dumps(turns)},
     ]
 
+    base, headers = _litellm()
     try:
         resp = requests.post(
-            f"{LITELLM_BASE}/chat/completions",
+            f"{base}/chat/completions",
             json={"model": model, "messages": summary_prompt, "max_tokens": 256},
-            headers=_HEADERS,
+            headers=headers,
             timeout=60,
         )
         resp.raise_for_status()

@@ -57,13 +57,18 @@ tools\venv-litellm\Scripts\python.exe -m unittest discover -s tests
 tools\venv-litellm\Scripts\python.exe -m pytest tests -q
 ```
 
-It also runs as section **[11]** of `.\scripts\test-dry-run.ps1` (the PowerShell regression suite).
+It also runs as section **[11]** of `.\scripts\test-dry-run.ps1` (the PowerShell regression suite),
+and `scripts\check.ps1` runs it alongside `py_compile` + a PowerShell AST parse as one gate.
 Add a test when you add a tool, a routing task, a config default, or a new failure mode. The registry's
 validated-contract + injected-config design makes tools easy to test against a fake config — see
-[tests/_common.py](tests/_common.py).
+[tests/_common.py](tests/_common.py). Cover new public surfaces (routes, auth/ownership, streaming,
+cancellation, concurrency) — see the Module N tests for the pattern.
 
 ## Verifying a change
 
-- Python: `tools\venv-litellm\Scripts\python.exe -m py_compile <files>` then run the suite above.
-- PowerShell: `[System.Management.Automation.Language.Parser]::ParseFile(...)` (AST parse) for syntax.
+- One gate for all three: `pwsh -File scripts\check.ps1` (py_compile + PowerShell AST parse + the
+  unittest suite; exits non-zero on any failure). Install it as a pre-commit hook once per clone with
+  `pwsh -File scripts\install-hooks.ps1`.
+- Individually — Python: `tools\venv-litellm\Scripts\python.exe -m py_compile <files>` then the suite
+  above. PowerShell: `[System.Management.Automation.Language.Parser]::ParseFile(...)` (AST parse).
 - End-to-end: `bob doctor` (full pre-flight) and `.\scripts\test-dry-run.ps1`.

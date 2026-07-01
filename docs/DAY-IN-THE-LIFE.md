@@ -696,7 +696,7 @@ Body:   {"goal": "what is the git status?"}
 Returns: {"result": "...", "session_id": null, "error": null}
 ```
 
-For token-by-token streaming, POST the same body to `/v1/agent/completions/stream` (Server-Sent Events). For a multi-turn conversation, create a session with `POST /v1/sessions` and pass its `session_id` on each call. Full endpoint contract + event schema: [AGENT-SERVER.md](AGENT-SERVER.md).
+For token-by-token streaming, POST the same body to `/v1/agent/completions/stream` (Server-Sent Events; the run cancels within ~1s if you disconnect). For a multi-turn conversation, create a session with `POST /v1/sessions` and pass its `session_id` on each call. Each token maps to an owner, and **sessions are owner-scoped** — a token can only see sessions its own owner created (another owner's `session_id` returns 404). Give distinct callers distinct `@{ token; owner }` entries in `agent.apiTokens`. Full endpoint contract + event schema: [AGENT-SERVER.md](AGENT-SERVER.md); security model + `0.0.0.0` checklist: [SECURITY.md](SECURITY.md).
 
 Wire into n8n with an HTTP Request node: URL `http://host.docker.internal:8084/v1/agent/completions`, method POST, header `Authorization: Bearer sk-local`, body `{"goal": "{{ $json.goal }}"}`. Bind address and port are `agent.serveHost` / `agent.agentPort` in `config/bob.psd1` (loopback by default; set `serveHost = '0.0.0.0'` to expose on the LAN — keep `allowPrivateFetch = $false`).
 

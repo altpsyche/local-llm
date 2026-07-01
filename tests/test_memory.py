@@ -57,6 +57,28 @@ class TestMemoryCore(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             bob_memory.store("x", self.db)
 
+    def test_litellm_does_not_cache_fallback_when_config_absent(self):
+        # N-review H2: if config.json isn't readable on first call, use the fallback but DON'T
+        # memoize it — a later call must pick up the real config instead of being poisoned.
+        import bob_core
+        bob_memory._LITELLM.clear()
+        orig = bob_core.load_config
+        try:
+            def _missing():
+                raise FileNotFoundError("no config yet")
+            bob_core.load_config = _missing
+            base1, _ = bob_memory._litellm()
+            self.assertIn(":8081", base1)                    # central default fallback
+            self.assertNotIn("v", bob_memory._LITELLM)       # NOT cached
+
+            bob_core.load_config = lambda: {"litellmPort": 9099, "litellmKey": "sk-real"}
+            base2, h2 = bob_memory._litellm()
+            self.assertIn(":9099", base2)                    # re-read, not stuck on fallback
+            self.assertEqual(h2["Authorization"], "Bearer sk-real")
+        finally:
+            bob_core.load_config = orig
+            bob_memory._LITELLM.clear()
+
 
 if __name__ == "__main__":
     unittest.main()

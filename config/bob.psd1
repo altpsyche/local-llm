@@ -71,18 +71,26 @@ Keep answers brief and direct. One to three sentences is ideal.
     allowPrivateFetch = $false             # M9: web_fetch blocks loopback/private/link-local hosts unless $true (SSRF guard)
     disabledTools     = @()    # list tool names here to exclude them from the agent
     allowedReadPaths  = @()    # defaults to repo root at runtime; add more paths in user.psd1
+                               # N9: file_read/file_write always refuse config.json, *.psd1, *.db,
+                               # logs/, .env* even inside an allowed root (secrets denylist)
     allowedWritePaths = @()                # file_write disabled by default
+    gitAllowedRoots   = @()    # N9: extra repos git_* may read (status/log/diff); repo root always allowed
     agentPort         = 8084   # bob agent serve HTTP port (for WebUI/n8n integration)
     serveHost         = '127.0.0.1'  # bob agent serve bind address; set '0.0.0.0' to expose on LAN (harden web_fetch first)
-    apiTokens         = @()    # M12: extra Bearer tokens accepted by the server (besides litellmKey); add per-client tokens here
+    # N1: per-client Bearer tokens, each mapped to an owner id. Sessions are owner-scoped —
+    # a token can only see/modify sessions its owner created (others 404). The litellmKey maps
+    # to defaultOwner. Shape: @{ token = 'sk-alice-...'; owner = 'alice' }  (bare strings also
+    # accepted for legacy: token maps to itself as owner). Revoke = remove entry + restart serve.
+    apiTokens         = @()
+    defaultOwner      = 'local'  # N1: owner id the litellmKey (and unlabeled sessions) map to
     sessionDbPath     = 'data\sessions.db'  # M12: SQLite store for multi-turn agent sessions
     maxSessionTokens  = 0      # M12: per-session token budget for `bob agent serve` sessions (0 = unlimited)
     scheduleFile      = 'data\schedules.json'
     logFile           = 'logs\bob-agent.log'
+    logMaxBytes       = 5000000  # N5: rotate bob-agent.log at ~5 MB
+    logBackupCount    = 3        # N5: keep this many rotated logs
     toastAppId        = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\powershell.exe'
     maxResultChars    = 500
-    # MCP integration hook (Phase 4+):
-    # mcpEnabled = $false
-    # mcpServers = @('filesystem', 'fetch', 'github', 'searxng')
+    mcpEnabled        = $false   # N10: `bob agent mcp` exposes Bob's tools over MCP (stdio) when $true
   }
 }

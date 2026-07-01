@@ -1,0 +1,5 @@
+#!/bin/sh
+# Bob pre-commit hook (N8) — blocks the commit if py_compile / PowerShell parse / tests fail.
+# Installed into .git/hooks by scripts/install-hooks.ps1 (that dir isn't version-controlled).
+root=$(git rev-parse --show-toplevel)
+exec pwsh -NoProfile -File "$root/scripts/check.ps1"

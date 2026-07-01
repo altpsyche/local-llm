@@ -1,16 +1,41 @@
-"""Bob tool: git_status, git_log, git_diff."""
+"""Bob tool: git_status, git_log, git_diff — restricted to allow-listed repositories (N9)."""
 import subprocess
 from pathlib import Path
 
 _default_repo: str = ""
+_allowed_roots: list = []  # N9 — repos git_* may touch; defaults to the Bob repo root
 
 
 def configure(config: dict) -> None:
-    global _default_repo
-    _default_repo = str(Path(__file__).parent.parent.parent)
+    global _default_repo, _allowed_roots
+    repo = Path(__file__).parent.parent.parent
+    _default_repo = str(repo)
+    extra = config.get("agent", {}).get("gitAllowedRoots", [])
+    if isinstance(extra, str):
+        extra = [extra]
+    _allowed_roots = [repo] + [Path(p) for p in extra if p]
+
+
+def _is_allowed_repo(path: str) -> bool:
+    """True if `path` is (within) an allow-listed root — else git_* refuses (N9). Without this,
+    the agent could read the status/log/diff of any git repo on disk (info disclosure)."""
+    try:
+        rp = Path(path).resolve()
+    except Exception:
+        return False
+    for root in _allowed_roots:
+        try:
+            r = root.resolve()
+            if rp == r or rp.is_relative_to(r):
+                return True
+        except Exception:
+            continue
+    return False
 
 
 def _run_git(args: list, cwd: str) -> str:
+    if not _is_allowed_repo(cwd):
+        return f"Access denied: {cwd} (not within gitAllowedRoots)"
     try:
         r = subprocess.run(
             ["git", "-C", cwd] + args,

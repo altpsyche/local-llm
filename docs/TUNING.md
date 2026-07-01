@@ -81,8 +81,8 @@ registration step. To exclude a tool without deleting it, add its name to `agent
 | `agent.requestTimeout` | `600` | Client-side LLM call timeout (s). Must be **≥** the litellm proxy's `request_timeout` (600) so thinking models (planner/R1) aren't cut off mid-response. |
 | `agent.allowPrivateFetch` | `$false` | When `$false`, `web_fetch` blocks `file://`/non-http schemes and loopback/RFC-1918/link-local hosts (SSRF guard, M9). Set `$true` only if you deliberately need the agent to reach private hosts. |
 | `agent.disabledTools` | `@()` | Tool names (stem/dir) to **exclude** from discovery. Denylist, not allowlist. |
-| `agent.allowedReadPaths` | (repo root) | Paths `file_read` may access. Defaults to the repo root at runtime. Add more in `config/user.psd1`. |
-| `agent.allowedWritePaths` | `@()` | Paths `file_write` may access. Empty = write disabled. Opt in via `user.psd1`. |
+| `agent.allowedReadPaths` | (repo root) | Paths `file_read` may access. Defaults to the repo root at runtime. Add more in `config/user.psd1`. **Secrets denylist (N9):** `config.json`, `*.psd1`, `*.db`, `logs/`, `.env*` are refused even inside an allowed root. |
+| `agent.allowedWritePaths` | `@()` | Paths `file_write` may access. Empty = write disabled. Opt in via `user.psd1`. The N9 secrets denylist applies here too. |
 
 Override any of these in `config/user.psd1` under the `bob.agent` key:
 
@@ -106,9 +106,13 @@ endpoint requires `Authorization: Bearer <token>`.
 |-----|---------|--------|
 | `agent.serveHost` | `'127.0.0.1'` | Bind address. Set `'0.0.0.0'` to expose on the LAN — **harden `allowPrivateFetch` first** (keep it `$false`). |
 | `agent.agentPort` | `8084` | Server port. |
-| `agent.apiTokens` | `@()` | Extra Bearer tokens accepted besides `litellmKey`. Add per-client tokens here. |
-| `agent.sessionDbPath` | `'data\sessions.db'` | SQLite store for multi-turn sessions (created on first server start). |
+| `agent.apiTokens` | `@()` | Per-client Bearer tokens (N1), each `@{ token='sk-…'; owner='alice' }`. Sessions are owner-scoped — a token only sees sessions its owner created (others 404). Bare strings still work (token = owner). |
+| `agent.defaultOwner` | `'local'` | Owner id the `litellmKey` (and any unlabelled session) maps to (N1). |
+| `agent.sessionDbPath` | `'data\sessions.db'` | SQLite store for multi-turn sessions (WAL, created on first server start). |
 | `agent.maxSessionTokens` | `0` | Per-session token budget; `0` = unlimited. Once reached, that session's completions return HTTP 402. |
+| `agent.gitAllowedRoots` | `@()` | Extra repos `git_*` may read (N9); the Bob repo root is always allowed. |
+| `agent.logMaxBytes` / `logBackupCount` | `5000000` / `3` | Rotation for `logs\bob-agent.log` (N5). |
+| `agent.mcpEnabled` | `$false` | Enable `bob agent mcp` (expose tools over MCP, N10). |
 
 See [AGENT-SERVER.md](AGENT-SERVER.md) for the endpoint contract.
 

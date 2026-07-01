@@ -1,9 +1,14 @@
-"""Bob session store (M12) — persist agent conversations to SQLite.
+"""Bob session store (M12, hardened in N2) — persist agent conversations to SQLite.
 
 A Session bundles an id, a rolling message history ({role, content} turns), and an optional
 token budget. The agent HTTP server uses it to support multi-turn, multi-client conversations
-and to bound spend per client; the CLI stays stateless. This is the seam for future
-multi-user / MCP work — not a full identity system, just id + history + budget persistence.
+and to bound spend per client; the CLI stays stateless. This is the seam for the multi-user /
+MCP work — id + history + budget persistence, with per-owner scoping added in N1.
+
+Concurrency (N2): FastAPI runs the sync route handlers in a threadpool, so the store is hit
+from many threads at once. Each thread gets its **own** SQLite connection (`threading.local`),
+the DB runs in **WAL** mode with a **busy_timeout**, and `append_turn` does its read-modify-write
+inside a single `BEGIN IMMEDIATE` transaction — so concurrent appends can't lose turns.
 """
 import json
 import sqlite3
@@ -20,14 +25,43 @@ def _now() -> str:
 
 
 class SessionStore:
-    """Thread-safe (single connection + lock) SQLite-backed session store."""
+    """SQLite-backed session store, safe under concurrent threadpool access (N2).
 
-    def __init__(self, db_path):
+    One connection per thread (`threading.local`); WAL + busy_timeout; atomic `append_turn`.
+    """
+
+    def __init__(self, db_path, default_owner: str = "local"):
         self.path = Path(db_path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.Lock()
-        self._conn = sqlite3.connect(str(self.path), check_same_thread=False)
-        self._conn.execute(
+        self._local = threading.local()
+        self._all_conns: list = []          # every opened conn, for close()
+        self._conns_lock = threading.Lock()
+        self._default_owner = default_owner  # N1 — owner stamped when none is supplied (e.g. litellmKey)
+        conn = self._conn()                 # opens + registers this thread's conn
+        conn.execute("PRAGMA journal_mode=WAL")   # persistent DB property; concurrent readers + 1 writer
+        self._ensure_schema(conn)
+
+    # -- connection management ------------------------------------------------
+
+    def _conn(self) -> sqlite3.Connection:
+        """The calling thread's own connection (opened on first use). isolation_level=None puts
+        the connection in autocommit mode so explicit BEGIN IMMEDIATE transactions work cleanly."""
+        c = getattr(self._local, "conn", None)
+        if c is None:
+            # check_same_thread=False so close() can run from a different thread than the one that
+            # opened the conn (FastAPI threadpool workers open them; teardown closes from elsewhere).
+            # Safe because each conn is *used* by exactly one thread — only close() crosses threads.
+            c = sqlite3.connect(str(self.path), timeout=5.0, isolation_level=None, check_same_thread=False)
+            c.execute("PRAGMA busy_timeout=5000")   # per-connection; wait out a transient writer lock
+            self._local.conn = c
+            with self._conns_lock:
+                self._all_conns.append(c)
+        return c
+
+    def _ensure_schema(self, conn: sqlite3.Connection) -> None:
+        """Single create+migrate site. Idempotent — safe on a fresh DB and on one that predates
+        the owner_id (N1) or client columns. Backfills owner_id from client (or the default)."""
+        conn.execute(
             """
             CREATE TABLE IF NOT EXISTS sessions (
                 id           TEXT PRIMARY KEY,
@@ -40,23 +74,45 @@ class SessionStore:
             )
             """
         )
-        self._conn.commit()
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(sessions)").fetchall()}
+        if "client" not in cols:                       # DB older than the client column
+            conn.execute("ALTER TABLE sessions ADD COLUMN client TEXT")
+        if "owner_id" not in cols:                     # N1 — add + backfill ownership
+            conn.execute("ALTER TABLE sessions ADD COLUMN owner_id TEXT")
+            conn.execute(
+                "UPDATE sessions SET owner_id = COALESCE(NULLIF(client,''), ?) WHERE owner_id IS NULL",
+                [self._default_owner],
+            )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_updated_at ON sessions(updated_at DESC)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_owner ON sessions(owner_id, updated_at DESC)")
 
-    def create(self, token_budget: int = 0, client: str = "") -> dict:
+    def close(self) -> None:
+        """Close every connection this store opened (test teardown / shutdown)."""
+        with self._conns_lock:
+            for c in self._all_conns:
+                try:
+                    c.close()
+                except Exception:
+                    pass
+            self._all_conns = []
+        self._local = threading.local()
+
+    # -- CRUD -----------------------------------------------------------------
+
+    def create(self, token_budget: int = 0, owner_id: str = None) -> dict:
         sid = uuid.uuid4().hex
         now = _now()
-        with self._lock:
-            self._conn.execute(
-                "INSERT INTO sessions (id, created_at, updated_at, history, token_budget, tokens_spent, client)"
-                " VALUES (?,?,?,?,?,?,?)",
-                [sid, now, now, "[]", int(token_budget), 0, client],
-            )
-            self._conn.commit()
+        owner = owner_id or self._default_owner
+        self._conn().execute(
+            "INSERT INTO sessions (id, created_at, updated_at, history, token_budget, tokens_spent, client, owner_id)"
+            " VALUES (?,?,?,?,?,?,?,?)",
+            [sid, now, now, "[]", int(token_budget), 0, owner, owner],  # client mirrors owner (compat)
+        )  # autocommit (isolation_level=None)
         return self.get(sid)
 
     def get(self, sid: str):
-        row = self._conn.execute(
-            "SELECT id, created_at, updated_at, history, token_budget, tokens_spent, client"
+        row = self._conn().execute(
+            "SELECT id, created_at, updated_at, history, token_budget, tokens_spent, client, owner_id"
             " FROM sessions WHERE id=?",
             [sid],
         ).fetchone()
@@ -70,23 +126,41 @@ class SessionStore:
             "token_budget": row[4],
             "tokens_spent": row[5],
             "client": row[6],
+            "owner_id": row[7],
         }
 
-    def append_turn(self, sid: str, user_content: str, assistant_content, tokens_used: int = 0):
-        """Append a user turn (+ assistant reply if any) and add tokens_used to the tally."""
+    def get_owned(self, sid: str, owner_id: str):
+        """Return the session only if owner_id matches; else None (caller maps to 404 — no leak)."""
         s = self.get(sid)
-        if s is None:
-            return None
-        history = s["history"]
-        history.append({"role": "user", "content": user_content})
-        if assistant_content is not None:
-            history.append({"role": "assistant", "content": assistant_content})
-        with self._lock:
-            self._conn.execute(
+        return s if s and s.get("owner_id") == owner_id else None
+
+    def append_turn(self, sid: str, user_content: str, assistant_content, tokens_used: int = 0):
+        """Append a user turn (+ assistant reply if any) and add tokens_used to the tally.
+
+        Atomic: BEGIN IMMEDIATE takes the write lock before the read, so two concurrent appends
+        serialize instead of racing on a stale history (no lost updates)."""
+        c = self._conn()
+        try:
+            c.execute("BEGIN IMMEDIATE")
+            row = c.execute("SELECT history FROM sessions WHERE id=?", [sid]).fetchone()
+            if row is None:
+                c.execute("ROLLBACK")
+                return None
+            history = json.loads(row[0])
+            history.append({"role": "user", "content": user_content})
+            if assistant_content is not None:
+                history.append({"role": "assistant", "content": assistant_content})
+            c.execute(
                 "UPDATE sessions SET history=?, tokens_spent=tokens_spent+?, updated_at=? WHERE id=?",
                 [json.dumps(history), int(tokens_used), _now(), sid],
             )
-            self._conn.commit()
+            c.execute("COMMIT")
+        except Exception:
+            try:
+                c.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise
         return self.get(sid)
 
     def over_budget(self, sid: str) -> bool:
@@ -97,15 +171,18 @@ class SessionStore:
         return s["tokens_spent"] >= s["token_budget"]
 
     def delete(self, sid: str) -> bool:
-        with self._lock:
-            cur = self._conn.execute("DELETE FROM sessions WHERE id=?", [sid])
-            self._conn.commit()
+        cur = self._conn().execute("DELETE FROM sessions WHERE id=?", [sid])  # autocommit
+        return cur.rowcount > 0
+
+    def delete_owned(self, sid: str, owner_id: str) -> bool:
+        """Delete only if owner_id matches. Non-owner sees the same {deleted: False} as a missing id."""
+        cur = self._conn().execute("DELETE FROM sessions WHERE id=? AND owner_id=?", [sid, owner_id])
         return cur.rowcount > 0
 
     def list_ids(self) -> list:
         return [
             r[0]
-            for r in self._conn.execute(
-                "SELECT id FROM sessions ORDER BY updated_at DESC"
-            ).fetchall()
+            for r in self._conn()
+            .execute("SELECT id FROM sessions ORDER BY updated_at DESC")
+            .fetchall()
         ]

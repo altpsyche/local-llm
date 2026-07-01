@@ -14,7 +14,7 @@ from pathlib import Path
 REPO = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
 
-from bob_core import load_config, get_llm_client, check_litellm, get_role
+from bob_core import load_config, get_llm_client, check_litellm, get_role, _port
 
 LENGTH_MAP = {
     "short": "2-3 sentences",
@@ -83,7 +83,7 @@ def main():
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
     if not check_litellm(config):
-        port = config.get("litellmPort", 8081)
+        port = _port(config, "litellmPort")
         print(f"Error: LiteLLM proxy not reachable at localhost:{port}", file=sys.stderr)
         print("Run: bob up", file=sys.stderr)
         sys.exit(1)

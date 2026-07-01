@@ -35,6 +35,7 @@ Agent tools (callable by `bob agent` autonomously): memory, web, git, file, shel
 | SearXNG `:8888` | Private web search, powers Continue's `@web` and the agent |
 | Langfuse `:3001` | LLM observability: traces, latency, token counts |
 | API `:8081/v1` | OpenAI-compatible inference endpoint, drop-in for any existing tool |
+| Agent API `:8084` | `bob agent serve` — REST + SSE agent loop with per-client Bearer auth and owner-scoped sessions (loopback by default) |
 
 ## Hardware
 

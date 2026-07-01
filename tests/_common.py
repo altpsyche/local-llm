@@ -49,9 +49,29 @@ class FakeRegistry:
         return self._results.get(name, f"[{name} ran]")
 
 
+def _content_chunk(text):
+    return SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=text, tool_calls=None))])
+
+
+class _FakeStream:
+    """An iterable streaming response with a .close() the loop can call on cancel (N3)."""
+
+    def __init__(self, chunks):
+        self._chunks = list(chunks)
+        self.closed = False
+
+    def __iter__(self):
+        for c in self._chunks:
+            yield c
+
+    def close(self):
+        self.closed = True
+
+
 def scripted_client(turns):
-    """A fake OpenAI client whose create() returns each item of `turns` in order.
-    Each turn is the assistant content string (Hermes tool calls inline as <tool_call>…)."""
+    """A fake OpenAI client whose create() returns each item of `turns` in order, as a one-chunk
+    stream (the loop always consumes streaming internally now, N3). Each turn is the assistant
+    content string (Hermes tool calls inline as <tool_call>…)."""
     state = {"i": 0}
 
     class _C:
@@ -62,23 +82,69 @@ def scripted_client(turns):
             i = state["i"]
             state["i"] += 1
             content = turns[min(i, len(turns) - 1)]
-            msg = SimpleNamespace(content=content, tool_calls=None)
-            return SimpleNamespace(choices=[SimpleNamespace(message=msg)])
+            return _FakeStream([_content_chunk(content)])
 
     return _C()
 
 
 def stream_client(deltas):
-    """A fake client whose streaming create() yields chunks for each string in `deltas`."""
-    class _Chunk:
-        def __init__(self, text):
-            self.choices = [SimpleNamespace(delta=SimpleNamespace(content=text, tool_calls=None))]
+    """A fake client whose streaming create() yields one chunk per string in `deltas`."""
+    class _C:
+        def __init__(self):
+            self.chat = SimpleNamespace(completions=self)
+
+        def create(self, model, messages, tools, stream, timeout):
+            return _FakeStream([_content_chunk(d) for d in deltas])
+
+    return _C()
+
+
+def multi_turn_stream_client(turns):
+    """Fake client: each create() streams the next turn; a turn is a list of content-delta strings,
+    so a test can split a <tool_call> marker across chunks (N6)."""
+    state = {"i": 0}
 
     class _C:
         def __init__(self):
             self.chat = SimpleNamespace(completions=self)
 
         def create(self, model, messages, tools, stream, timeout):
-            return iter(_Chunk(d) for d in deltas)
+            i = state["i"]
+            state["i"] += 1
+            deltas = turns[min(i, len(turns) - 1)]
+            return _FakeStream([_content_chunk(d) for d in deltas])
+
+    return _C()
+
+
+def slow_stream_client(deltas, sleep_s=0.02, on_chunk=None):
+    """A streaming fake that sleeps between chunks so a test can trip a cancel token mid-stream
+    (N3). on_chunk(i) runs before yielding chunk i — use it to set the token. The returned stream
+    exposes .close() and records .closed so the test can assert the abort path ran."""
+    import time
+
+    class _SlowStream:
+        def __init__(self):
+            self.closed = False
+
+        def __iter__(self):
+            for i, d in enumerate(deltas):
+                if on_chunk:
+                    on_chunk(i)
+                time.sleep(sleep_s)
+                yield _content_chunk(d)
+
+        def close(self):
+            self.closed = True
+
+    the_stream = _SlowStream()
+
+    class _C:
+        def __init__(self):
+            self.chat = SimpleNamespace(completions=self)
+            self.last_stream = the_stream
+
+        def create(self, model, messages, tools, stream, timeout):
+            return the_stream
 
     return _C()

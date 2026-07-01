@@ -1,8 +1,14 @@
-"""Bob tool: file_read and file_write with path allowlist enforcement."""
+"""Bob tool: file_read and file_write with path allowlist + secrets denylist enforcement."""
 from pathlib import Path
 
 _allowed_read: list = []
 _allowed_write: list = []
+
+# N9 — secrets denylist: refuse these even when they fall inside an allowedReadPaths root
+# (which defaults to the repo root, and so would otherwise expose the litellm key / api tokens
+# in data/config.json, the session store, config .psd1 files, logs, and .env files).
+_DENY_BASENAMES = {"config.json"}   # data/config.json carries litellmKey + apiTokens
+_DENY_SUFFIXES = (".psd1", ".db")   # bob.psd1/user.psd1 config; *.db session/memory stores
 
 
 def configure(config: dict) -> None:
@@ -28,6 +34,20 @@ def _is_allowed(target: Path, allowed: list) -> bool:
         return False
 
 
+def _is_denied_secret(target: Path) -> bool:
+    """True for sensitive files that must never be read even inside an allowed root (N9)."""
+    try:
+        rp = target.resolve()
+    except Exception:
+        return True
+    name = rp.name.lower()
+    if name in _DENY_BASENAMES or name.startswith(".env"):
+        return True
+    if rp.suffix.lower() in _DENY_SUFFIXES:
+        return True
+    return "logs" in (seg.lower() for seg in rp.parts)
+
+
 def _file_read(path: str) -> str:
     p = Path(path)
     if not _allowed_read:
@@ -35,6 +55,8 @@ def _file_read(path: str) -> str:
     if not _is_allowed(p, _allowed_read):
         allowed_str = ", ".join(str(a) for a in _allowed_read)
         return f"Access denied: {path}\nAllowed paths: {allowed_str}"
+    if _is_denied_secret(p):
+        return f"Access denied (sensitive file): {path}"
     if not p.exists():
         return f"File not found: {path}"
     try:
@@ -56,6 +78,8 @@ def _file_write(path: str, content: str) -> str:
     if not _is_allowed(p, _allowed_write):
         allowed_str = ", ".join(str(a) for a in _allowed_write)
         return f"Access denied: {path}\nAllowed write paths: {allowed_str}"
+    if _is_denied_secret(p):
+        return f"Access denied (sensitive file): {path}"
     try:
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content, encoding="utf-8")

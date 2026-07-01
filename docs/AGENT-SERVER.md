@@ -15,15 +15,19 @@ The registry and session store are built once at startup and shared across reque
   to expose on the LAN — and **only** with `agent.allowPrivateFetch = $false` (the default), so a
   remote caller can't use `web_fetch` for SSRF against your private network.
 - **Auth:** every endpoint except `/health` requires `Authorization: Bearer <token>`, where `<token>`
-  is the litellm key (`litellmKey`, default `sk-local`) or any entry in `agent.apiTokens`. Add
-  per-client tokens to `agent.apiTokens` to hand different callers distinct credentials.
-- **Note:** tokens are a shared secret, not per-user identity — any valid token can read/delete any
-  `session_id`. Per-client session ownership is a planned follow-up (the "road to 10/10" hardening).
+  is the litellm key (`litellmKey`, default `sk-local`) or an `agent.apiTokens` entry.
+- **Identity + ownership (N1):** each token maps to an owner id — `agent.apiTokens` entries are
+  `@{ token = 'sk-alice-…'; owner = 'alice' }` records (bare strings still work, mapping the token
+  to itself), and the litellm key maps to `agent.defaultOwner` (default `local`). Sessions are
+  owner-scoped: a token can only read/delete/continue sessions its owner created; any other
+  `session_id` returns **404**, indistinguishable from an unknown id. Revoke a token by removing it
+  from config and restarting `bob agent serve`. See [SECURITY.md](SECURITY.md).
 
 ## Config
 
 All under the `agent` block of `config/bob.psd1` — see [TUNING.md](TUNING.md#agent-behavior-configbobpsd1):
-`serveHost`, `agentPort`, `apiTokens`, `sessionDbPath`, `maxSessionTokens`.
+`serveHost`, `agentPort`, `apiTokens`, `defaultOwner`, `sessionDbPath`, `maxSessionTokens`,
+`gitAllowedRoots`, `logMaxBytes`/`logBackupCount`, `mcpEnabled`.
 
 ## Endpoints
 

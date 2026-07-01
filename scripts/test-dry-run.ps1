@@ -409,6 +409,21 @@ if (-not (Test-Path $venvPy10)) {
 }
 
 # --------------------------------------------------------------------------
+Write-Host "`n[12] Static checks (py_compile + PowerShell AST parse — via scripts\check.ps1)" -ForegroundColor Cyan
+# --------------------------------------------------------------------------
+# The same gate the git pre-commit hook runs (N8). -NoTests skips the suite here since [11]
+# already ran it. Single source of the static-check logic lives in scripts\check.ps1.
+$checkPs = Join-Path $repo 'scripts\check.ps1'
+if (-not (Test-Path $venvPy10)) {
+  Write-Host "  skip  venv-litellm not found" -ForegroundColor DarkGray
+} elseif (-not (Test-Path $checkPs)) {
+  Write-Host "  skip  scripts\check.ps1 not found" -ForegroundColor DarkGray
+} else {
+  & $checkPs -NoTests
+  Assert "Static checks pass (py_compile + PowerShell parse)" ($LASTEXITCODE -eq 0) "exit code $LASTEXITCODE"
+}
+
+# --------------------------------------------------------------------------
 $total = $pass + $fail
 $col   = if ($fail -eq 0) { 'Green' } else { 'Red' }
 Write-Host "`n$pass / $total passed" -ForegroundColor $col

@@ -14,8 +14,13 @@ _allow_private_fetch: bool = False  # M9 — gate SSRF-prone fetches behind an e
 def configure(config: dict) -> None:
     global _cfg, _searxng_url, _allow_private_fetch
     _cfg = config
-    port = config.get("searxngPort", 8888)
-    _searxng_url = f"http://localhost:{port}/search"
+    import sys
+    from pathlib import Path
+    scripts_dir = str(Path(__file__).parent.parent)
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    from bob_core import _port  # N7 — single source of truth for ports
+    _searxng_url = f"http://localhost:{_port(config, 'searxngPort')}/search"
     _allow_private_fetch = bool(config.get("agent", {}).get("allowPrivateFetch", False))
 
 
