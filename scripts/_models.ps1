@@ -16,26 +16,26 @@
 #   $script:SizeTolPct                    -> 0.10 — ±10% size tolerance for GGUF validation
 #   Get-BobConfig                         -> raw hashtable from config/bob.psd1 (+ user.psd1 [bob] overrides)
 
-$script:ModelsRepo = Split-Path $PSScriptRoot -Parent
-$script:ModelsFile = Join-Path $script:ModelsRepo 'config\models.psd1'
-$script:BobFile    = Join-Path $script:ModelsRepo 'config\bob.psd1'
-$script:SizeTolPct = 0.10
+$script:ModelsRepo   = Split-Path $PSScriptRoot -Parent
+$script:ModelsFile   = Join-Path $script:ModelsRepo 'config\models.psd1'
+$script:BobFile      = Join-Path $script:ModelsRepo 'config\bob.psd1'
+$script:DefaultsFile = Join-Path $script:ModelsRepo 'config\defaults.json'
+$script:SizeTolPct   = 0.10
 
-# Single source of truth for service-port defaults (M6). models.psd1/bob.psd1 normally
-# supply these; this dict is the ONLY literal fallback when a key is somehow absent, so the
-# `?? <literal>` divergence traps that were scattered across every script collapse to one place.
-# Read via Get-BobPortDefault; never re-inline a port number elsewhere.
-$script:BobPortDefaults = @{
-  port         = 8080   # llama-swap API endpoint
-  litellmPort  = 8081   # LiteLLM proxy
-  sttPort      = 8082   # whisper STT server
-  ttsPort      = 8083   # piper TTS server
-  agentPort    = 8084   # bob agent serve HTTP
-  webuiPort    = 3000   # Open WebUI
-  langfusePort = 3001   # Langfuse observability
-  n8nPort      = 5678   # n8n automation
-  searxngPort  = 8888   # SearXNG search
+# NB1 (contract C2) — the neutral single source of truth for the shared constants (ports + role
+# table) is config/defaults.json, read by BOTH PowerShell (here) and Python (bob_core.load_defaults).
+# No more hand-mirrored dicts. -AsHashtable so .Contains()/indexing work like the old literal did.
+function Get-BobDefaults {
+  if (-not (Test-Path $script:DefaultsFile)) {
+    throw "config/defaults.json not found: $script:DefaultsFile (neutral source of truth for ports + roles, NB1)"
+  }
+  return Get-Content -Raw -LiteralPath $script:DefaultsFile | ConvertFrom-Json -AsHashtable
 }
+
+# Single source of truth for service-port defaults (M6/NB1), loaded from config/defaults.json.
+# Read via Get-BobPortDefault; never re-inline a port number elsewhere.
+$script:BobDefaults     = Get-BobDefaults
+$script:BobPortDefaults = $script:BobDefaults.ports
 
 function Get-BobPortDefault {
   # Return the single-source default for a service port (M6). Throws on an unknown key so a
@@ -165,23 +165,16 @@ function Get-RoleForTask {
     [switch]$Pro
   )
   if (-not $Config) { $Config = Get-BobConfig }
-  $r = $Config.routing
-  switch ($Task) {
-    'vision' {
-      $v = $Config.vision
-      if ($Pro) { return ($v.visionProRole ?? 'vision-pro') } else { return ($v.visionRole ?? 'vision') }
-    }
-    'code' {
-      if ($Pro) { return ($r.proCodeRole ?? 'coder-pro') } else { return ($r.codeRole ?? 'coder') }
-    }
-    'think' {
-      if ($Pro) { return ($r.proThinkRole ?? 'planner-pro') } else { return ($r.thinkRole ?? 'planner') }
-    }
-    default {
-      # chat + voice share the default/pro chat roles.
-      if ($Pro) { return ($r.proRole ?? 'chat-pro') } else { return ($r.defaultRole ?? 'chat') }
-    }
+  # NB1: task->key mapping and fallback literals come from config/defaults.json roleTable — one
+  # place, shared with bob_core.get_role. Vision routing lives in its own config section.
+  $table = $script:BobDefaults.roleTable
+  $entry = if ($table.Contains($Task)) { $table[$Task] } else { $table['chat'] }
+  $sectionName = if ($entry.Contains('section')) { $entry.section } else { 'routing' }
+  $section = $Config.$sectionName
+  if ($Pro) {
+    return ($section.($entry.pro) ?? $section.($entry.base) ?? $entry.proFallback)
   }
+  return ($section.($entry.base) ?? $entry.fallback)
 }
 
 function Assert-BobPortKeys {

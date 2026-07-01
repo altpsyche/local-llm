@@ -7,9 +7,11 @@
 param([switch]$NoTests)
 
 $repo = Split-Path $PSScriptRoot -Parent
-$venvPy = Join-Path $repo 'tools\venv-litellm\Scripts\python.exe'
-if (-not (Test-Path $venvPy)) {
-  Write-Host "[check] venv-litellm not found at $venvPy — run scripts\bootstrap-litellm.ps1" -ForegroundColor Red
+# NB6 — CI (no venv-litellm) sets BOB_PYTHON to its own interpreter so this one gate runs on both
+# Linux + Windows. Locally BOB_PYTHON is unset and the venv python is used, unchanged.
+$venvPy = if ($env:BOB_PYTHON) { $env:BOB_PYTHON } else { Join-Path $repo 'tools\venv-litellm\Scripts\python.exe' }
+if (-not (Test-Path $venvPy) -and -not (Get-Command $venvPy -ErrorAction SilentlyContinue)) {
+  Write-Host "[check] python not found at '$venvPy' — run scripts\bootstrap-litellm.ps1 (or set BOB_PYTHON)" -ForegroundColor Red
   exit 1
 }
 $failed = $false
@@ -41,7 +43,17 @@ foreach ($f in $psFiles) {
   }
 }
 
-# 3. unittest suite --------------------------------------------------------
+# 3. config/verbs.json in sync with the command registry (NB4) ------------
+# verbs.json is generated from scripts/bob/registry.py and read by the shim; a registry edit that
+# doesn't regenerate it would drift the front door. Static check — runs even with -NoTests.
+Write-Host '[check] verbs.json in sync...' -ForegroundColor Cyan
+$prevPyPath = $env:PYTHONPATH
+$env:PYTHONPATH = Join-Path $repo 'scripts'
+& $venvPy -m bob.registry --check
+if ($LASTEXITCODE -ne 0) { Write-Host '[check] verbs.json STALE — run: python -m bob.registry' -ForegroundColor Red; $failed = $true }
+$env:PYTHONPATH = $prevPyPath
+
+# 4. unittest suite --------------------------------------------------------
 if (-not $NoTests) {
   Write-Host '[check] unittest suite...' -ForegroundColor Cyan
   $env:PYTHONIOENCODING = 'utf-8'

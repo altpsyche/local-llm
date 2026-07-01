@@ -1,0 +1,13 @@
+#!/usr/bin/env sh
+# NB4 (contract C1) — POSIX front-door shim for Bob. Dumb by design: it hands every command to
+# `python -m bob`, which resolves config/verbs.json and either handles the command (runtime) or
+# exec's `pwsh scripts/bob.ps1` for pwsh/orchestration commands (when PowerShell is present).
+#
+# Windows uses the bob.cmd -> scripts/bob.ps1 path instead (see scripts/install-cli.ps1); that one
+# reads verbs.json in pwsh so bootstrap works with no venv. A native POSIX provisioner/bootstrap is
+# a later module — for now the runtime is what must work here.
+set -e
+REPO="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+PYTHON="${BOB_PYTHON:-python3}"
+export PYTHONPATH="$REPO/scripts${PYTHONPATH:+:$PYTHONPATH}"
+exec "$PYTHON" -m bob "$@"

@@ -15,6 +15,38 @@ $argv = @($args)
 $cmd  = if ($argv.Count) { $argv[0] } else { 'help' }
 $rest = @($argv | Select-Object -Skip 1)   # always an array, even for a single arg
 
+# NB4 (contract C1) — front-door dispatch. config/verbs.json (generated from the C6 command
+# registry) declares each command's runtime; runtime commands are handled by `python -m bob`,
+# everything else falls through to the orchestration switch below. Resolution is per
+# fully-qualified command ("agent serve" vs "agent schedule") so subcommands split correctly.
+# This is the "shim reads verbs.json without Python" step (bootstrap `setup` stays pwsh, no venv).
+$verbsFile = Join-Path $repo 'config\verbs.json'
+if (Test-Path $verbsFile) {
+  try {
+    $verbs = Get-Content -Raw -LiteralPath $verbsFile | ConvertFrom-Json -AsHashtable
+    $route = $null
+    $two   = if ($rest.Count) { "$cmd $($rest[0])" } else { $null }
+    if     ($two -and $verbs.commands.Contains($two)) { $route = $verbs.commands[$two] }
+    elseif ($verbs.commands.Contains($cmd))           { $route = $verbs.commands[$cmd] }
+    if ($route -eq 'python') {
+      $venvPy = Join-Path $repo 'tools\venv-litellm\Scripts\python.exe'
+      if (-not (Test-Path $venvPy)) {
+        Write-Host "Error: venv-litellm not found. Run: scripts\bootstrap-litellm.ps1" -ForegroundColor Red
+        exit 1
+      }
+      # Regenerate data/config.json from the single source so the runtime sees fresh config
+      # (M17 timestamp check makes this near-free), matching the old per-verb Get-BobConfig call.
+      try { Get-BobConfig | Out-Null } catch {}
+      $env:PYTHONPATH = Join-Path $repo 'scripts'
+      $env:PYTHONIOENCODING = 'utf-8'
+      & $venvPy -m bob @argv
+      exit $LASTEXITCODE
+    }
+  } catch {
+    Write-Warning "verbs.json dispatch failed ($_); falling back to the built-in switch."
+  }
+}
+
 function Invoke-BobStream {
   # Stream a chat completion to stdout. Returns the full assistant text.
   # -Raw: suppress spinner + ANSI output, return clean text only (used by bob voice).

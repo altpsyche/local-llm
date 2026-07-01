@@ -1,0 +1,72 @@
+{
+  "_comment": "NB1 (contract C2) — the single neutral source of truth for shared constants. Read by both PowerShell (ConvertFrom-Json in scripts/_models.ps1) and Python (json.load in scripts/bob_core.py), and it exists before the venv so bootstrap can use it. Never re-inline a port number or role literal elsewhere. 'ports' + 'roleTable' are shared by both languages; 'runtime' is the neutral runtime-config default layer the Python resolver (scripts/bob_config.py, NB2) merges — PowerShell ignores it (Windows authors config/bob.psd1). NB7 later unifies authoring so this duplication with bob.psd1's committed defaults goes away.",
+
+  "ports": {
+    "port": 8080,
+    "litellmPort": 8081,
+    "sttPort": 8082,
+    "ttsPort": 8083,
+    "agentPort": 8084,
+    "webuiPort": 3000,
+    "langfusePort": 3001,
+    "n8nPort": 5678,
+    "searxngPort": 8888
+  },
+
+  "roleTable": {
+    "chat":   { "base": "defaultRole", "pro": "proRole",      "fallback": "chat",    "proFallback": "chat-pro" },
+    "voice":  { "base": "defaultRole", "pro": "proRole",      "fallback": "chat",    "proFallback": "chat-pro" },
+    "code":   { "base": "codeRole",    "pro": "proCodeRole",  "fallback": "coder",   "proFallback": "coder-pro" },
+    "think":  { "base": "thinkRole",   "pro": "proThinkRole", "fallback": "planner", "proFallback": "planner-pro" },
+    "agent":  { "base": "agentRole",   "pro": "agentRole",    "fallback": "agent",   "proFallback": "agent" },
+    "vision": { "section": "vision",   "base": "visionRole",  "pro": "visionProRole", "fallback": "vision", "proFallback": "vision-pro" }
+  },
+
+  "runtime": {
+    "litellmKey": "sk-local",
+    "persona": {
+      "systemPrompt": "You are Bob, a personal AI assistant running privately on this machine. You are direct, practical, and you remember what matters. You assist with software development, writing, planning, and daily work. Relevant memories from past sessions are provided in context when available. When you don't know something, say so."
+    },
+    "memory": {
+      "enabled": false,
+      "dbPath": "data/bob.db",
+      "embedModel": "embed",
+      "recallK": 5,
+      "maxSummaryTokens": 256,
+      "autoSummarize": true
+    },
+    "vision": {
+      "enabled": true,
+      "visionRole": "vision",
+      "visionProRole": "vision-pro"
+    },
+    "agent": {
+      "enabled": false,
+      "agency": "show",
+      "toolFormat": "hermes",
+      "maxSteps": 10,
+      "maxHistoryMsgs": 40,
+      "maxContextTokens": 6000,
+      "maxToolResultTokens": 1000,
+      "compactSchemasAfter": 12,
+      "requestTimeout": 600,
+      "allowPrivateFetch": false,
+      "disabledTools": [],
+      "allowedReadPaths": [],
+      "allowedWritePaths": [],
+      "gitAllowedRoots": [],
+      "agentPort": 8084,
+      "serveHost": "127.0.0.1",
+      "apiTokens": [],
+      "defaultOwner": "local",
+      "sessionDbPath": "data/sessions.db",
+      "maxSessionTokens": 0,
+      "scheduleFile": "data/schedules.json",
+      "logFile": "logs/bob-agent.log",
+      "logMaxBytes": 5000000,
+      "logBackupCount": 3,
+      "maxResultChars": 500,
+      "mcpEnabled": false
+    }
+  }
+}

@@ -1,0 +1,150 @@
+"""NB4 (contract C1) — `python -m bob` dispatch. Resolves a command path against the registry and
+routes: python commands are handled here; pwsh (orchestration/phased) commands are exec'd through
+`scripts/bob.ps1` when PowerShell is available. Heavy runtime imports are lazy so `bob` help and
+pwsh delegation stay light and dependency-free.
+"""
+import os
+import runpy
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+from bob import registry
+
+REPO = Path(__file__).resolve().parent.parent.parent  # scripts/bob/cli.py -> repo
+SCRIPTS = REPO / "scripts"
+
+
+def _resolve(argv: list):
+    """Return (command_name, remaining_args). Prefer a 2-token path (e.g. 'agent serve') over the
+    bare verb (e.g. 'agent <goal>'), so subcommands split correctly per C1."""
+    cmds = registry.by_name()
+    if not argv:
+        return (None, [])
+    if len(argv) >= 2 and f"{argv[0]} {argv[1]}" in cmds:
+        return (f"{argv[0]} {argv[1]}", argv[2:])
+    return (argv[0], argv[1:])
+
+
+def main(argv=None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    name, rest = _resolve(argv)
+    if name is None:
+        _print_help()
+        return 0
+
+    entry = registry.by_name().get(name)
+    runtime = entry["runtime"] if entry else registry.verbs_json_dict()["default"]
+
+    if runtime == "pwsh":
+        return _exec_pwsh(argv)
+
+    handler = _HANDLERS.get(entry["handler"]) if entry else None
+    if handler is None:
+        print(f"Unknown command: {' '.join(argv)}\n", file=sys.stderr)
+        _print_help()
+        return 2
+    return handler(rest) or 0
+
+
+# --- python handlers -----------------------------------------------------------------------------
+
+def _handle_agent_run(rest: list) -> int:
+    if not rest:
+        print("Usage: bob agent <goal>", file=sys.stderr)
+        return 1
+    import bob_loop  # lazy: pulls in openai etc.
+
+    sys.argv = ["bob-agent"] + rest
+    bob_loop.main()  # may sys.exit(42) on --exit-on-tool; that propagates as intended
+    return 0
+
+
+def _handle_agent_serve(rest: list) -> int:
+    import uvicorn  # lazy
+
+    import bob_agent_server  # noqa: F401 — defines the FastAPI `app`
+    from bob_core import _port, capability_probe, load_config
+
+    config = load_config()
+    agent = config.get("agent", {})
+    host = agent.get("serveHost", "127.0.0.1")
+    port = _port(agent, "agentPort")
+
+    ok, msg = capability_probe(config)
+    print(f"[probe] {msg}", file=sys.stderr)  # degrade with a clear message, don't hard-fail
+    print(f"Bob agent HTTP server on {host}:{port}  (POST /v1/agent/completions, Bearer auth)",
+          file=sys.stderr)
+    if host == "0.0.0.0":
+        print("  WARNING: bound to 0.0.0.0 (LAN-exposed). Keep agent.allowPrivateFetch = false.",
+              file=sys.stderr)
+    uvicorn.run(bob_agent_server.app, host=host, port=port)
+    return 0
+
+
+def _handle_agent_mcp(rest: list) -> int:
+    import bob_mcp_server  # lazy
+
+    return bob_mcp_server.main() or 0
+
+
+def _handle_agent_tools(rest: list) -> int:
+    # tool_loader's CLI logic lives in its __main__ block and imports its siblings (tool_registry),
+    # so scripts/tools must be importable; run it with the right argv.
+    tools_dir = str(SCRIPTS / "tools")
+    if tools_dir not in sys.path:
+        sys.path.insert(0, tools_dir)
+    sys.argv = ["tool_loader.py", "--list"] + rest
+    runpy.run_path(str(SCRIPTS / "tools" / "tool_loader.py"), run_name="__main__")
+    return 0
+
+
+def _handle_clip(rest: list) -> int:
+    import bob_clip  # lazy
+
+    sys.argv = ["bob-clip"] + rest
+    bob_clip.main()
+    return 0
+
+
+def _handle_skill(rest: list) -> int:
+    print("Skills execution arrives in a later module (NE catalog / O execution).", file=sys.stderr)
+    return 0
+
+
+_HANDLERS = {
+    "agent_run": _handle_agent_run,
+    "agent_serve": _handle_agent_serve,
+    "agent_mcp": _handle_agent_mcp,
+    "agent_tools": _handle_agent_tools,
+    "clip": _handle_clip,
+    "skill": _handle_skill,
+}
+
+
+# --- pwsh delegation -----------------------------------------------------------------------------
+
+def _exec_pwsh(argv: list) -> int:
+    pwsh = shutil.which("pwsh") or shutil.which("powershell")
+    if not pwsh:
+        print(f"`bob {' '.join(argv)}` is a PowerShell orchestration command and PowerShell "
+              "(pwsh) is not installed on this system. See docs/PORTABILITY.md.", file=sys.stderr)
+        return 1
+    cmd = [pwsh, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(SCRIPTS / "bob.ps1")] + argv
+    return subprocess.run(cmd).returncode
+
+
+# --- help ----------------------------------------------------------------------------------------
+
+def _print_help() -> None:
+    print("bob — local AI assistant\n", file=sys.stderr)
+    groups: dict = {}
+    for c in registry.commands():
+        groups.setdefault(c["group"], []).append(c)
+    for group, cmds in groups.items():
+        print(f"{group}:", file=sys.stderr)
+        for c in cmds:
+            usage = f"{c['name']} {c['args']}".strip()
+            print(f"  {usage:<34} {c['summary']}", file=sys.stderr)
+        print("", file=sys.stderr)

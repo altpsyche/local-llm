@@ -1,14 +1,39 @@
 """Bob tool: file_read and file_write with path allowlist + secrets denylist enforcement."""
 from pathlib import Path
 
+import osenv
+
 _allowed_read: list = []
 _allowed_write: list = []
 
-# N9 — secrets denylist: refuse these even when they fall inside an allowedReadPaths root
-# (which defaults to the repo root, and so would otherwise expose the litellm key / api tokens
-# in data/config.json, the session store, config .psd1 files, logs, and .env files).
-_DENY_BASENAMES = {"config.json"}   # data/config.json carries litellmKey + apiTokens
+# N9 / NB3 (C3) — secrets denylist: refuse these even when they fall inside an allowedReadPaths
+# root (which defaults to the repo root, and so would otherwise expose the litellm key / api
+# tokens in data/config.json, the resolved secrets file, the session/memory stores, config .psd1
+# files, logs, and .env files). NB3 makes it OS-aware + data-dir-relative.
+_DENY_BASENAMES = {"config.json", "secrets.json"}  # carry litellmKey / apiTokens / provider keys
 _DENY_SUFFIXES = (".psd1", ".db")   # bob.psd1/user.psd1 config; *.db session/memory stores
+
+
+def _home() -> Path:
+    """User home dir — overridable in tests so ~/.ssh denial can be exercised in a temp tree."""
+    return Path.home()
+
+
+def _in_secret_dir(rp: Path) -> bool:
+    """True if the resolved path sits under a platform secret directory (C3): the resolved
+    data-dir secrets file's dir, and the usual home credential dirs."""
+    candidates = [
+        osenv.secrets_file().resolve(),                 # <data_dir>/secrets.json (any OS)
+        _home() / ".ssh", _home() / ".aws",
+        _home() / ".gnupg", _home() / ".config" / "bob",
+    ]
+    for base in candidates:
+        try:
+            if rp == base or rp.is_relative_to(base):
+                return True
+        except (OSError, ValueError):
+            continue
+    return False
 
 
 def configure(config: dict) -> None:
@@ -45,7 +70,9 @@ def _is_denied_secret(target: Path) -> bool:
         return True
     if rp.suffix.lower() in _DENY_SUFFIXES:
         return True
-    return "logs" in (seg.lower() for seg in rp.parts)
+    if "logs" in (seg.lower() for seg in rp.parts):
+        return True
+    return _in_secret_dir(rp)
 
 
 def _file_read(path: str) -> str:

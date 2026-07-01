@@ -1,10 +1,13 @@
-"""Bob tool: shell_run — executes PowerShell commands.
+"""Bob tool: shell_run — executes a command in the OS-native shell.
 
 Always prompts for user confirmation regardless of the global agency setting.
-Timeout: 30 seconds. Process is killed on timeout.
+Timeout: 30 seconds. Process is killed on timeout. NB3: the shell is OS-native
+(pwsh on Windows, bash/sh elsewhere) via osenv.default_shell().
 """
 import subprocess
 import sys
+
+import osenv
 
 _cfg: dict = {}
 
@@ -26,9 +29,10 @@ def _shell_run(command: str) -> str:
     if answer != "y":
         return "Cancelled by user."
 
+    shell = osenv.default_shell()
     try:
         r = subprocess.run(
-            ["pwsh", "-NonInteractive", "-Command", command],
+            shell + [command],
             capture_output=True,
             text=True,
             timeout=30,
@@ -42,7 +46,7 @@ def _shell_run(command: str) -> str:
             exc.process.kill()
         return "Command timed out after 30s and was killed."
     except FileNotFoundError:
-        return "pwsh not found. Is PowerShell 7 installed?"
+        return f"shell '{shell[0]}' not found."
     except Exception as e:
         return f"shell_run error: {e}"
 

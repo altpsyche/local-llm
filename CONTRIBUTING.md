@@ -43,9 +43,20 @@ See [plugins/AUTHORING.md](plugins/AUTHORING.md) for the three-layer capability 
    a per-run id; keep the coloured `stderr` previews for interactive use
    ([scripts/bob_loop.py](scripts/bob_loop.py) `_agent_logger`).
 
-8. **Single source of truth for defaults.** Service ports live only in `$script:BobPortDefaults`
-   ([scripts/_models.ps1](scripts/_models.ps1)) / `_PORT_DEFAULTS` ([scripts/bob_core.py](scripts/bob_core.py));
-   routing lives only in `Get-RoleForTask` / `bob_core.get_role`. Read them — never re-inline a literal.
+8. **Single source of truth for defaults (NB1).** Shared constants — service ports and the role
+   table — live only in [config/defaults.json](config/defaults.json), read by both Python
+   (`bob_core.load_defaults()` → `_PORT_DEFAULTS` / `get_role`) and PowerShell
+   (`_models.ps1 Get-BobDefaults` → `$BobPortDefaults` / `Get-RoleForTask`). Never re-inline a port
+   number or role literal — add it to `defaults.json`. A `bob gen` / config change flows through
+   `Get-BobConfig`; a *neutral* (no-PowerShell) runtime config comes from
+   [scripts/bob_config.py](scripts/bob_config.py) `resolve_runtime_config()`.
+
+9. **Portability seams (NB3/NB4).** OS-specific behavior goes through one seam, not scattered
+   branches: [scripts/osenv.py](scripts/osenv.py) for shell / data-dir (C4) / secrets (C3) / notify;
+   secrets resolve via `osenv.secret()` (env → keychain → `data/secrets.json`), never a git-tracked
+   file. New `bob` commands are added to the command registry
+   ([scripts/bob/registry.py](scripts/bob/registry.py)) — `config/verbs.json` is *generated* from it
+   (`python -m bob.registry`) and its sync is enforced by `check.ps1`; do not hand-edit `verbs.json`.
 
 ## Tests
 
@@ -66,9 +77,10 @@ cancellation, concurrency) — see the Module N tests for the pattern.
 
 ## Verifying a change
 
-- One gate for all three: `pwsh -File scripts\check.ps1` (py_compile + PowerShell AST parse + the
-  unittest suite; exits non-zero on any failure). Install it as a pre-commit hook once per clone with
-  `pwsh -File scripts\install-hooks.ps1`.
+- One gate for all four: `pwsh -File scripts\check.ps1` (py_compile + PowerShell AST parse +
+  `config/verbs.json`↔registry sync + the unittest suite; exits non-zero on any failure). Install it
+  as a pre-commit hook once per clone with `pwsh -File scripts\install-hooks.ps1`. In CI it runs on
+  Linux + Windows ([.github/workflows/ci.yml](.github/workflows/ci.yml)) via a `BOB_PYTHON` override.
 - Individually — Python: `tools\venv-litellm\Scripts\python.exe -m py_compile <files>` then the suite
   above. PowerShell: `[System.Management.Automation.Language.Parser]::ParseFile(...)` (AST parse).
 - End-to-end: `bob doctor` (full pre-flight) and `.\scripts\test-dry-run.ps1`.

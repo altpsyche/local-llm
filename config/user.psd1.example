@@ -59,6 +59,14 @@
         # webuiSecret = 'my-real-secret-here'   # Set before exposing WebUI on LAN.
         # flashAttn = $false    # Disable flash attention (CPU-only inference).
 
+        # ── Server auth: shared bearer key (litellm proxy :8081 + agent server :8084) ─────
+        # litellmKey is the single shared password for BOTH the LiteLLM proxy and `bob agent
+        # serve`. The default 'sk-local' is a PUBLIC, well-known value — safe only because the
+        # servers bind to 127.0.0.1 by default. Before exposing anything on the LAN, change it to
+        # a long random string, then update every client that talks to :8081 (Continue, aider,
+        # Open WebUI, n8n) to the new value. Re-run `bob gen` after changing.
+        # litellmKey = 'sk-<generate-a-long-random-string>'
+
         # ── Langfuse tracing ─────────────────────────────────────────────────────
         # Enable after `bob services start` and setting API keys from Langfuse UI:
         #   $env:LANGFUSE_PUBLIC_KEY = 'pk-lf-...'
@@ -116,5 +124,32 @@
     #   #     coder   = 'z-ai/glm-5.2'
     #   #   }
     #   # }
+    # }
+
+    # ── Agent server: per-client tokens + session ownership (bob agent serve) ─────
+    # Overrides config/bob.psd1 under a 'bob' section. The agent HTTP server (:8084) requires
+    #   Authorization: Bearer <token>  on every endpoint except /health.
+    #
+    # Out of the box: the only accepted token is litellmKey (owner 'local'), and the server binds
+    # to 127.0.0.1 — fine for you alone, NOT for multiple callers or the LAN. To go multi-user:
+    #   1. give each caller a distinct random token mapped to an owner. Sessions are owner-scoped:
+    #      a token can only see/continue/delete sessions ITS owner created; another owner's
+    #      session_id returns 404 (indistinguishable from a nonexistent one).
+    #   2. change `litellmKey` above (it's a public default).
+    #   3. only THEN set serveHost = '0.0.0.0'. Keep allowPrivateFetch = $false (SSRF guard).
+    # Revoke a token by deleting its entry here and restarting `bob agent serve`.
+    # Re-run `bob gen` after editing. See docs/SECURITY.md for the full exposure checklist.
+    #
+    # bob = @{
+    #   agent = @{
+    #     defaultOwner = 'local'                    # owner id the litellmKey maps to
+    #     apiTokens = @(
+    #       @{ token = 'sk-alice-<random>'; owner = 'alice' }
+    #       @{ token = 'sk-n8n-<random>';   owner = 'n8n'   }
+    #     )
+    #     # serveHost      = '0.0.0.0'              # expose on LAN — do steps 1 & 2 FIRST
+    #     # gitAllowedRoots = @('D:\projects')      # extra repos git_* may read (default: repo only)
+    #     # mcpEnabled     = $true                  # expose Bob's tools over MCP (`bob agent mcp`)
+    #   }
     # }
 }

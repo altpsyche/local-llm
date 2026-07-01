@@ -4,6 +4,7 @@ they sit inside an allowedReadPaths root (which defaults to the repo root)."""
 import shutil
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 import _common  # noqa: F401 — puts scripts/tools on sys.path
@@ -20,6 +21,7 @@ class TestFileTool(unittest.TestCase):
         (self.dir / ".env").write_text("TOKEN=abc", encoding="utf-8")
         (self.dir / "logs").mkdir()
         (self.dir / "logs" / "a.log").write_text("logline", encoding="utf-8")
+        (self.dir / "secrets.json").write_text('{"litellmKey":"SUPERSECRET"}', encoding="utf-8")
         file.configure({"agent": {"allowedReadPaths": [str(self.dir)]}})
 
     def tearDown(self):
@@ -44,6 +46,27 @@ class TestFileTool(unittest.TestCase):
 
     def test_denies_logs_dir(self):
         self.assertIn("sensitive", file._file_read(str(self.dir / "logs" / "a.log")))
+
+    def test_denies_secrets_json(self):
+        # NB3 (C3) — the resolved secrets file must never be readable, secret never leaks.
+        out = file._file_read(str(self.dir / "secrets.json"))
+        self.assertIn("sensitive", out)
+        self.assertNotIn("SUPERSECRET", out)
+
+    def test_denies_home_ssh_key(self):
+        # NB3 (C3) — OS-aware denial of ~/.ssh even when it's inside an allowedReadPaths root.
+        import osenv  # noqa: F811
+        home = Path(tempfile.mkdtemp(prefix="bob-home-"))
+        try:
+            (home / ".ssh").mkdir()
+            (home / ".ssh" / "id_rsa").write_text("PRIVATEKEY", encoding="utf-8")
+            file.configure({"agent": {"allowedReadPaths": [str(home)]}})
+            with unittest.mock.patch.object(file, "_home", lambda: home):
+                out = file._file_read(str(home / ".ssh" / "id_rsa"))
+            self.assertIn("sensitive", out)
+            self.assertNotIn("PRIVATEKEY", out)
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
 
     def test_denies_outside_allowed_root(self):
         other = Path(tempfile.mkdtemp(prefix="bob-other-"))
