@@ -55,6 +55,16 @@ function Get-LockModelManifest {
   $manifest = if (Test-Path $script:ManifestFile) {
     Get-Content -Raw -LiteralPath $script:ManifestFile | ConvertFrom-Json -AsHashtable
   } else { @{} }
+  # sha256 is TOFU-then-LOCK: once a model's checksum is locked it lives in versions.lock, which IS a
+  # committed source. models/manifest.json is a machine-local capture buffer (gitignored, carries
+  # per-fetch `verifiedAt` timestamps) — absent in CI and fresh clones. So prefer the manifest's sha
+  # (a fresh re-fetch that must re-lock) but FALL BACK to the sha already in the lock; otherwise the
+  # gate would demand a manifest that is never committed and go red on every machine that hasn't
+  # fetched every model (ND1 reproducibility: the lock must regenerate from committed sources alone).
+  $lockedModels = if (Test-Path $script:VersionsFile) {
+    try { (Get-Content -Raw -LiteralPath $script:VersionsFile | ConvertFrom-Json -AsHashtable).models } catch { @{} }
+  } else { @{} }
+  if (-not $lockedModels) { $lockedModels = @{} }
   $models = [ordered]@{}
   foreach ($profName in ($cfg.profiles.Keys | Sort-Object)) {
     $prof = $cfg.profiles[$profName]
@@ -63,7 +73,11 @@ function Get-LockModelManifest {
       if (-not $m.gguf) { continue }
       $gguf = $m.gguf
       if ($models.Contains($gguf)) { continue }   # first profile wins; the gguf is identical across profiles
-      $sha = if ($manifest.Contains($gguf) -and $manifest[$gguf].sha256) { "$($manifest[$gguf].sha256)".ToLower() } else { $null }
+      $sha = if ($manifest.Contains($gguf) -and $manifest[$gguf].sha256) {
+        "$($manifest[$gguf].sha256)".ToLower()
+      } elseif ($lockedModels.Contains($gguf) -and $lockedModels[$gguf].sha256) {
+        "$($lockedModels[$gguf].sha256)".ToLower()
+      } else { $null }
       $entry = [ordered]@{
         repo     = $m.repo
         path     = $m.path

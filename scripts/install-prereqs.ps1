@@ -85,10 +85,11 @@ Step "Manual prerequisites"
 if (-not (Have 'git')) {
     throw "git not found. Install Git from https://git-scm.com, then re-run install_prereqs.bat."
 }
-if (-not (Have 'scoop')) {
-    throw "scoop not found. Install it:  irm get.scoop.sh | iex   then re-run install_prereqs.bat."
-}
-Write-Host "  git ok; scoop ok" -ForegroundColor DarkGray
+# scoop is the leaner installer for go/python312, but it is NOT a hard requirement: when it is absent
+# (e.g. the CI windows-latest runner) we fall back to winget for those two packages. Only git is
+# genuinely manual. Install scoop for the lighter path:  irm get.scoop.sh | iex
+$haveScoop = Have 'scoop'
+Write-Host "  git ok; scoop $(if ($haveScoop) { 'ok' } else { 'absent (using winget for go/python)' })" -ForegroundColor DarkGray
 
 # ---------------------------------------------------------------------------
 # 2. VS2022 with Desktop C++ workload
@@ -120,14 +121,26 @@ if (Have 'uvx')  { Write-Host "  uv ok"   -ForegroundColor DarkGray } else { Ins
 # 4. Go + Python 3.12  (scoop)
 # ---------------------------------------------------------------------------
 Step "Go + Python 3.12"
-if (Have 'go') { Write-Host "  go ok" -ForegroundColor DarkGray } else { scoop install go }
-$hasPy = $false; try { scoop prefix python312 *>$null; $hasPy = ($LASTEXITCODE -eq 0) } catch {}
-if ($hasPy) { Write-Host "  python312 ok" -ForegroundColor DarkGray } else { scoop install python312 }
+if (Have 'go') { Write-Host "  go ok" -ForegroundColor DarkGray }
+elseif ($haveScoop) { scoop install go }
+else { Install-WithWinget 'GoLang.Go' }
+# A python 3.12 already on PATH counts (GitHub runners + actions/setup-python provide it); only install
+# one when none is present. With scoop, use its python312; without scoop, winget.
+$pyOk = (Have 'python') -and (((& python --version 2>&1) -join ' ') -match '3\.12')
+if ($pyOk) { Write-Host "  python 3.12 ok" -ForegroundColor DarkGray }
+elseif ($haveScoop) {
+    $hasPy = $false; try { scoop prefix python312 *>$null; $hasPy = ($LASTEXITCODE -eq 0) } catch {}
+    if ($hasPy) { Write-Host "  python312 ok" -ForegroundColor DarkGray } else { scoop install python312 }
+}
+else { Install-WithWinget 'Python.Python.3.12' }
 
 # ---------------------------------------------------------------------------
 # 5. CUDA Toolkit  (GPU-aware)
 # ---------------------------------------------------------------------------
 Step "CUDA Toolkit"
+if ($Cpu) {
+    Write-Host "  -Cpu: skipping CUDA toolkit (CPU-only tier)." -ForegroundColor DarkGray
+} else {
 $gpuInfo  = Get-GpuArch
 $cudaRoot = if ($gpuInfo) { Get-BestCudaRoot -CudaArch $gpuInfo.CudaArch } else { $null }
 
@@ -161,6 +174,7 @@ if ($gpuInfo -and $gpuInfo.CudaArch -ge 120) {
         Write-Warning "winget not found — install CUDA Toolkit 12.8 manually, then re-run."
     }
 }
+}   # end -Cpu else (CUDA step)
 
 # ---------------------------------------------------------------------------
 # 6. cmake 3.x  (cmake 4.x excluded by llama.cpp version range)
@@ -194,8 +208,13 @@ if (-not $cmakeOk) {
 # ---------------------------------------------------------------------------
 Step "Docker Desktop"
 $dockerExe = 'C:\Program Files\Docker\Docker\Docker Desktop.exe'
-$alreadyHad = (Have 'docker') -or (Test-Path $dockerExe)
-if ($alreadyHad) {
+# Docker is only used by `bob up -WithServices` (optional companion containers). The core/CPU serve
+# path (llama-server + agent venv) never touches it, so the CPU tier skips the heavy Docker Desktop
+# install. Treat the CPU tier as "already satisfied" so the final message is the no-reboot path.
+$alreadyHad = $Cpu -or (Have 'docker') -or (Test-Path $dockerExe)
+if ($Cpu) {
+    Write-Host "  -Cpu: skipping Docker Desktop (only needed for 'bob up -WithServices')." -ForegroundColor DarkGray
+} elseif ($alreadyHad) {
     Write-Host "  Docker Desktop ok" -ForegroundColor DarkGray
 } else {
     Write-Host "  Installing Docker Desktop..." -ForegroundColor Cyan
