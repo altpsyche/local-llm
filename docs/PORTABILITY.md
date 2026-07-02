@@ -90,7 +90,20 @@ of them behind a single seam and runs the same `.ps1` on both OSes.
   thin bootstrappers (mirroring the `.bat` shims): they install `pwsh`, then hand off to the OS-aware
   `install-prereqs.ps1` / `setup.ps1`. See [MANUAL-INSTALL.md](MANUAL-INSTALL.md).
 - **Proof.** `scripts/test-platform.ps1` + `test-dry-run.ps1` cover the OS branching on any host;
-  [`scripts/smoke-linux.ps1`](../scripts/smoke-linux.ps1) is the end-to-end gate (provision → serve →
-  `bob agent "say hi"` → `/health` + session turn + SSE) run on a real Linux box / CI.
+  [`scripts/smoke.ps1`](../scripts/smoke.ps1) (the shared cross-OS end-to-end gate, formerly
+  `smoke-linux.ps1`) exercises provision → serve → `bob agent "say hi"` → `/health` + session turn +
+  SSE. The ND2 CI **acceptance matrix** (`.github/workflows/ci.yml`) runs that smoke on a fresh install
+  on Ubuntu **and** Windows on every PR (CPU tier), so the Linux path is proven automatically, not by hand.
+
+## Reproducibility & releases (Module ND)
+
+NB made the runtime portable; NC made the provisioner cross-platform; **ND makes an install
+reproducible and a release shippable.** [`versions.lock`](../versions.lock) (neutral JSON, read by both
+`pwsh` and Python) pins submodule commits, per-venv requirements, minimum toolchain versions, and the
+model manifest (repo → revision → sha256). It is *generated* from those sources (`bob lock`), gated for
+staleness by `check.ps1`, and installs run *from the lock* (`fetch-models.ps1` verifies each download's
+checksum, fail-loud on mismatch). `bob doctor` reports drift; `bob version` reports the release;
+`bob update` moves between releases and rolls the build output back on a failed upgrade. This page is the
+"how the split works" reference; **[SETUP.md](SETUP.md) is the "how to install" guide for both OSes.**
 
 macOS/Metal and AMD/ROCm remain non-goals — the `_platform.ps1` seam is where they slot in.

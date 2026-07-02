@@ -18,6 +18,8 @@
     "build": "pwsh",
     "doctor": "pwsh",
     "update": "pwsh",
+    "lock": "pwsh",
+    "version": "pwsh",
     "status": "pwsh",
     "profile": "pwsh",
     "mlock": "pwsh",

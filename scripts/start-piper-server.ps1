@@ -8,7 +8,7 @@ $repo = Split-Path $PSScriptRoot -Parent
 
 . "$PSScriptRoot\_models.ps1"
 $bobCfg   = Get-BobConfig
-$ttsPort  = $bobCfg.voice.ttsPort  ?? 8083
+$ttsPort  = $bobCfg.voice.ttsPort  ?? (Get-BobPortDefault 'ttsPort')
 $ttsVoice = $bobCfg.voice.ttsVoice ?? 'en_GB-alan-medium'
 
 $piperExe  = Get-BinExe -Base 'piper'                         # NC4: bin\piper.exe | bin/piper

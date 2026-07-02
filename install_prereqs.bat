@@ -15,6 +15,10 @@ REM                 (then: VS Installer -> Modify -> Desktop development with C+
 REM    PowerShell 7 winget install Microsoft.PowerShell
 REM ============================================================================
 setlocal
+REM ND4 — version-stamp: state which Bob release this blessed entry belongs to.
+set "BOBVER=?"
+if exist "%~dp0VERSION" set /p BOBVER=<"%~dp0VERSION"
+echo [install_prereqs] Bob %BOBVER% - prerequisite install
 where pwsh >nul 2>nul || (
     echo [install_prereqs] PowerShell 7 ^(pwsh^) is required.
     echo Install it with:  winget install Microsoft.PowerShell

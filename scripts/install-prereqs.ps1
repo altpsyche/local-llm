@@ -152,7 +152,7 @@ if ($gpuInfo -and $gpuInfo.CudaArch -ge 120) {
         Write-Warning "No compatible CUDA found. Install CUDA 12.x manually, then re-run."
     }
 } else {
-    if (Test-Path "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8") {
+    if (Get-CudaRoot -CudaArch 120) {
         Write-Host "  CUDA 12.8 ok" -ForegroundColor DarkGray
     } elseif (Have 'winget') {
         Write-Host "  Installing CUDA Toolkit 12.8..." -ForegroundColor Yellow

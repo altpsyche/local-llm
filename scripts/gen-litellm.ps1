@@ -13,7 +13,9 @@ $data   = Get-Models -Profile $Profile
 $cfg    = $data.config
 $models = $data.models
 $peers  = Get-EnabledPeers -Config $cfg
-$port   = $cfg.defaults.port
+$port   = $cfg.defaults.port ?? (Get-BobPortDefault 'port')
+# litellmKey from the secret seam (C3). Default 'sk-local' unchanged, so no external client breaks.
+$litellmKey = Get-Secret -Name 'litellmKey' -Default ((Get-BobConfig).litellmKey ?? 'sk-local')
 
 $out = [System.Collections.Generic.List[string]]::new()
 $out.Add('# GENERATED - DO NOT EDIT.  Source: config/models.psd1')
@@ -27,7 +29,7 @@ foreach ($m in $models) {
     $out.Add("    litellm_params:")
     $out.Add("      model: openai/$($m.role)")
     $out.Add("      api_base: http://localhost:$port/v1")
-    $out.Add("      api_key: sk-local")
+    $out.Add("      api_key: $litellmKey")
     if ($m.supportsVision) { $out.Add("      supports_vision: true") }
 }
 
@@ -73,7 +75,9 @@ foreach ($peer in $peers) {
 $out.Add('')
 $out.Add('litellm_settings:')
 $out.Add('  num_retries: 3')
-$out.Add('  request_timeout: 600')
+# request_timeout couples to agent.requestTimeout (CONTRIBUTING §6) — derive it, don't re-inline.
+$reqTimeout = (Get-BobConfig).agent.requestTimeout ?? 600
+$out.Add("  request_timeout: $reqTimeout")
 
 # Budget controls — emitted when any enabled peer defines a budget field
 $budgetPeer = $peers | Where-Object { $_.budget -and $_.budget -gt 0 } | Select-Object -First 1
@@ -97,7 +101,7 @@ if ($cfg.defaults.langfuseEnabled) {
 $out.Add('')
 $out.Add('general_settings:')
 $out.Add('  drop_params: true      # silently drop unsupported params from clients (avoids 400s)')
-$out.Add('  master_key: sk-local   # dummy — proxy is local-only, no real auth needed')
+$out.Add("  master_key: $litellmKey   # from litellmKey seam (C3); default sk-local — local-only proxy")
 
 $outFile = Join-Path $script:ModelsRepo 'config\litellm.yaml'
 ($out -join "`n") + "`n" | Set-Content -LiteralPath $outFile -Encoding utf8 -NoNewline

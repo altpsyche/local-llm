@@ -15,6 +15,8 @@
 #   Test-PortInUse -Port n [-Hostname h]  -> $true if port is in use
 #   $script:SizeTolPct                    -> 0.10 — ±10% size tolerance for GGUF validation
 #   Get-BobConfig                         -> raw hashtable from config/bob.psd1 (+ user.psd1 [bob] overrides)
+#   Get-VersionsLock / Write-VersionsLock / Test-VersionsLockSync / Test-BobReproducibility (ND1,
+#     via _versions.ps1 dot-sourced below — the reproducibility lock seam)
 
 $script:ModelsRepo   = Split-Path $PSScriptRoot -Parent
 # NC1 — the OS-abstraction seam (Get-BobOS, Get-Secret, Get-DataDir, Get-CudaRoot, Get-SystemRamGB,
@@ -103,9 +105,34 @@ function Get-ModelsConfig {
   return $base
 }
 
+function Merge-BobHashtable {
+  # NB7 (Option A) — deep-merge $Over into a clone of $Base (dict-into-dict; scalars/arrays replace).
+  # Mirrors the Python `_deep_merge` in bob_config.py so both languages resolve the runtime layer
+  # identically from config/defaults.json.runtime + the psd1 overlay.
+  param([System.Collections.IDictionary]$Base, [System.Collections.IDictionary]$Over)
+  $out = @{}
+  foreach ($k in $Base.Keys) { $out[$k] = $Base[$k] }
+  foreach ($k in $Over.Keys) {
+    if (($Over[$k] -is [System.Collections.IDictionary]) -and ($out[$k] -is [System.Collections.IDictionary])) {
+      $out[$k] = Merge-BobHashtable -Base $out[$k] -Over $Over[$k]
+    } else {
+      $out[$k] = $Over[$k]
+    }
+  }
+  return $out
+}
+
 function Get-BobConfig {
   if (-not (Test-Path $script:BobFile)) { throw "bob config not found: $script:BobFile" }
-  $base = Import-PowerShellDataFile -LiteralPath $script:BobFile
+  # NB7 (Option A, contract C2): the runtime defaults live in the neutral config/defaults.json
+  # 'runtime' layer — the single default source shared with the Python resolver. bob.psd1 is now a
+  # thin Windows overlay carrying only its unique keys (persona.name/style, routing, voice,
+  # agent.toastAppId). Seed $base from the neutral layer, then deep-merge the psd1 overlay so both
+  # OSes resolve the same runtime config (path separators come from defaults.json = forward slashes).
+  $base = (Get-BobDefaults).runtime
+  if (-not $base) { $base = @{} }
+  $overlay = Import-PowerShellDataFile -LiteralPath $script:BobFile
+  $base = Merge-BobHashtable -Base $base -Over $overlay
   $userFile = Join-Path (Split-Path $script:BobFile) 'user.psd1'
   if (Test-Path $userFile) {
     $user = Import-PowerShellDataFile -LiteralPath $userFile
@@ -382,3 +409,9 @@ function Set-ActiveProfile {
   Set-Content -LiteralPath $script:ModelsFile -Value $new -NoNewline -Encoding utf8
   Write-Host "activeProfile -> '$Name'  ($script:ModelsFile)" -ForegroundColor Green
 }
+
+# ND1 — the reproducibility-lock seam (versions.lock reader/generator/gate). Dot-sourced last so its
+# functions (which call Get-ModelsConfig at runtime) resolve against the definitions above. Every
+# script that already dot-sources _models.ps1 gets Get-VersionsLock / Write-VersionsLock /
+# Test-VersionsLockSync / Test-BobReproducibility with no per-script edit (same pattern as _platform.ps1).
+. "$PSScriptRoot\_versions.ps1"

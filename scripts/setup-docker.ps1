@@ -50,9 +50,9 @@ Write-Host "  Docker ready." -ForegroundColor Green
 # 3. Read ports from models.psd1 (respects user.psd1 overrides via Get-ModelsConfig)
 . "$PSScriptRoot\_models.ps1"
 $d = (Get-ModelsConfig).defaults
-$langfusePort = $d.langfusePort ?? 3001
-$searxngPort  = $d.searxngPort  ?? 8888
-$n8nPort      = $d.n8nPort      ?? 5678
+$langfusePort = $d.langfusePort ?? (Get-BobPortDefault 'langfusePort')
+$searxngPort  = $d.searxngPort  ?? (Get-BobPortDefault 'searxngPort')
+$n8nPort      = $d.n8nPort      ?? (Get-BobPortDefault 'n8nPort')
 $n8nTimezone  = $d.n8nTimezone  ?? 'UTC'
 
 # 4. Write .env for docker-compose

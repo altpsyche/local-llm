@@ -11,6 +11,10 @@ REM           setup.bat -Profile 12gb   (smaller models for ~12GB VRAM; see conf
 REM           setup.bat -Launch         (start the stack when done)
 REM ============================================================================
 setlocal
+REM ND4 — version-stamp: state which Bob release this blessed entry belongs to.
+set "BOBVER=?"
+if exist "%~dp0VERSION" set /p BOBVER=<"%~dp0VERSION"
+echo [setup] Bob %BOBVER% - setup
 where pwsh >nul 2>nul || (
   echo [setup] PowerShell 7 ^(pwsh^) is required. Install it with:  winget install Microsoft.PowerShell
   exit /b 1

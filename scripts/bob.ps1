@@ -287,6 +287,17 @@ function Invoke-BobHealthCheck {
     # config.json parses
     $parseOk = try { $null -ne (Get-Content $cfgJson -Raw -ErrorAction Stop | ConvertFrom-Json) } catch { $false }
     Show-Check 'data/config.json parses' $parseOk 'run any bob command to regenerate'
+
+    # ── reproducibility (ND1) ── installed state vs versions.lock: submodules at their locked commit,
+    # present+pinned models' checksums match. Unpinned / not-downloaded items are skipped (not drift).
+    Write-Host "  ── reproducibility ──" -ForegroundColor DarkGray
+    try {
+      $repro = Test-BobReproducibility
+      foreach ($r in $repro) { Show-Check $r.label $r.ok $r.fix }
+      if (-not $repro) { Show-Check 'versions.lock: nothing installed to verify yet' $true }
+    } catch {
+      Show-Check 'versions.lock reproducibility' $false 'bob lock'
+    }
   }
 
   Write-Host ""
@@ -451,6 +462,7 @@ switch ($cmd) {
     & "$repo\scripts\gen-llama-swap.ps1" @rest
     & "$repo\scripts\gen-litellm.ps1"
     & "$repo\scripts\gen-webui.ps1"
+    & "$repo\scripts\gen-continue.ps1"
     Assert-BobPortKeys   # M6 — fail loudly if the merged config is missing a service port
   }
   'fetch'  {                                                   # download models for a profile
@@ -691,27 +703,99 @@ switch ($cmd) {
     }
     & "$repo\scripts\build-llama.ps1" @bArgs
   }
+  'lock' {
+    # ND1 — (re)generate versions.lock from the single sources (git gitlinks + models.psd1 +
+    # manifest.json + pip freeze). `bob lock --check` is the staleness gate wired into check.ps1.
+    if ($rest -contains '--check') {
+      $rc = Test-VersionsLockSync
+      if ($rc -eq 0) { Write-Host "versions.lock in sync" -ForegroundColor Green }
+      exit $rc
+    }
+    $p = Write-VersionsLock
+    Write-Host "wrote $p" -ForegroundColor Green
+  }
   'update' {
-    $llmCppPath = Join-Path $repo 'external\llama.cpp'
-    $before = git -C $llmCppPath rev-parse --short HEAD 2>$null
-    Write-Host "llama.cpp current: $before"
-    Write-Host "Pulling latest via submodule update..."
-    git -C $repo submodule update --remote -- external/llama.cpp
-    if ($LASTEXITCODE -ne 0) { Write-Host "submodule update failed." -ForegroundColor Red; break }
-    $after = git -C $llmCppPath rev-parse --short HEAD 2>$null
-    if ($before -eq $after) { Write-Host "Already up to date ($after). No rebuild needed."; break }
-    Write-Host "Updated: $before -> $after"
-    Write-Host "Rebuilding..."
-    & "$repo\scripts\build-llama.ps1" -Force
-    if ($LASTEXITCODE -ne 0) { Write-Host "Build failed." -ForegroundColor Red; break }
-    Write-Host "Benchmarking..."
-    & "$repo\scripts\bob.ps1" bench
+    # ND3 — release-aware, cross-platform update with rollback. Moves the working tree to a target
+    # release (default: fast-forward the current branch; `--tag <ref>` for a specific release), syncs
+    # submodules to the NEW lock's pinned commits, rebuilds ONLY what changed with a bin/ snapshot,
+    # verifies the rebuilt binary, and rolls the build output back on failure. Regenerates versions.lock
+    # on success. Cross-platform via the NC1 seam (Get-BinExe / Backup-/Restore-BuildOutput).
+    $targetRef = $null
+    for ($i = 0; $i -lt $rest.Count; $i++) { if ($rest[$i] -eq '--tag' -and ($i + 1) -lt $rest.Count) { $targetRef = $rest[$i + 1] } }
+
+    $binDir = Join-Path $repo 'bin'
+    $llmCpp = Join-Path $repo 'external\llama.cpp'
+    $before = & git -C $llmCpp rev-parse HEAD 2>$null
+
+    Write-Host "Fetching updates..."
+    & git -C $repo fetch --tags --quiet
+    if ($targetRef) {
+      Write-Host "Checking out release '$targetRef'..."
+      & git -C $repo checkout $targetRef
+    } else {
+      Write-Host "Fast-forwarding the current branch..."
+      & git -C $repo pull --ff-only
+    }
+    if ($LASTEXITCODE -ne 0) { Write-Host "Fetch/checkout failed — nothing changed." -ForegroundColor Red; break }
+
+    Write-Host "Syncing submodules to the pinned commits..."
+    & git -C $repo submodule update --init --recursive
+    if ($LASTEXITCODE -ne 0) { Write-Host "Submodule sync failed." -ForegroundColor Red; break }
+    $after = & git -C $llmCpp rev-parse HEAD 2>$null
+
+    # Reinstall the venv from the (possibly updated) requirements lock. Idempotent — a no-op if unchanged.
+    if (Test-Path (Join-Path $repo 'scripts\bootstrap-litellm.ps1')) {
+      Write-Host "Ensuring the Python runtime venv matches the lock..."
+      & "$repo\scripts\bootstrap-litellm.ps1"
+    }
+
+    # Rebuild ONLY changed components. llama.cpp is the heavy one; rebuild only if its commit moved.
+    $short = { param($s) if ($s) { "$s".Substring(0, [Math]::Min(8, "$s".Length)) } else { '(none)' } }
+    if ($before -eq $after) {
+      Write-Host "llama.cpp unchanged ($(& $short $after)) — no rebuild needed." -ForegroundColor DarkGray
+    } else {
+      Write-Host "llama.cpp $(& $short $before) -> $(& $short $after); rebuilding (bin/ snapshotted for rollback)..."
+      $bak = Backup-BuildOutput -Path $binDir
+      & "$repo\scripts\build-llama.ps1" -Force
+      $buildOk = ($LASTEXITCODE -eq 0)
+
+      # Verify the rebuild produced a working server binary (the concrete post-build gate). `bob doctor`
+      # is run afterward for a full readout, but this is what decides rollback.
+      $srv = Get-BinExe 'llama-server'
+      $verifyOk = $false
+      if ($buildOk -and (Test-Path $srv)) {
+        try { & $srv --version 2>&1 | Out-Null; $verifyOk = ($LASTEXITCODE -eq 0) } catch { $verifyOk = $false }
+      }
+
+      if (-not $verifyOk) {
+        Write-Host "Update verification failed (build ok=$buildOk, binary ok=$verifyOk) — rolling back the build output." -ForegroundColor Red
+        if (Restore-BuildOutput -Path $binDir -BakPath $bak) {
+          Write-Host "Rolled bin/ back to the previous build. Your install is unchanged." -ForegroundColor Yellow
+        }
+        break
+      }
+      Remove-BuildOutputBackup -Path $binDir -BakPath $bak
+      Write-Host "Rebuild verified." -ForegroundColor Green
+    }
+
+    # Regenerate versions.lock so it reflects the new installed set, and give a full doctor readout.
+    Write-VersionsLock | Out-Null
+    Write-Host "Running bob doctor..." -ForegroundColor DarkGray
+    & "$repo\scripts\bob.ps1" doctor
+    Write-Host "Update complete (release $(Get-BobVersion))." -ForegroundColor Green
   }
   'version' {
-    $swapVer    = & "$repo\bin\llama-swap.exe"   --version 2>&1 | Select-Object -First 1
-    $srvVer     = & "$repo\bin\llama-server.exe" --version 2>&1 | Select-Object -First 1
-    $swapCommit = git -C "$repo\external\llama-swap" rev-parse --short HEAD 2>$null
-    $llmCommit  = git -C "$repo\external\llama.cpp"  rev-parse --short HEAD 2>$null
+    # ND3 — report the Bob release (VERSION + versions.lock) plus component versions + submodule pins.
+    # Cross-platform: binary paths via the NC1 seam (Get-BinExe adds .exe only on Windows).
+    $lockRelease = try { (Get-VersionsLock).release } catch { $null }
+    Write-Host "Bob $(Get-BobVersion)" -ForegroundColor Cyan
+    if ($lockRelease) { Write-Host "  versions.lock release: $lockRelease" -ForegroundColor DarkGray }
+    $swapBin = Get-BinExe 'llama-swap'
+    $srvBin  = Get-BinExe 'llama-server'
+    $swapVer = if (Test-Path $swapBin) { & $swapBin --version 2>&1 | Select-Object -First 1 } else { '(not built)' }
+    $srvVer  = if (Test-Path $srvBin)  { & $srvBin  --version 2>&1 | Select-Object -First 1 } else { '(not built)' }
+    $swapCommit = & git -C "$repo\external\llama-swap" rev-parse --short HEAD 2>$null
+    $llmCommit  = & git -C "$repo\external\llama.cpp"  rev-parse --short HEAD 2>$null
     Write-Host "llama-swap:   $swapVer  ($swapCommit)"
     Write-Host "llama-server: $srvVer  ($llmCommit)"
   }

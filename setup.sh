@@ -10,6 +10,9 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# ND4 — version-stamp: state which Bob release this blessed entry belongs to.
+echo "[setup] Bob $(cat "$SCRIPT_DIR/VERSION" 2>/dev/null || echo '?') — setup"
+
 if ! command -v pwsh >/dev/null 2>&1; then
   echo "[setup] pwsh not found. Run ./install_prereqs.sh first (it installs PowerShell 7)."
   exit 1

@@ -78,20 +78,16 @@
                                     #   'distribute' (spread across all nodes), 'numactl' (use numactl map).
                                     #   On 7950X3D: try 'isolate' (keeps threads on V-Cache CCD).
                                     #   Benchmark 'isolate' vs 'distribute' with bob bench.
-    port        = 8080              # llama-swap API endpoint port.
-    webuiPort   = 3000              # Open WebUI port.
-    litellmPort = 8081              # LiteLLM proxy port (Module H).
-    langfusePort = 3001             # Langfuse observability port (Module H).
-    searxngPort = 8888              # SearXNG private search port (Module H).
-    n8nPort     = 5678              # n8n workflow automation port (Module H).
+    # Service ports are single-sourced in config/defaults.json (NB1/C2). Do NOT re-add them here —
+    # readers resolve via Get-BobPortDefault; a parity gate (test_defaults_parity) fails on any shadow copy.
     n8nTimezone = 'UTC'             # n8n schedule timezone (IANA, e.g. 'America/New_York'). Override in user.psd1.
     maxTokens      = 512              # Default max_tokens for `bob chat`.
     webuiSecret    = 'bob-dev'        # Change before exposing WebUI on LAN.
     langfuseEnabled = $false          # Set $true in user.psd1 after `bob services start`; enables Langfuse callbacks in litellm.yaml.
   }
 
-  # System prompts per role — written to Open WebUI DB by gen-webui.ps1 (runs on `bob gen`).
-  # Also keep systemMessage in sync in config/continue/config.yaml (not auto-generated).
+  # System prompts per role — written to Open WebUI DB by gen-webui.ps1 and emitted as Continue
+  # systemMessage by gen-continue.ps1 (both run on `bob gen`; nothing to hand-sync).
   # Omit a role or set '' to clear its system prompt.
   # Override per-machine in config/user.psd1: prompts = @{ chat = 'custom prompt' }
   prompts = @{

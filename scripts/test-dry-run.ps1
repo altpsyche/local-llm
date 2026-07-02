@@ -447,6 +447,86 @@ if (-not (Test-Path $venvPy10)) {
 }
 
 # --------------------------------------------------------------------------
+Write-Host "`n[13] versions.lock (ND1 — reproducibility pin)" -ForegroundColor Cyan
+# --------------------------------------------------------------------------
+# _versions.ps1 is dot-sourced transitively via _models.ps1 (line 12). Dry-run: parse the committed
+# lock, confirm it is in sync with its sources (the gate check.ps1 runs), prove the sync gate REJECTS
+# a drifted lock, and that the reproducibility check runs without throwing.
+try {
+  $lk = Get-VersionsLock
+  Assert "versions.lock parses" ($null -ne $lk.models -and $lk.submodules.Count -ge 1) "unexpected shape"
+} catch { Assert "versions.lock parses" $false "$_" }
+
+Assert "versions.lock in sync with sources" ((Test-VersionsLockSync) -eq 0) "stale — run: bob lock"
+
+# A deliberately-wrong lock (zeroed submodule pin) must fail the sync gate — the 'wrong pin' case.
+$tmpLock = Join-Path ([System.IO.Path]::GetTempPath()) "bob-vlock-$PID.lock"
+try {
+  '{ "lockVersion": 1, "release": "0.0.0", "submodules": { "external/llama.cpp": "0000000000000000000000000000000000000000" }, "toolchain": {}, "requirements": {}, "models": {} }' |
+    Set-Content -LiteralPath $tmpLock -Encoding utf8
+  Assert "sync gate rejects a drifted lock" ((Test-VersionsLockSync -Path $tmpLock) -eq 1) "a mismatched lock should fail"
+} finally { Remove-Item -LiteralPath $tmpLock -Force -ErrorAction SilentlyContinue }
+
+$reproOk = $true
+try { $null = @(Test-BobReproducibility) } catch { $reproOk = $false }
+Assert "Test-BobReproducibility runs without error" $reproOk "$($Error[0])"
+
+# --------------------------------------------------------------------------
+Write-Host "`n[14] build-output rollback (ND3 — bob update .bak swap)" -ForegroundColor Cyan
+# --------------------------------------------------------------------------
+# Backup-/Restore-BuildOutput are the generalized Module-B .bak swap `bob update` uses to roll back a
+# failed rebuild. Dry-run with a temp dir: snapshot v1, overwrite with v2 (a failed "rebuild"), restore.
+$tmpBin = Join-Path ([System.IO.Path]::GetTempPath()) "bob-bin-$PID"
+try {
+  New-Item -ItemType Directory -Force -Path $tmpBin | Out-Null
+  Set-Content -LiteralPath (Join-Path $tmpBin 'server') -Value 'v1' -NoNewline
+  $bak = Backup-BuildOutput -Path $tmpBin
+  Assert "backup created (.bak exists)" ($bak -and (Test-Path $bak)) "no .bak"
+  Set-Content -LiteralPath (Join-Path $tmpBin 'server') -Value 'v2-broken' -NoNewline   # simulated bad rebuild
+  Assert "restore returns true" (Restore-BuildOutput -Path $tmpBin -BakPath $bak) "restore reported nothing"
+  $restored = Get-Content -LiteralPath (Join-Path $tmpBin 'server') -Raw
+  Assert "restore rolled content back to v1" ($restored -eq 'v1') "got '$restored'"
+  Assert "restore consumed the .bak" (-not (Test-Path $bak)) ".bak still present"
+  # discard path: re-snapshot then remove
+  $bak2 = Backup-BuildOutput -Path $tmpBin
+  Remove-BuildOutputBackup -Path $tmpBin -BakPath $bak2
+  Assert "Remove-BuildOutputBackup clears the .bak" (-not (Test-Path $bak2)) ".bak lingered"
+  # backing up a nonexistent dir is a no-op (fresh build) -> $null
+  Assert "backup of absent path returns null" ($null -eq (Backup-BuildOutput -Path (Join-Path $tmpBin 'nope'))) "expected null"
+} finally { Remove-Item -LiteralPath $tmpBin -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath "$tmpBin.bak" -Recurse -Force -ErrorAction SilentlyContinue }
+
+# --------------------------------------------------------------------------
+Write-Host "`n[15] Generators single-source their derived values (REPRO-DEBT items 3,4,5,8)" -ForegroundColor Cyan
+# --------------------------------------------------------------------------
+# gen-litellm.ps1 must derive api_key/master_key from the litellmKey seam and request_timeout from
+# agent.requestTimeout (no hardcoded 'sk-local' / '600'). gen-continue.ps1 must emit a portable config
+# (apiKey from the seam, templated MCP paths, ${GITHUB_TOKEN}) — never a committed personal path.
+# Both outputs are gitignored + regenerated, so running the generators here is safe.
+$bc         = Get-BobConfig
+$expectKey  = Get-Secret -Name 'litellmKey' -Default ($bc.litellmKey ?? 'sk-local')
+$expectTmo  = $bc.agent.requestTimeout ?? 600
+$expectPort = $bc.litellmPort ?? (Get-BobPortDefault 'litellmPort')
+
+& "$PSScriptRoot\gen-litellm.ps1" | Out-Null
+$litellmYaml = Get-Content -Raw -LiteralPath (Join-Path $repo 'config\litellm.yaml')
+Assert "gen-litellm: request_timeout derives from agent.requestTimeout" `
+  ($litellmYaml -match "request_timeout:\s*$expectTmo") "expected request_timeout: $expectTmo"
+Assert "gen-litellm: master_key derives from litellmKey seam" `
+  ($litellmYaml -match "master_key:\s*$([regex]::Escape($expectKey))\b") "expected master_key: $expectKey"
+Assert "gen-litellm: local model api_key derives from litellmKey seam" `
+  ($litellmYaml -match "api_key:\s*$([regex]::Escape($expectKey))\b") "expected api_key: $expectKey"
+
+& "$PSScriptRoot\gen-continue.ps1" | Out-Null
+$contYaml = Get-Content -Raw -LiteralPath (Join-Path $repo 'config\continue\config.yaml')
+Assert "gen-continue: emits models from Get-Models"           ($contYaml -match '(?m)^\s*-\s*name:\s*coder\b') "no coder model"
+Assert "gen-continue: apiBase uses the litellm port"          ($contYaml -match "apiBase:\s*http://localhost:$expectPort/v1") "wrong apiBase port"
+Assert "gen-continue: apiKey derives from litellmKey seam"    ($contYaml -match "apiKey:\s*$([regex]::Escape($expectKey))\b") "expected apiKey: $expectKey"
+Assert "gen-continue: GitHub token is templated, not inlined" ($contYaml -match '\$\{GITHUB_TOKEN\}') "expected `${GITHUB_TOKEN}` placeholder"
+# The generator escapes backslashes for YAML (C:\repo -> "C:\\repo"), so match the escaped form.
+$repoEsc = $repo.Replace('\', '\\')
+Assert "gen-continue: MCP filesystem points at the repo root" ($contYaml.Contains($repoEsc)) "repo root not templated into MCP args"
+
+# --------------------------------------------------------------------------
 $total = $pass + $fail
 $col   = if ($fail -eq 0) { 'Green' } else { 'Red' }
 Write-Host "`n$pass / $total passed" -ForegroundColor $col

@@ -47,13 +47,13 @@ if ($sug -and $sug -eq $active) {
   Row "Profile" $active 'DarkGray'
 }
 
-$port = $cfg.defaults.port ?? 8080
+$port = $cfg.defaults.port ?? (Get-BobPortDefault 'port')
 $epUp = $false
 try { $c = [System.Net.Sockets.TcpClient]::new(); $c.Connect('127.0.0.1', $port); $epUp = $true; $c.Close() } catch {}
 Row "Endpoint" "http://localhost:$port/v1  ($(if ($epUp) { 'up' } else { 'not running' }))" $(if ($epUp) { 'Green' } else { 'DarkGray' })
 
-# CUDA
-$cudaBase  = 'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA'
+# CUDA — base dir from the NC1 descriptor (no re-inlined path); enumerate installed toolkits for display
+$cudaBase  = (Resolve-CudaRootCandidates).Base
 $installed = @()
 if (Test-Path $cudaBase) {
   $installed = @(Get-ChildItem $cudaBase -Directory | ForEach-Object {

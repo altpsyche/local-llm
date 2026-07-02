@@ -11,16 +11,46 @@ $ErrorActionPreference = "Stop"
 . "$PSScriptRoot\_models.ps1"
 
 function Update-Manifest {
-    param([string]$ModelsDir, [string]$Gguf, [string]$Url, [double]$SizeGB)
+    # Record the (already-computed) SHA256 for a downloaded model. Atomic write (CONTRIBUTING §5) —
+    # models/manifest.json is read concurrently by `bob show`, diagnose.ps1 and the ND1 doctor check.
+    param([string]$ModelsDir, [string]$Gguf, [string]$Url, [double]$SizeGB, [Parameter(Mandatory)][string]$Sha)
     $manifestPath = Join-Path $ModelsDir 'manifest.json'
     $manifest = if (Test-Path $manifestPath) {
         Get-Content $manifestPath -Raw | ConvertFrom-Json -AsHashtable
     } else { @{} }
+    $manifest[$Gguf] = @{ sha256=$Sha; sizeGB=$SizeGB; url=$Url; verifiedAt=(Get-Date -Format 'o') }
+    $tmp = "$manifestPath.$PID.tmp"
+    $manifest | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $tmp -Encoding utf8
+    Move-Item -LiteralPath $tmp -Destination $manifestPath -Force
+    Write-Host "  SHA256: $($Sha.Substring(0,16))... -> models/manifest.json" -ForegroundColor DarkGray
+}
+
+function Confirm-Download {
+    # ND1 verify-on-install: hash the freshly-downloaded file, compare to the versions.lock pin.
+    #   pinned + mismatch -> delete the bad file and THROW (loud-fail, CONTRIBUTING error convention);
+    #   pinned + match    -> ok;  unpinned (sha256 null) -> capture TOFU + warn to run `bob lock`.
+    # Returns the computed lowercase hash so the caller records it without re-hashing a multi-GB file.
+    param([string]$File, [string]$Gguf, [hashtable]$Lock)
     Write-Host "  Computing SHA256 for $Gguf (large files ~15s)..."
-    $hash = (Get-FileHash (Join-Path $ModelsDir $Gguf) -Algorithm SHA256).Hash.ToLower()
-    $manifest[$Gguf] = @{ sha256=$hash; sizeGB=$SizeGB; url=$Url; verifiedAt=(Get-Date -Format 'o') }
-    $manifest | ConvertTo-Json -Depth 3 | Set-Content $manifestPath -Encoding utf8
-    Write-Host "  SHA256: $($hash.Substring(0,16))... -> models/manifest.json" -ForegroundColor DarkGray
+    $sha = (Get-FileHash -LiteralPath $File -Algorithm SHA256).Hash.ToLower()
+    $expected = if ($Lock -and $Lock.models.Contains($Gguf)) { "$($Lock.models[$Gguf].sha256)".ToLower() } else { '' }
+    if ($expected) {
+        if ($sha -ne $expected) {
+            Remove-Item -LiteralPath $File -Force -ErrorAction SilentlyContinue
+            throw "Checksum mismatch for $Gguf — versions.lock pins $expected but the download is $sha. Deleted the bad file. (ND1 verify-on-install)"
+        }
+        Write-Host "  verified against versions.lock" -ForegroundColor DarkGray
+    } else {
+        Write-Warning "$Gguf is not pinned in versions.lock (sha256 null) — recording the downloaded hash (TOFU). Run 'bob lock' to pin it."
+    }
+    return $sha
+}
+
+function Get-ModelRevision {
+    # The pinned HuggingFace revision for a gguf from versions.lock; 'main' when unpinned/absent.
+    param([string]$Gguf, [hashtable]$Lock)
+    if ($Lock -and $Lock.models.Contains($Gguf) -and $Lock.models[$Gguf].revision) { return $Lock.models[$Gguf].revision }
+    return 'main'
 }
 
 $repo   = Split-Path $PSScriptRoot -Parent
@@ -52,6 +82,9 @@ if ($ListOnly) {
 
 $curl = Get-CurlExe   # NC5: curl.exe on Windows (built-in from Win10 1803+), curl elsewhere
 if (-not (Get-Command $curl -ErrorAction SilentlyContinue)) { throw "$curl not found (install curl, or on Windows needs Win10 1803+)." }
+# ND1 — install FROM the lock, not 'latest': pin the HF revision and verify the checksum on download.
+# Best-effort: if the lock is missing we fall back to 'main' + TOFU (with a warning in Confirm-Download).
+$lock = try { Get-VersionsLock } catch { $null }
 $hdr = @()
 if ($env:HF_TOKEN) { $hdr = @("-H", "Authorization: Bearer $env:HF_TOKEN") }
 
@@ -79,15 +112,17 @@ foreach ($m in $models) {
   $dest = Join-Path $outDir $m.gguf
   if (Test-Path $dest) { Write-Host "exists  $($m.gguf)" -ForegroundColor DarkGray }
   else {
-    $url = "https://huggingface.co/$($m.repo)/resolve/main/$($m.path)"
-    Write-Host "fetch   $($m.gguf)  <-  $($m.repo) / $($m.path)" -ForegroundColor Cyan
+    $rev = Get-ModelRevision -Gguf $m.gguf -Lock $lock
+    $url = "https://huggingface.co/$($m.repo)/resolve/$rev/$($m.path)"
+    Write-Host "fetch   $($m.gguf)  <-  $($m.repo) / $($m.path) @ $rev" -ForegroundColor Cyan
     $dlSw = [Diagnostics.Stopwatch]::StartNew()
     & $curl -L -C - --fail-with-body --progress-bar @hdr -o "$dest.part" $url
     if ($LASTEXITCODE -ne 0) {
       Write-Warning "FAILED $url  (verify repo/filename on huggingface.co)"; $fail++; continue
     }
     Move-Item "$dest.part" $dest -Force
-    Update-Manifest -ModelsDir $outDir -Gguf $m.gguf -Url $url -SizeGB $m.sizeGB
+    $sha = Confirm-Download -File $dest -Gguf $m.gguf -Lock $lock   # throws + deletes on a pinned mismatch
+    Update-Manifest -ModelsDir $outDir -Gguf $m.gguf -Url $url -SizeGB $m.sizeGB -Sha $sha
     Write-Host "done    $($m.gguf)  ($($m.sizeGB) GB in $([int]$dlSw.Elapsed.TotalMinutes)m$($dlSw.Elapsed.Seconds)s)" -ForegroundColor Green
   }
 
@@ -96,8 +131,9 @@ foreach ($m in $models) {
     $mmprojDest = Join-Path $outDir $m.mmproj
     if (Test-Path $mmprojDest) { Write-Host "exists  $($m.mmproj)" -ForegroundColor DarkGray }
     else {
-      $mmprojUrl = "https://huggingface.co/$($m.repo)/resolve/main/$($m.mmproj)"
-      Write-Host "fetch   $($m.mmproj)  <-  $($m.repo) / $($m.mmproj)" -ForegroundColor Cyan
+      $rev = Get-ModelRevision -Gguf $m.gguf -Lock $lock   # mmproj rides the model's pinned revision
+      $mmprojUrl = "https://huggingface.co/$($m.repo)/resolve/$rev/$($m.mmproj)"
+      Write-Host "fetch   $($m.mmproj)  <-  $($m.repo) / $($m.mmproj) @ $rev" -ForegroundColor Cyan
       $dlSw2 = [Diagnostics.Stopwatch]::StartNew()
       & $curl -L -C - --fail-with-body --progress-bar @hdr -o "$mmprojDest.part" $mmprojUrl
       if ($LASTEXITCODE -ne 0) {

@@ -7,9 +7,9 @@ $repo  = Split-Path $PSScriptRoot -Parent
 . "$PSScriptRoot\_models.ps1"
 $webui = Get-VenvExe -Venv 'venv-webui' -Exe 'open-webui'   # NC4: OS-aware venv path
 $cfg        = Get-ModelsConfig
-$port        = $cfg.defaults.port ?? 8080
-$litellmPort = $cfg.defaults.litellmPort ?? 8081
-$webuiPort   = $cfg.defaults.webuiPort ?? 3000
+$port        = $cfg.defaults.port ?? (Get-BobPortDefault 'port')
+$litellmPort = $cfg.defaults.litellmPort ?? (Get-BobPortDefault 'litellmPort')
+$webuiPort   = $cfg.defaults.webuiPort ?? (Get-BobPortDefault 'webuiPort')
 $secret     = $cfg.defaults.webuiSecret ?? 'bob-dev'
 $logsDir    = Join-Path $repo 'logs'
 if (-not (Test-Path $logsDir)) { New-Item -ItemType Directory $logsDir | Out-Null }
@@ -48,7 +48,7 @@ $bobVoice = try { (Get-BobConfig).voice } catch { $null }
 $whisperBin = Get-BinExe -Base 'whisper-server'
 if ($bobVoice.enabled -and (Test-Path $whisperBin)) {
     & "$PSScriptRoot\start-whisper.ps1" -NoWindow
-    Write-Host "Whisper STT: http://localhost:$($bobVoice.sttPort ?? 8082)   (voice enabled)" -ForegroundColor Green
+    Write-Host "Whisper STT: http://localhost:$($bobVoice.sttPort ?? (Get-BobPortDefault 'sttPort'))   (voice enabled)" -ForegroundColor Green
 }
 
 # 3) Open WebUI — hidden window, log to logs/open-webui.log
@@ -105,9 +105,9 @@ if ($WithServices) {
     $envFile  = "$repo\tools\compose\.env"
     @"
 REPO_PATH=$repo
-LANGFUSE_PORT=$($cfg.defaults.langfusePort ?? 3001)
-SEARXNG_PORT=$($cfg.defaults.searxngPort ?? 8888)
-N8N_PORT=$($cfg.defaults.n8nPort ?? 5678)
+LANGFUSE_PORT=$($cfg.defaults.langfusePort ?? (Get-BobPortDefault 'langfusePort'))
+SEARXNG_PORT=$($cfg.defaults.searxngPort ?? (Get-BobPortDefault 'searxngPort'))
+N8N_PORT=$($cfg.defaults.n8nPort ?? (Get-BobPortDefault 'n8nPort'))
 "@ | Set-Content $envFile -Encoding utf8
     docker compose -f $compose up -d 2>$null
     Write-Host "Services started:" -ForegroundColor Green

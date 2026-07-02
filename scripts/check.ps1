@@ -60,6 +60,15 @@ $env:PYTHONPATH = Join-Path $repo 'scripts'
 if ($LASTEXITCODE -ne 0) { Write-Host '[check] verbs.json STALE — run: python -m bob.registry' -ForegroundColor Red; $failed = $true }
 $env:PYTHONPATH = $prevPyPath
 
+# 3b. versions.lock in sync with its sources (ND1) --------------------------
+# versions.lock is generated (git gitlinks + models.psd1 + manifest.json + pip freeze); a bumped
+# submodule that wasn't re-locked would drift the reproducibility pin. Static, pwsh-only (models.psd1
+# is PowerShell), needs no venv — submodule commits come from `git rev-parse HEAD:<path>` so it works
+# even in the CI core-suite where submodules aren't checked out. Runs even with -NoTests.
+Write-Host '[check] versions.lock in sync...' -ForegroundColor Cyan
+. (Join-Path $repo 'scripts\_models.ps1')   # dot-sources _versions.ps1 (Test-VersionsLockSync)
+if ((Test-VersionsLockSync) -ne 0) { Write-Host '[check] versions.lock STALE — run: bob lock' -ForegroundColor Red; $failed = $true }
+
 # 4. unittest suite --------------------------------------------------------
 if (-not $NoTests) {
   Write-Host '[check] unittest suite...' -ForegroundColor Cyan

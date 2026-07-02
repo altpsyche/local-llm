@@ -27,7 +27,7 @@ if (-not (Test-Path $lmEval)) {
 
 . "$PSScriptRoot\_models.ps1"
 $cfg  = Get-ModelsConfig
-$port = $cfg.defaults.port ?? 8080
+$port = $cfg.defaults.port ?? (Get-BobPortDefault 'port')
 
 $profile   = $cfg.profiles.($cfg.activeProfile)
 $modelCfg  = $profile.$Role

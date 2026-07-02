@@ -1,16 +1,22 @@
 # NB6 (contract C5) — the ONE CI workflow. NB6 creates it; ND2 (fresh-install matrix) and O10
 # (agent-capability eval) later ADD jobs to this same file — never recreate it.
 #
-# This job is the executable proof that Bob's Python core is OS-agnostic: the same core suite +
-# check.ps1 gate (py_compile + PowerShell AST parse + unittest) runs on Linux and Windows, with no
-# GPU. A change that silently re-Windows-es the core (a Windows-only import/path in core code)
-# fails the Linux job.
+# Jobs:
+#   core-suite     (NB6)  — Python core + check.ps1 gate on Linux + Windows, no GPU. Every PR.
+#   acceptance-cpu (ND2)  — fresh-install + e2e smoke on the NC8 CPU tier, both OSes. Every PR (GATES).
+#   acceptance-gpu (ND2)  — native-from-source CUDA + real inference on a self-hosted GPU. RELEASE TAGS ONLY.
+#
+# Gating scope is C7's ND consequence: the per-PR gate is the portable/CPU tier only. Native-from-source
+# CUDA is exercised solely in the non-gating release-tag tier, so a fragile native build can never red a
+# per-PR gate. core-suite is the executable proof the Python core is OS-agnostic; acceptance-cpu is the
+# proof a clean machine -> documented steps -> working Bob on both OSes.
 name: CI
 
 on:
   pull_request:
   push:
     branches: [main]
+    tags: ['v*']        # ND2 — release tags additionally trigger the GPU acceptance tier
 
 jobs:
   core-suite:
@@ -42,3 +48,96 @@ jobs:
         env:
           BOB_PYTHON: python
         run: pwsh -File scripts/check.ps1
+
+  # ND2 (contracts C5 + C7) — fresh-install acceptance on the CPU tier, both OSes, EVERY PR (gates).
+  # Provisions a clean runner per the documented one-command entry, builds the NC8 CPU llama.cpp,
+  # serves the tiny CPU GGUF, and runs the shared cross-OS smoke (provision -> serve -> coherent answer
+  # -> agent server /health + owner-scoped session + SSE). No GPU. This is the FIRST place the Linux
+  # provisioner path executes end-to-end for real; expect first-run debugging here, not in production.
+  acceptance-cpu:
+    name: acceptance-cpu (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive     # the CPU build needs external/llama.cpp checked out (not just the gitlink)
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # ND2 realism note — building llama.cpp (even CPU) is minutes-scale. Cache the built binaries,
+      # the downloaded model, and the llama.cpp build tree, keyed by the versions.lock hash so a PR that
+      # doesn't move the pins reuses the cache instead of rebuilding/redownloading from scratch.
+      - name: Cache build + model by versions.lock
+        uses: actions/cache@v4
+        with:
+          path: |
+            bin
+            models
+            external/llama.cpp/build
+          key: ${{ runner.os }}-bob-cpu-${{ hashFiles('versions.lock') }}
+
+      # Documented one-command prerequisites (NC2), CPU variant. Per-OS entry script.
+      - name: Install prerequisites (Linux, CPU)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          chmod +x install_prereqs.sh setup.sh
+          ./install_prereqs.sh --cpu
+      - name: Install prerequisites (Windows, CPU)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: pwsh -File scripts/install-prereqs.ps1 -Cpu
+
+      # Bob's Python runtime venv (the agent server the smoke exercises is python -m bob — NB, not NC).
+      - name: Bootstrap the Python runtime venv
+        shell: pwsh
+        run: pwsh -File scripts/bootstrap-litellm.ps1
+
+      # CPU tier: select the profile, build CPU-only, fetch the tiny GGUF (verified against versions.lock).
+      - name: Select CPU profile + build + fetch (from versions.lock)
+        shell: pwsh
+        run: |
+          pwsh -File scripts/bob.ps1 profile cpu
+          pwsh -File scripts/bob.ps1 build --cpu
+          pwsh -File scripts/bob.ps1 fetch cpu
+
+      - name: Bring the stack up
+        shell: pwsh
+        run: pwsh -File scripts/bob.ps1 up -NoOpen
+
+      # The shared cross-OS end-to-end gate (promoted from smoke-linux.ps1). -Up also starts the agent
+      # server and tears it down after. A red smoke blocks the PR.
+      - name: End-to-end smoke
+        shell: pwsh
+        run: pwsh -File scripts/smoke.ps1 -Up
+
+  # ND2 (contracts C5 + C7) — native-from-source CUDA + REAL inference. RELEASE TAGS ONLY (job-level
+  # `if`), on a self-hosted GPU runner. This tier is NEVER on the per-PR path, so a fragile native build
+  # cannot red a merge. Green here is what makes a tagged release GPU-eligible.
+  acceptance-gpu:
+    name: acceptance-gpu (native CUDA, release tags)
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: [self-hosted, gpu]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Provision (native CUDA), build, fetch, serve
+        shell: pwsh
+        run: |
+          pwsh -File scripts/bootstrap-litellm.ps1
+          pwsh -File scripts/bob.ps1 build            # native-from-source CUDA (auto-detected arch)
+          pwsh -File scripts/bob.ps1 profile auto      # size to the card's VRAM
+          pwsh -File scripts/bob.ps1 fetch             # active profile's models (verified vs versions.lock)
+          pwsh -File scripts/bob.ps1 up -NoOpen
+
+      - name: End-to-end smoke (real inference)
+        shell: pwsh
+        run: pwsh -File scripts/smoke.ps1 -Up

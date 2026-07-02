@@ -8,7 +8,7 @@ $repo = Split-Path $PSScriptRoot -Parent
 . "$PSScriptRoot\_models.ps1"
 $exe  = Get-BinExe -Base 'whisper-server'   # NC4: bin\whisper-server.exe | bin/whisper-server
 $bobCfg  = Get-BobConfig
-$sttPort = $bobCfg.voice.sttPort ?? 8082
+$sttPort = $bobCfg.voice.sttPort ?? (Get-BobPortDefault 'sttPort')
 $mdl     = Join-Path $repo "models\whisper\ggml-$($bobCfg.voice.sttModel ?? 'small').bin"
 
 if (-not (Test-Path $exe)) {

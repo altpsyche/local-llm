@@ -432,3 +432,37 @@ function Resolve-BuildCmakeFlags {
   if ($Cpu) { return @{ Cuda = $false; Generator = $gen; StageDlls = $false } }
   return @{ Cuda = $true; Generator = $gen; StageDlls = ($Os -eq 'windows') }
 }
+
+# --- build-output rollback (ND3, generalizes the Module-B .bak swap) ------------------------------
+# `bob update` snapshots the whole build-output dir before rebuilding so a failed upgrade can be rolled
+# back atomically (the working binaries never vanish until the new build is verified). Cross-platform:
+# operates on whatever dir it's handed (repo bin/), no .exe assumptions. Copy for the snapshot so the
+# rebuild overwrites the live dir in place; restore or discard the copy based on the verify result.
+
+function Backup-BuildOutput {
+  # Snapshot <Path> to <Path>.bak (clearing any stale .bak first). Returns the .bak path, or $null if
+  # <Path> doesn't exist (nothing to protect — a fresh build).
+  param([Parameter(Mandatory)][string]$Path)
+  $bak = "$Path.bak"
+  if (Test-Path -LiteralPath $bak) { Remove-Item -LiteralPath $bak -Recurse -Force }
+  if (-not (Test-Path -LiteralPath $Path)) { return $null }
+  Copy-Item -LiteralPath $Path -Destination $bak -Recurse -Force
+  return $bak
+}
+
+function Restore-BuildOutput {
+  # Roll <Path> back to the snapshot taken by Backup-BuildOutput. Returns $true if a restore happened.
+  param([Parameter(Mandatory)][string]$Path, [string]$BakPath)
+  if (-not $BakPath) { $BakPath = "$Path.bak" }
+  if (-not (Test-Path -LiteralPath $BakPath)) { return $false }
+  if (Test-Path -LiteralPath $Path) { Remove-Item -LiteralPath $Path -Recurse -Force }
+  Move-Item -LiteralPath $BakPath -Destination $Path -Force
+  return $true
+}
+
+function Remove-BuildOutputBackup {
+  # Discard the snapshot after a verified-successful update.
+  param([Parameter(Mandatory)][string]$Path, [string]$BakPath)
+  if (-not $BakPath) { $BakPath = "$Path.bak" }
+  if (Test-Path -LiteralPath $BakPath) { Remove-Item -LiteralPath $BakPath -Recurse -Force }
+}

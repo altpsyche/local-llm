@@ -104,7 +104,7 @@ Write-Host "  sounddevice + numpy installed." -ForegroundColor Green
 
 # ── Step 5: smoke test ────────────────────────────────────────────────────────
 Write-Host "`n[5/5] Smoke test (start whisper-server, POST silence WAV)" -ForegroundColor Yellow
-$sttPort = $bobCfg.voice.sttPort ?? 8082
+$sttPort = $bobCfg.voice.sttPort ?? (Get-BobPortDefault 'sttPort')
 
 # Create minimal 2-second silent WAV (44100 Hz mono 16-bit)
 $sampleRate = 44100; $seconds = 2; $numSamples = $sampleRate * $seconds

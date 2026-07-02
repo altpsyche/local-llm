@@ -4,7 +4,7 @@ $ErrorActionPreference = 'SilentlyContinue'
 $repo = Split-Path $PSScriptRoot -Parent
 . "$PSScriptRoot\_models.ps1"
 $d    = (Get-ModelsConfig).defaults
-$port = $d.litellmPort ?? 8081
+$port = $d.litellmPort ?? (Get-BobPortDefault 'litellmPort')
 $base = "http://localhost:$port"
 
 # --- Config limits from litellm.yaml ---
@@ -59,7 +59,7 @@ if (Test-Path $dbPath) {
 }
 
 # --- Langfuse link if configured ---
-$langfusePort = $d.langfusePort ?? 3001
+$langfusePort = $d.langfusePort ?? (Get-BobPortDefault 'langfusePort')
 try {
   Invoke-RestMethod "http://localhost:$langfusePort/api/public/health" -TimeoutSec 2 | Out-Null
   Write-Host ""

@@ -20,6 +20,8 @@ function Wire($target, $link) {
 }
 
 # Continue (VS Code / JetBrains): ~/.continue/config.yaml — Join-Path for OS-correct separators (NC5).
+# Generate the config first (it's gitignored, derived from config/models.psd1) so the symlink target exists.
+& "$PSScriptRoot\gen-continue.ps1"
 Wire (Join-Path $repo 'config' 'continue' 'config.yaml') (Join-Path $HOME '.continue' 'config.yaml')
 # aider: ~/.aider.conf.yml  (auto-discovered from home, so no --config flag needed afterwards)
 Wire (Join-Path $repo 'config' 'aider' '.aider.conf.yml') (Join-Path $HOME '.aider.conf.yml')

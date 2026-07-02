@@ -11,6 +11,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 log() { printf '[install_prereqs] %s\n' "$*"; }
 
+# ND4 — version-stamp: state which Bob release this blessed entry belongs to.
+log "Bob $(cat "$SCRIPT_DIR/VERSION" 2>/dev/null || echo '?') — prerequisite install"
+
 detect_mgr() {
   for m in apt-get dnf pacman; do
     if command -v "$m" >/dev/null 2>&1; then echo "$m"; return; fi

@@ -11,6 +11,7 @@ import unittest
 from pathlib import Path
 
 import _common  # noqa: F401 — puts scripts/ on sys.path
+import bob_config
 import bob_core
 
 REPO = Path(bob_core.REPO)
@@ -75,6 +76,28 @@ class TestDefaultsParityWithPowerShell(unittest.TestCase):
         ps_ports = {k: int(v) for k, v in json.loads(out).items()}
         self.assertEqual(ps_ports, bob_core.load_defaults()["ports"])
 
+    def test_no_shadow_port_literals_in_psd1(self):
+        """WI-5 backstop: config/defaults.json.ports is the SOLE port source. No port key may be
+        re-introduced in models.psd1.defaults or anywhere in bob.psd1 (including the voice block)."""
+        script = r"""
+$ports = @('port','litellmPort','webuiPort','langfusePort','searxngPort','n8nPort','sttPort','ttsPort','agentPort')
+$m = Import-PowerShellDataFile config/models.psd1
+$b = Import-PowerShellDataFile config/bob.psd1
+$bad = [System.Collections.Generic.List[string]]::new()
+foreach ($k in @($m.defaults.Keys)) { if ($ports -contains $k) { $bad.Add("models.defaults.$k") } }
+function Find-Ports($h, $prefix, $acc, $ports) {
+  foreach ($k in @($h.Keys)) {
+    if ($ports -contains $k) { $acc.Add("$prefix$k") }
+    if ($h[$k] -is [hashtable]) { Find-Ports $h[$k] "$prefix$k." $acc $ports }
+  }
+}
+Find-Ports $b 'bob.' $bad $ports
+$bad -join ','
+"""
+        out = self._pwsh(script)
+        self.assertEqual(out, "", f"shadow port literal(s) reintroduced — single-source them in "
+                                  f"config/defaults.json.ports and read via Get-BobPortDefault: {out}")
+
     def test_roles_identical(self):
         cfg_ps = ("@{routing=@{defaultRole='chat';proRole='chat-pro';codeRole='coder';"
                   "proCodeRole='coder-pro';thinkRole='planner';proThinkRole='planner-pro';"
@@ -89,6 +112,44 @@ class TestDefaultsParityWithPowerShell(unittest.TestCase):
             self.assertEqual(ps[t], bob_core.get_role(_CFG, t), f"role mismatch: {t}")
             self.assertEqual(ps[f"{t}-pro"], bob_core.get_role(_CFG, t, pro=True),
                              f"pro role mismatch: {t}")
+
+
+    def test_runtime_layer_parity_with_python_resolver(self):
+        """NB7 (Option A) acceptance: Windows Get-BobConfig now seeds the runtime layer from
+        config/defaults.json.runtime (+ psd1 overlay), so the runtime keys it produces must match
+        the Python resolve_runtime_config() — the "identical runtime config" guarantee."""
+        out = self._pwsh(". ./scripts/_models.ps1; Get-BobConfig | ConvertTo-Json -Depth 10")
+        ps = json.loads(out)
+        py = bob_config.resolve_runtime_config()
+
+        # Python emits the runtime SUBSET; Windows is a superset (adds voice, persona.name/style,
+        # routing.autoFallback, agent.toastAppId, extra port injects). Assert Python's keys ⊆ Windows's
+        # and that every shared runtime key resolves to the same value.
+        def assert_subset(expected, actual, path):
+            self.assertIsInstance(actual, dict, f"{path}: PS side is not a dict")
+            for k, v in expected.items():
+                self.assertIn(k, actual, f"{path}.{k} present in Python resolver but missing on Windows")
+                if isinstance(v, dict):
+                    assert_subset(v, actual[k], f"{path}.{k}")
+                elif isinstance(v, list):
+                    # arrays default empty; PowerShell's ConvertTo-Json unwraps single-element arrays,
+                    # so compare as sets of stringified members (order/scalar-vs-array agnostic).
+                    a = actual[k] if isinstance(actual[k], list) else [actual[k]]
+                    self.assertEqual({str(x) for x in v}, {str(x) for x in a}, f"{path}.{k} mismatch")
+                else:
+                    self.assertEqual(v, actual[k], f"{path}.{k} mismatch (py={v!r} ps={actual[k]!r})")
+
+        assert_subset(py, ps, "cfg")
+
+    def test_persona_deep_merges_not_shallow(self):
+        """WI-6 regression guard: persona.systemPrompt comes from defaults.json.runtime while
+        persona.name/style come from the bob.psd1 overlay. A SHALLOW merge would drop systemPrompt;
+        the merged persona must carry all three keys."""
+        out = self._pwsh(". ./scripts/_models.ps1; (Get-BobConfig).persona | ConvertTo-Json -Compress")
+        persona = json.loads(out)
+        self.assertTrue(persona.get("systemPrompt"), "systemPrompt dropped — merge is shallow, not deep")
+        self.assertEqual(persona.get("name"), "Bob")
+        self.assertEqual(persona.get("style"), "direct")
 
 
 if __name__ == "__main__":

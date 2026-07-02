@@ -56,35 +56,46 @@ with open(input_path, encoding='utf-8') as f:
 if not isinstance(entries, list):
     entries = [entries]
 
-db  = sqlite3.connect(db_path)
-cur = db.cursor()
-cur.execute("SELECT id FROM user WHERE role='admin' LIMIT 1")
-row = cur.fetchone()
-if not row:
-    print('gen-webui: no admin user found — skipping', flush=True)
-    db.close(); sys.exit(0)
-admin_id = row[0]
-now_ms   = int(time.time() * 1000)
+# Short busy timeout so a running Open WebUI (which holds the write lock) makes us SKIP with a
+# clear message instead of blocking `bob gen` indefinitely. Prompts are regenerated next run.
+try:
+    db  = sqlite3.connect(db_path, timeout=3)
+    cur = db.cursor()
+    cur.execute("SELECT id FROM user WHERE role='admin' LIMIT 1")
+    row = cur.fetchone()
+    if not row:
+        print('gen-webui: no admin user found — skipping', flush=True)
+        db.close(); sys.exit(0)
+    admin_id = row[0]
+    now_ms   = int(time.time() * 1000)
 
-for e in entries:
-    eid    = e['id']
-    prompt = (e.get('prompt') or '').strip()
-    params = json.dumps({'system': prompt}) if prompt else '{}'
-    # Preserve created_at on update so the row does not appear newly created each run
-    cur.execute(
-        """INSERT OR REPLACE INTO model
-           (id, user_id, base_model_id, name, params, meta, updated_at, created_at, is_active)
-           VALUES (?,?,?,?,?,?,?,COALESCE((SELECT created_at FROM model WHERE id=?),?),1)""",
-        (eid, admin_id, eid, eid, params, '{}', now_ms, eid, now_ms)
-    )
-    label = 'set' if prompt else 'cleared'
-    print(f'  {eid}: system prompt {label}', flush=True)
+    for e in entries:
+        eid    = e['id']
+        prompt = (e.get('prompt') or '').strip()
+        params = json.dumps({'system': prompt}) if prompt else '{}'
+        # Preserve created_at on update so the row does not appear newly created each run
+        cur.execute(
+            """INSERT OR REPLACE INTO model
+               (id, user_id, base_model_id, name, params, meta, updated_at, created_at, is_active)
+               VALUES (?,?,?,?,?,?,?,COALESCE((SELECT created_at FROM model WHERE id=?),?),1)""",
+            (eid, admin_id, eid, eid, params, '{}', now_ms, eid, now_ms)
+        )
+        label = 'set' if prompt else 'cleared'
+        print(f'  {eid}: system prompt {label}', flush=True)
 
-db.commit()
-db.close()
+    db.commit()
+    db.close()
+except sqlite3.OperationalError as ex:
+    if 'locked' in str(ex).lower():
+        print('gen-webui: webui.db is locked (Open WebUI running?) — skipping; '
+              're-run `bob gen` after stopping WebUI.', flush=True)
+        sys.exit(0)
+    raise
 '@ | Set-Content -LiteralPath $tmpPy -Encoding utf8
 
-    python $tmpPy $dbPath $tmpJson
+    # NC4: use the venv python seam, not a bare `python` off PATH.
+    $py = Get-VenvExe -Venv 'venv-litellm' -Exe 'python'
+    & $py $tmpPy $dbPath $tmpJson
 
 } finally {
     if (Test-Path $tmpJson) { Remove-Item $tmpJson }

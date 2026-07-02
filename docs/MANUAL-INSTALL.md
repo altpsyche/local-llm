@@ -49,7 +49,14 @@ What differs from Windows (all behind [`scripts/_platform.ps1`](../scripts/_plat
 
 CUDA toolkit install on Linux is distro-specific — `install_prereqs.sh` installs the toolchain and
 flags CUDA as a manual step (or use `--cpu`). Verify a fresh install end-to-end with
-`pwsh scripts/smoke-linux.ps1 -Up`.
+`pwsh scripts/smoke.ps1 -Up` (the shared cross-OS smoke, formerly `smoke-linux.ps1`) — the same gate the
+[ND2 CI acceptance matrix](../.github/workflows/ci.yml) runs on Ubuntu and Windows on every change.
+
+**Reproducibility (Module ND).** Whichever path you take, the install is pinned by
+[`versions.lock`](../versions.lock): `fetch-models.ps1` downloads each model at its locked HF revision and
+verifies the SHA256 (fail-loud on mismatch), and `bob doctor` reports any drift between the installed
+submodules/models and the lock. After changing a submodule, regenerate the lock with `bob lock`
+(`check.ps1` fails on a stale lock). See [PORTABILITY.md § Reproducibility](PORTABILITY.md#reproducibility--releases-module-nd).
 
 Everything below is the Windows walkthrough.
 

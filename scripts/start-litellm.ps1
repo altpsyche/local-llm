@@ -14,7 +14,7 @@ if (-not (Test-Path $proxy)) {
 }
 
 $d    = (Get-ModelsConfig).defaults
-$port = $d.litellmPort ?? 8081
+$port = $d.litellmPort ?? (Get-BobPortDefault 'litellmPort')
 
 $pidFile = Join-Path $repo 'logs\litellm.pid'
 if (Test-Path $pidFile) {

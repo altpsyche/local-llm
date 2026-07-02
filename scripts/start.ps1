@@ -5,7 +5,7 @@ $repo   = Split-Path $PSScriptRoot -Parent
 $swap   = Join-Path $repo "bin\llama-swap.exe"
 $config = Join-Path $repo "config\llama-swap.yaml"
 . "$PSScriptRoot\_models.ps1"
-$port = (Get-ModelsConfig).defaults.port ?? 8080
+$port = (Get-ModelsConfig).defaults.port ?? (Get-BobPortDefault 'port')
 
 if (-not (Test-Path $swap))   { throw "llama-swap.exe missing. Run scripts\build-llama-swap.ps1 (or drop the release binary in bin\)." }
 # Regenerate the runtime config from the single source (config/models.psd1) so edits /
