@@ -77,7 +77,10 @@ if (-not $SkipBuild) {
     if ($gpuArch) { $buildArgs['Arch'] = $gpuArch.CudaArch }
     & "$PSScriptRoot\build-llama.ps1" @buildArgs
   } else {
-    Write-Warning "Skipping llama.cpp build — no compatible CUDA toolkit found. Install CUDA 12.x, or drop a prebuilt llama-server.exe into bin\."
+    # NC8 — no CUDA toolkit: build the CPU-only tier instead of skipping, so a GPU-less box still
+    # gets a working (if slow) llama-server. `bob profile auto` then selects the 'cpu' profile.
+    Step "Build llama.cpp (CPU-only — no CUDA toolkit found)"
+    & "$PSScriptRoot\build-llama.ps1" -Cpu
   }
 
   Step "Build llama-swap"

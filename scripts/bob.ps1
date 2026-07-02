@@ -57,8 +57,9 @@ function Invoke-BobStream {
     [string]$ApiBase,
     [switch]$Raw
   )
-  if (-not (Get-Command curl.exe -ErrorAction SilentlyContinue)) {
-    throw "curl.exe not found (requires Windows 10 1803+)"
+  $curl = Get-CurlExe   # NC5: curl.exe on Windows, curl elsewhere
+  if (-not (Get-Command $curl -ErrorAction SilentlyContinue)) {
+    throw "$curl not found (install curl, or on Windows requires Win10 1803+)"
   }
   $body = @{ model=$Model; stream=$true; max_tokens=$MaxTokens; messages=$Messages } |
           ConvertTo-Json -Depth 8 -Compress
@@ -81,7 +82,7 @@ function Invoke-BobStream {
       $spinPs.BeginInvoke() | Out-Null
     }
 
-    curl.exe --no-buffer --silent -X POST "$ApiBase/chat/completions" `
+    & $curl --no-buffer --silent -X POST "$ApiBase/chat/completions" `
         -H 'Content-Type: application/json' `
         -H 'Authorization: Bearer sk-local' `
         -d "@$bodyTmp" |
@@ -213,9 +214,8 @@ function Invoke-BobHealthCheck {
 
   # 7. SearXNG — check root page (fast); search page is slow on cold start
   $searxPort = $bobCfg.searxngPort ?? (Get-BobPortDefault 'searxngPort')
-  $searxOk = try {
-    (Test-NetConnection -ComputerName localhost -Port $searxPort -InformationLevel Quiet -ErrorAction Stop)
-  } catch { $false }
+  # NC7 — Test-NetConnection is a Windows-only cmdlet; Test-PortInUse (TcpClient) is cross-platform.
+  $searxOk = Test-PortInUse -Port $searxPort
   Show-Check "SearXNG reachable (:$searxPort)" $searxOk 'bob services start'
 
   # 8. n8n
@@ -227,8 +227,8 @@ function Invoke-BobHealthCheck {
   $litellmOk = Test-PortInUse -Port $lPort
   Show-Check "LiteLLM proxy (:$lPort)" $litellmOk 'bob litellm'
 
-  # 10. BobAgent scheduled task
-  $taskOk = [bool](Get-ScheduledTask -TaskName 'BobAgent' -ErrorAction SilentlyContinue)
+  # 10. BobAgent recurring task (NC4 seam: scheduled task on Windows, cron entry on Linux)
+  $taskOk = (Get-AgentTaskStatus).Registered
   Show-Check 'BobAgent task registered' $taskOk 'bob agent install'
 
   # 11. Agent model downloaded
@@ -266,14 +266,14 @@ function Invoke-BobHealthCheck {
     $apiOk = try { [bool]((Invoke-RestMethod "$base/models" -TimeoutSec 3).data) } catch { $false }
     Show-Check "Inference endpoint reachable ($base)" $apiOk 'bob serve'
 
-    # GPU / VRAM
+    # GPU / VRAM — NC6: no GPU is NOT a failure. The NC8 CPU tier still serves; report the backend.
     $vram = Get-GpuVramGB
-    $vramLabel = if ($vram) { "GPU VRAM detected (~$vram GB)" } else { 'GPU VRAM detected' }
-    Show-Check $vramLabel ([bool]$vram) 'nvidia-smi absent or no NVIDIA GPU'
+    if ($vram) { Show-Check "GPU VRAM detected (~$vram GB)" $true }
+    else       { Show-Check "No GPU -> CPU backend (NC8 tier)" $true 'nvidia-smi absent or no NVIDIA GPU' }
 
-    # logs/ + data/ writable
-    foreach ($dir in @('logs', 'data')) {
-      $p = Join-Path $repo $dir
+    # data/ + logs/ writable — resolved through the C4 seam so BOB_DATA_DIR is honored (NC7).
+    foreach ($entry in @(@{ name = 'data'; path = (Get-DataDir) }, @{ name = 'logs'; path = (Get-CacheDir) })) {
+      $p = $entry.path
       $writable = try {
         if (-not (Test-Path $p)) { New-Item $p -ItemType Directory -Force | Out-Null }
         $probe = Join-Path $p ".write-test.$PID"
@@ -281,7 +281,7 @@ function Invoke-BobHealthCheck {
         Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue
         $true
       } catch { $false }
-      Show-Check "$dir/ writable" $writable "check permissions on $p"
+      Show-Check "$($entry.name)/ writable" $writable "check permissions on $p"
     }
 
     # config.json parses
@@ -476,7 +476,15 @@ switch ($cmd) {
   'profile' {
     if ($rest[0] -eq 'auto' -or -not $rest.Count) {
       $vramGB = Get-GpuVramGB
-      if (-not $vramGB) { Write-Host "Cannot detect GPU VRAM. Use: bob profile <name>"; break }
+      if (-not $vramGB) {
+        # NC6/NC8 — degrade cleanly on a GPU-less box: select the CPU tier instead of erroring.
+        Write-Host "No GPU detected -> switching to the 'cpu' profile (tiny model, correctness/wiring only)." -ForegroundColor Yellow
+        Set-ActiveProfile 'cpu'
+        & "$repo\scripts\gen-llama-swap.ps1"
+        & "$repo\scripts\fetch-models.ps1" -ListOnly
+        Write-Host "If the model is MISSING above, download it:  bob fetch" -ForegroundColor Yellow
+        break
+      }
       $sug = Get-SuggestedProfile -VramGB $vramGB
       if (-not $sug) {
         Write-Host "No profile fits $vramGB GB VRAM. Available:"
@@ -637,12 +645,10 @@ switch ($cmd) {
       if (Test-Path $pf) {
         $wPid = [int](Get-Content $pf -Raw -ErrorAction SilentlyContinue)
         if ($wPid) {
-          # Also kill child processes (uvicorn workers etc.)
+          # Also kill child processes (uvicorn workers etc.) — NC1 seam, OS-aware child reap.
           try {
-            $parent = Get-Process -Id $wPid -ErrorAction Stop
-            Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $wPid } |
-              ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-            $parent | Stop-Process -Force
+            Get-Process -Id $wPid -ErrorAction Stop | Out-Null   # verify alive before claiming a kill
+            Stop-ProcessTree -ProcessId $wPid
             $killed.Add($svc)
           } catch {}
         }
@@ -671,6 +677,19 @@ switch ($cmd) {
     } else {
       Write-Host "Nothing was running." -ForegroundColor DarkGray
     }
+  }
+  'build' {
+    # NC3/NC8 — (re)build llama.cpp. Auto-selects the CPU tier when no GPU is present (or with --cpu);
+    # otherwise a CUDA build for the detected arch. Cross-platform via build-llama.ps1's seam.
+    $cpu   = ($rest -contains '--cpu') -or (-not (Get-GpuInfo))
+    $force = $rest -contains '--force'
+    $bArgs = @{}
+    if ($cpu)   { $bArgs['Cpu'] = $true }
+    if ($force) { $bArgs['Force'] = $true }
+    if ($cpu -and -not ($rest -contains '--cpu')) {
+      Write-Host "No GPU detected — building the CPU-only tier. Use 'bob build --cpu' to force, or install CUDA for a GPU build." -ForegroundColor Yellow
+    }
+    & "$repo\scripts\build-llama.ps1" @bArgs
   }
   'update' {
     $llmCppPath = Join-Path $repo 'external\llama.cpp'
@@ -1069,11 +1088,9 @@ N8N_PORT=$($dp.n8nPort ?? (Get-BobPortDefault 'n8nPort'))
           Move-Item $tmp $sFile -Force
         }
         function Register-BobAgentTask {
-          $s = Join-Path $repo 'scripts\bob-agent.ps1'
-          $a = New-ScheduledTaskAction -Execute 'pwsh.exe' -Argument "-WindowStyle Hidden -NonInteractive -File `"$s`""
-          $t = New-ScheduledTaskTrigger -RepetitionInterval (New-TimeSpan -Minutes 1) -Once -At (Get-Date)
-          $g = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 5) -MultipleInstances IgnoreNew
-          Register-ScheduledTask -TaskName 'BobAgent' -Action $a -Trigger $t -Settings $g -RunLevel Limited -Force | Out-Null
+          # NC4 — OS-aware via the seam: Windows scheduled task, Linux crontab line. Both fire
+          # bob-agent.ps1 every minute; the runner + Test-CronDue do the cron-expression evaluation.
+          Register-AgentTask -ScriptPath (Join-Path $repo 'scripts\bob-agent.ps1')
         }
 
         switch ($schedCmd) {
@@ -1103,7 +1120,7 @@ N8N_PORT=$($dp.n8nPort ?? (Get-BobPortDefault 'n8nPort'))
             $s[-1].notify = $notify; $s[-1].notifyTitle = $title; $s[-1].createdAt = [DateTime]::UtcNow.ToString('o')
             Write-BobSchedules $s
             Write-Host "Added '$name'  cron: $cron" -ForegroundColor Green
-            if (-not (Get-ScheduledTask -TaskName 'BobAgent' -ErrorAction SilentlyContinue)) {
+            if (-not (Get-AgentTaskStatus).Registered) {
               Register-BobAgentTask; Write-Host "BobAgent task auto-registered." -ForegroundColor DarkGray
             }
           }
@@ -1151,11 +1168,10 @@ N8N_PORT=$($dp.n8nPort ?? (Get-BobPortDefault 'n8nPort'))
           }
           'install' { Register-BobAgentTask; Write-Host "BobAgent task registered." -ForegroundColor Green }
           'status' {
-            $task = Get-ScheduledTask -TaskName 'BobAgent' -ErrorAction SilentlyContinue
-            if ($task) {
-              $info = Get-ScheduledTaskInfo -TaskName 'BobAgent' -ErrorAction SilentlyContinue
-              Write-Host "BobAgent: $($task.State)" -ForegroundColor Green
-              if ($info.NextRunTime) { Write-Host "Next run: $($info.NextRunTime.ToLocalTime())" }
+            $st = Get-AgentTaskStatus
+            if ($st.Registered) {
+              Write-Host "BobAgent: $($st.State)" -ForegroundColor Green
+              if ($st.NextRun) { Write-Host "Next run: $($st.NextRun.ToLocalTime())" }
             } else { Write-Host "BobAgent not registered. Run: bob agent schedule install" -ForegroundColor DarkGray }
           }
           default { Write-Host "bob agent schedule <add|list|run|remove|enable|disable|install|status>" }
@@ -1175,26 +1191,22 @@ N8N_PORT=$($dp.n8nPort ?? (Get-BobPortDefault 'n8nPort'))
       }
 
       'install' {
-        $s = Join-Path $repo 'scripts\bob-agent.ps1'
-        $a = New-ScheduledTaskAction -Execute 'pwsh.exe' -Argument "-WindowStyle Hidden -NonInteractive -File `"$s`""
-        $t = New-ScheduledTaskTrigger -RepetitionInterval (New-TimeSpan -Minutes 1) -Once -At (Get-Date)
-        $g = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 5) -MultipleInstances IgnoreNew
-        Register-ScheduledTask -TaskName 'BobAgent' -Action $a -Trigger $t -Settings $g -RunLevel Limited -Force | Out-Null
+        # NC4 — OS-aware: Windows scheduled task, Linux crontab line (every minute).
+        Register-AgentTask -ScriptPath (Join-Path $repo 'scripts\bob-agent.ps1')
         Write-Host "BobAgent task registered (runs every minute)." -ForegroundColor Green
         Write-Host "Enable proactive mode: set agent.enabled = `$true in config/bob.psd1" -ForegroundColor Cyan
       }
 
       'uninstall' {
-        Unregister-ScheduledTask -TaskName 'BobAgent' -Confirm:$false -ErrorAction SilentlyContinue
+        Unregister-AgentTask
         Write-Host "BobAgent task removed." -ForegroundColor Green
       }
 
       'status' {
-        $task = Get-ScheduledTask -TaskName 'BobAgent' -ErrorAction SilentlyContinue
-        if ($task) {
-          $info = Get-ScheduledTaskInfo -TaskName 'BobAgent' -ErrorAction SilentlyContinue
-          Write-Host "BobAgent: $($task.State)" -ForegroundColor Green
-          if ($info.NextRunTime) { Write-Host "Next run: $($info.NextRunTime.ToLocalTime())" }
+        $st = Get-AgentTaskStatus
+        if ($st.Registered) {
+          Write-Host "BobAgent: $($st.State)" -ForegroundColor Green
+          if ($st.NextRun) { Write-Host "Next run: $($st.NextRun.ToLocalTime())" }
           $logFile = Join-Path $repo ($bobCfg.agent.logFile ?? 'logs\bob-agent.log')
           if (Test-Path $logFile) { Write-Host "`nRecent log:" -ForegroundColor DarkGray; Get-Content $logFile -Tail 5 }
         } else { Write-Host "BobAgent: not registered. Run: bob agent install" -ForegroundColor DarkGray }

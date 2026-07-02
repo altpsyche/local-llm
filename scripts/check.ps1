@@ -43,6 +43,13 @@ foreach ($f in $psFiles) {
   }
 }
 
+# 2b. platform-seam unit tests (NC1) --------------------------------------
+# Pure resolvers assert both -Os branches regardless of host, so the Linux paths are proven here on
+# the ubuntu runner AND on windows. No venv/models/network — safe to run in every gate.
+Write-Host '[check] platform-seam tests...' -ForegroundColor Cyan
+& (Join-Path $repo 'scripts\test-platform.ps1')
+if ($LASTEXITCODE -ne 0) { Write-Host '[check] platform-seam tests FAILED' -ForegroundColor Red; $failed = $true }
+
 # 3. config/verbs.json in sync with the command registry (NB4) ------------
 # verbs.json is generated from scripts/bob/registry.py and read by the shim; a registry edit that
 # doesn't regenerate it would drift the front door. Static check — runs even with -NoTests.

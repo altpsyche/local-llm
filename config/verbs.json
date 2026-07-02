@@ -15,6 +15,7 @@
     "services": "pwsh",
     "gen": "pwsh",
     "fetch": "pwsh",
+    "build": "pwsh",
     "doctor": "pwsh",
     "update": "pwsh",
     "status": "pwsh",

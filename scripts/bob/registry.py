@@ -53,6 +53,8 @@ COMMANDS = [
      "args": "", "runtime": "pwsh", "handler": None},
     {"name": "fetch", "group": "Provisioner", "summary": "Download model files",
      "args": "[--list]", "runtime": "pwsh", "handler": None},
+    {"name": "build", "group": "Provisioner", "summary": "Build llama.cpp (CUDA, or --cpu for no-GPU)",
+     "args": "[--cpu] [--force]", "runtime": "pwsh", "handler": None},
     {"name": "doctor", "group": "Provisioner", "summary": "Extended pre-flight diagnostics",
      "args": "", "runtime": "pwsh", "handler": None},
     {"name": "update", "group": "Provisioner", "summary": "Update submodules and rebuild",

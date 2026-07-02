@@ -17,6 +17,7 @@ $script:stepTotal   = 12
 $script:stepCurrent = 0
 $script:stepSw      = $null
 $setupStart         = [Diagnostics.Stopwatch]::StartNew()
+$isWin              = ((Get-BobOS) -eq 'windows')   # NC2 — gate the Windows-only provisioning steps
 
 function Step {
     param([string]$Name, [string]$Hint = '')
@@ -30,50 +31,71 @@ function Step {
 }
 
 Step "System check"
-& "$PSScriptRoot\diagnose.ps1"
+try { & "$PSScriptRoot\diagnose.ps1" } catch { Write-Warning "diagnose: $_" }
 
 Step "Core tooling"
-if (-not (Have git))   { throw "git not found. Install Git, then re-run setup.bat." }
-if (-not (Have scoop)) { throw "scoop not found. Install it:  irm get.scoop.sh | iex   then re-run setup.bat." }
-Write-Host "git ok; scoop ok"
+if (-not (Have git)) { throw "git not found. Install Git, then re-run setup." }
+if ($isWin) {
+    if (-not (Have scoop)) { throw "scoop not found. Install it:  irm get.scoop.sh | iex   then re-run setup.bat." }
+    Write-Host "git ok; scoop ok"
+} else {
+    Write-Host "git ok"
+}
 
 Step "Prerequisite check"
 $missing = @()
-if (-not (Have 'node'))  { $missing += 'Node.js' }
-if (-not (Have 'go'))    { $missing += 'Go' }
-if (-not (Have 'uvx'))   { $missing += 'uv' }
-$hasPy = $false; try { scoop prefix python312 *>$null; $hasPy = ($LASTEXITCODE -eq 0) } catch {}
-if (-not $hasPy)         { $missing += 'Python 3.12' }
+if (-not (Have 'node')) { $missing += 'Node.js' }
+if (-not (Have 'go'))   { $missing += 'Go' }
+if ($isWin) {
+    if (-not (Have 'uvx')) { $missing += 'uv' }
+    $hasPy = $false; try { scoop prefix python312 *>$null; $hasPy = ($LASTEXITCODE -eq 0) } catch {}
+    if (-not $hasPy)       { $missing += 'Python 3.12' }
+} else {
+    # Linux: prereqs installed by install_prereqs.sh (python3 via apt/dnf/pacman).
+    if (-not (Have 'python3')) { $missing += 'Python 3.12' }
+}
 if ($missing) {
     Write-Host "`nMissing prerequisites: $($missing -join ', ')" -ForegroundColor Red
-    Write-Host "Run install_prereqs.bat first, then re-run setup.bat." -ForegroundColor Yellow
+    $prereqCmd = if ($isWin) { 'install_prereqs.bat' } else { './install_prereqs.sh' }
+    Write-Host "Run $prereqCmd first, then re-run setup." -ForegroundColor Yellow
     exit 1
 }
 Write-Host "  Prerequisites ok." -ForegroundColor DarkGray
 
-# Refresh PATH so shims installed by scoop/winget are visible to bootstrap.
-$env:PATH = [Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('PATH', 'User')
+# Refresh PATH so shims installed by scoop/winget are visible to bootstrap (Windows registry PATH;
+# on Linux the process PATH already has everything install_prereqs.sh installed).
+if ($isWin) {
+    $env:PATH = [Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('PATH', 'User')
+}
 
 $vswhereExe = 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe'
 
-Step "Prereq: VS2022 C++ toolchain (MSVC required for llama.cpp build)"
-$serverExe = Join-Path $repo 'bin\llama-server.exe'
+Step "Prereq: C++ toolchain (compiler required for llama.cpp build)"
+$serverExe = Get-BinExe -Base 'llama-server'   # NC2/NC3 — OS-aware output name
 if (-not $SkipBuild -and -not (Test-Path $serverExe)) {
-    $vsInstall = if (Test-Path $vswhereExe) {
-        & $vswhereExe -latest -products * -requires Microsoft.VisualStudio.Workload.NativeDesktop -property installationPath 2>$null
-    }
-    if ($vsInstall) {
-        Write-Host "MSVC ok" -ForegroundColor DarkGray
-    } else {
-        throw @"
+    if ($isWin) {
+        $vsInstall = if (Test-Path $vswhereExe) {
+            & $vswhereExe -latest -products * -requires Microsoft.VisualStudio.Workload.NativeDesktop -property installationPath 2>$null
+        }
+        if ($vsInstall) {
+            Write-Host "MSVC ok" -ForegroundColor DarkGray
+        } else {
+            throw @"
 VS2022 'Desktop development with C++' workload not found — required to compile llama.cpp.
   Install VS2022:  winget install Microsoft.VisualStudio.2022.Community
   Then open VS Installer -> Modify -> add workload: 'Desktop development with C++'
   Re-run setup.bat when done.  (Pass -SkipBuild if you have a prebuilt bin\llama-server.exe.)
 "@
+        }
+    } else {
+        if ((Have 'g++') -or (Have 'gcc') -or (Have 'cc')) {
+            Write-Host "gcc/g++ ok" -ForegroundColor DarkGray
+        } else {
+            throw "No C++ compiler found — run ./install_prereqs.sh (installs build-essential), then re-run ./setup.sh. (Pass -SkipBuild if you have a prebuilt bin/llama-server.)"
+        }
     }
 } else {
-    Write-Host "MSVC check skipped (build not needed)" -ForegroundColor DarkGray
+    Write-Host "C++ toolchain check skipped (build not needed)" -ForegroundColor DarkGray
 }
 
 Step "Prereq: cmake 3.x (cmake 4.x excluded by llama.cpp version range)"
@@ -88,7 +110,7 @@ if ($pathCmakeCmd) {
         Write-Host "PATH cmake is $cmakeVer (4.x) — checking VS bundled cmake..." -ForegroundColor Yellow
     }
 }
-if (-not $cmakeOk -and (Test-Path $vswhereExe)) {
+if (-not $cmakeOk -and $isWin -and (Test-Path $vswhereExe)) {
     $vsI = & $vswhereExe -latest -products * -requires Microsoft.VisualStudio.Component.VC.CMake.Project -property installationPath 2>$null
     if ($vsI -and (Test-Path (Join-Path $vsI 'Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe'))) {
         $cmakeOk = $true
@@ -96,8 +118,12 @@ if (-not $cmakeOk -and (Test-Path $vswhereExe)) {
     }
 }
 if (-not $cmakeOk) {
-    Write-Host "Installing cmake 3.31.7 via winget..." -ForegroundColor Cyan
-    Install-WithWinget 'Kitware.CMake' @('--version', '3.31.7')
+    if ($isWin) {
+        Write-Host "Installing cmake 3.31.7 via winget..." -ForegroundColor Cyan
+        Install-WithWinget 'Kitware.CMake' @('--version', '3.31.7')
+    } else {
+        throw "cmake (3.x) not found. Install it: sudo apt-get install -y cmake ninja-build (or the dnf/pacman equivalent), then re-run ./setup.sh."
+    }
 }
 
 Step "Bootstrap: submodules -> build engine+proxy -> venvs+tools -> models" "first build takes 5-15 min"
@@ -127,6 +153,11 @@ Step "Memory lock (mlock)"
 $cfgForMlock = Get-ModelsConfig
 $mlockBigEnabled = ($cfgForMlock.defaults.mlockBig -eq $true)
 $ram = Get-SystemRamGB
+if (-not $isWin) {
+    # Linux: --mlock needs a raised RLIMIT_MEMLOCK (ulimit -l unlimited / /etc/security/limits.conf),
+    # not a Windows privilege. Nothing to grant here; the flag just works when the limit allows it.
+    Write-Host "  Linux: raise 'ulimit -l' (memlock) if you enable mlockBig; nothing to grant." -ForegroundColor DarkGray
+} else {
 $mlockGranted = $false
 try { & "$PSScriptRoot\grant-mlock.ps1" -Check 2>&1 | Out-Null; $mlockGranted = ($LASTEXITCODE -eq 0) } catch {}
 
@@ -150,14 +181,15 @@ if ($mlockBigEnabled) {
     $reason = if ($ram) { "$($ram.FreeGB) GB free RAM (need 32+)" } else { "RAM detection unavailable" }
     Write-Host "  mlock skipped — $reason.  Enable manually with: bob mlock" -ForegroundColor DarkGray
 }
+}   # end: Windows-only mlock branch (NC2)
 
 Step "Docker services (Langfuse + SearXNG + n8n)"
 $dockerExe = 'C:\Program Files\Docker\Docker\Docker Desktop.exe'
-if ((Have 'docker') -or (Test-Path $dockerExe)) {
+if ((Have 'docker') -or ($isWin -and (Test-Path $dockerExe))) {
     & "$PSScriptRoot\setup-docker.ps1"
 } else {
     Write-Host "  Docker not installed — skipping Docker services." -ForegroundColor DarkGray
-    Write-Host "  To add later: run install_prereqs.bat, then re-run setup.bat." -ForegroundColor DarkGray
+    Write-Host "  To add later: install docker (Linux: your package manager; Windows: install_prereqs.bat), then re-run setup." -ForegroundColor DarkGray
 }
 
 if ($script:stepSw) { Write-Host "    done in $([int]$script:stepSw.Elapsed.TotalSeconds)s" -ForegroundColor DarkGray }

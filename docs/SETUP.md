@@ -1,8 +1,13 @@
 # SETUP
 
+> **Linux?** The provisioner is cross-platform under PowerShell 7 (Module NC). Use
+> `./install_prereqs.sh` then `./setup.sh` (add `--cpu` to `install_prereqs.sh` on a GPU-less box) —
+> see [MANUAL-INSTALL.md § 0 Linux](MANUAL-INSTALL.md#0-linux-module-nc) and
+> [PORTABILITY.md](PORTABILITY.md). The rest of this page is the Windows path.
+
 ## Hardware
 
-The verified configuration is Windows 11 with an NVIDIA RTX 5080 (16 GB VRAM, Blackwell sm_120), a Ryzen 9 7950X3D, and 64 GB of system RAM. RTX 4000-series (Ada Lovelace) and RTX 3000-series (Ampere) cards are supported with the same scripts; setup detects the GPU and adapts the build automatically. Profiles for 16 GB, 12 GB, and 8 GB VRAM are included.
+The verified configuration is Windows 11 with an NVIDIA RTX 5080 (16 GB VRAM, Blackwell sm_120), a Ryzen 9 7950X3D, and 64 GB of system RAM. RTX 4000-series (Ada Lovelace) and RTX 3000-series (Ampere) cards are supported with the same scripts; setup detects the GPU and adapts the build automatically. Profiles for 16 GB, 12 GB, and 8 GB VRAM are included. A **CPU / no-GPU tier** (`cpu` profile, `bob build --cpu`) exists for CI and GPU-less dev boxes — correctness/wiring only, not performance.
 
 > **Advanced users:** [MANUAL-INSTALL.md](MANUAL-INSTALL.md) covers every step in detail: exact cmake commands, Go builds, venv creation, and client wiring. Use it when you want full control or need to debug a partial install.
 

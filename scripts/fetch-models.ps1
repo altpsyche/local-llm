@@ -50,7 +50,8 @@ if ($ListOnly) {
   return
 }
 
-if (-not (Get-Command curl.exe -ErrorAction SilentlyContinue)) { throw "curl.exe not found (needs Windows 10+)." }
+$curl = Get-CurlExe   # NC5: curl.exe on Windows (built-in from Win10 1803+), curl elsewhere
+if (-not (Get-Command $curl -ErrorAction SilentlyContinue)) { throw "$curl not found (install curl, or on Windows needs Win10 1803+)." }
 $hdr = @()
 if ($env:HF_TOKEN) { $hdr = @("-H", "Authorization: Bearer $env:HF_TOKEN") }
 
@@ -81,7 +82,7 @@ foreach ($m in $models) {
     $url = "https://huggingface.co/$($m.repo)/resolve/main/$($m.path)"
     Write-Host "fetch   $($m.gguf)  <-  $($m.repo) / $($m.path)" -ForegroundColor Cyan
     $dlSw = [Diagnostics.Stopwatch]::StartNew()
-    curl.exe -L -C - --fail-with-body --progress-bar @hdr -o "$dest.part" $url
+    & $curl -L -C - --fail-with-body --progress-bar @hdr -o "$dest.part" $url
     if ($LASTEXITCODE -ne 0) {
       Write-Warning "FAILED $url  (verify repo/filename on huggingface.co)"; $fail++; continue
     }
@@ -98,7 +99,7 @@ foreach ($m in $models) {
       $mmprojUrl = "https://huggingface.co/$($m.repo)/resolve/main/$($m.mmproj)"
       Write-Host "fetch   $($m.mmproj)  <-  $($m.repo) / $($m.mmproj)" -ForegroundColor Cyan
       $dlSw2 = [Diagnostics.Stopwatch]::StartNew()
-      curl.exe -L -C - --fail-with-body --progress-bar @hdr -o "$mmprojDest.part" $mmprojUrl
+      & $curl -L -C - --fail-with-body --progress-bar @hdr -o "$mmprojDest.part" $mmprojUrl
       if ($LASTEXITCODE -ne 0) {
         Write-Warning "FAILED $mmprojUrl  (verify mmproj filename on huggingface.co)"; $fail++
       } else {

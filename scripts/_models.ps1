@@ -17,6 +17,10 @@
 #   Get-BobConfig                         -> raw hashtable from config/bob.psd1 (+ user.psd1 [bob] overrides)
 
 $script:ModelsRepo   = Split-Path $PSScriptRoot -Parent
+# NC1 — the OS-abstraction seam (Get-BobOS, Get-Secret, Get-DataDir, Get-CudaRoot, Get-SystemRamGB,
+# Stop-ProcessTree, agent-task + background-launch primitives, …). Dot-sourced here so every entry
+# script that already dot-sources _models.ps1 transitively gets the seam with no per-script edit.
+. "$PSScriptRoot\_platform.ps1"
 $script:ModelsFile   = Join-Path $script:ModelsRepo 'config\models.psd1'
 $script:BobFile      = Join-Path $script:ModelsRepo 'config\bob.psd1'
 $script:DefaultsFile = Join-Path $script:ModelsRepo 'config\defaults.json'
@@ -199,10 +203,8 @@ function Stop-ServiceByPid {
   $wPid = [int](Get-Content $PidFile -Raw -ErrorAction SilentlyContinue)
   if ($wPid) {
     try {
-      $proc = Get-Process -Id $wPid -ErrorAction Stop
-      Get-CimInstance Win32_Process -Filter "ParentProcessId=$wPid" -ErrorAction SilentlyContinue |
-        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-      $proc | Stop-Process -Force
+      Get-Process -Id $wPid -ErrorAction Stop | Out-Null   # verify alive before we claim a kill
+      Stop-ProcessTree -ProcessId $wPid                    # NC1 seam: reaps children + parent, OS-aware
       $stopped = $true
     } catch {}
   }
@@ -308,40 +310,15 @@ function Get-GpuArch {
 }
 
 function Get-BestCudaRoot {
-  # Returns the best available CUDA toolkit path for the given architecture, or $null.
-  # Blackwell (arch >= 120): requires exactly 12.8 for the MMQ fast path.
-  # Ada / Ampere: prefers latest 12.x, falls back to 11.x.
+  # NC1 — thin forwarder to the OS-aware seam (Get-CudaRoot in _platform.ps1). Windows resolution is
+  # byte-identical to the old body; Linux resolves /usr/local/cuda*. Kept as a named function so all
+  # existing callers (build-llama.ps1, bootstrap.ps1, test-dry-run.ps1) work unchanged.
   param([int]$CudaArch = 0)
-  $base = 'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA'
-  if (-not (Test-Path $base)) { return $null }
-
-  if ($CudaArch -ge 120) {
-    $p = Join-Path $base 'v12.8'
-    if (Test-Path $p) { return $p }
-    return $null
-  }
-
-  $minMajor = if ($CudaArch -ge 75) { 11 } else { 10 }
-  $installed = Get-ChildItem $base -Directory | ForEach-Object {
-    if ($_.Name -match '^v(\d+)\.(\d+)$') {
-      [pscustomobject]@{ Path = $_.FullName; Major = [int]$Matches[1]; Minor = [int]$Matches[2] }
-    }
-  } | Where-Object { $_ -and $_.Major -ge $minMajor } | Sort-Object Major, Minor -Descending
-  if ($installed) { return $installed[0].Path }
-  return $null
+  return (Get-CudaRoot -CudaArch $CudaArch)
 }
 
-function Get-SystemRamGB {
-  # Returns @{ TotalGB; FreeGB } for physical RAM via CIM. FreeGB = currently available pages.
-  # Returns $null if the query fails (no WMI/CIM access).
-  try {
-    $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
-    return @{
-      TotalGB = [int][math]::Round($os.TotalVisibleMemorySize / 1MB)
-      FreeGB  = [int][math]::Round($os.FreePhysicalMemory   / 1MB)
-    }
-  } catch { return $null }
-}
+# Get-SystemRamGB moved to the NC1 seam (_platform.ps1) — OS-aware (CIM on Windows, /proc/meminfo on
+# Linux). Callers are unchanged; the seam is dot-sourced above so the name resolves here.
 
 function Get-NumaNodeCount {
   # Returns the number of NUMA nodes reported by Windows.

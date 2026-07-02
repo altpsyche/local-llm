@@ -1,14 +1,67 @@
 #requires -Version 7
 # Install all prerequisites for bob (Node.js, uv, Go, Python 3.12, CUDA, cmake,
 # Docker Desktop). Run once on a fresh machine. Idempotent — safe to re-run.
+# Windows uses winget/scoop; Linux (NC2) uses apt/dnf/pacman via the Install-Package seam.
+#   -Cpu   Skip the CUDA toolkit (CPU-only tier). CUDA becomes optional.
 #
 # When done, one of two messages will appear:
 #   - "All prerequisites verified. Run setup.bat now."   (Docker was already installed)
 #   - "Log out and back in, then run: setup.bat"          (Docker was just installed)
+param([switch]$Cpu)
 $ErrorActionPreference = "Stop"
 $repo = Split-Path $PSScriptRoot -Parent
 . "$PSScriptRoot\_common.ps1"   # Have, Install-WithWinget
-. "$PSScriptRoot\_models.ps1"   # Get-GpuArch, Get-BestCudaRoot
+. "$PSScriptRoot\_models.ps1"   # Get-GpuArch, Get-BestCudaRoot, + NC1 seam (_platform.ps1)
+
+# ── NC2 — Linux prereq bootstrap (apt/dnf/pacman via Install-Package). The .sh installs pwsh, then
+#    hands off here; the toolchain install is genuinely OS-specific (not shared logic to duplicate). ──
+function Install-LinuxPrereqs {
+    param([switch]$Cpu)
+    $mgr = Get-LinuxPackageManager
+    if (-not $mgr) { throw "No supported package manager (apt/dnf/pacman) found. Install the toolchain manually — see docs/MANUAL-INSTALL.md." }
+    Write-Host "=== Linux prerequisites ($mgr) ===" -ForegroundColor Cyan
+
+    # Toolchain package names per manager (git/curl/compiler/cmake/ninja/go/node/python+venv).
+    $pkgs = switch ($mgr) {
+        'apt'    { @('git', 'curl', 'build-essential', 'cmake', 'ninja-build', 'golang-go', 'nodejs', 'npm', 'python3', 'python3-venv', 'python3-pip') }
+        'dnf'    { @('git', 'curl', 'gcc-c++', 'make', 'cmake', 'ninja-build', 'golang', 'nodejs', 'npm', 'python3', 'python3-pip') }
+        'pacman' { @('git', 'curl', 'base-devel', 'cmake', 'ninja', 'go', 'nodejs', 'npm', 'python') }
+    }
+    foreach ($p in $pkgs) {
+        Write-Host "  install $p ..." -ForegroundColor DarkGray
+        try { Install-Package -Package $p } catch { Write-Warning "  $p failed: $_ (install it manually and re-run)" }
+    }
+
+    # Python 3.12+ is required by bootstrap.ps1. Distros vary; warn (don't fail) if the default is older.
+    $pyv = try { (& python3 --version 2>&1) -replace 'Python\s+', '' } catch { $null }
+    if ($pyv -and [version]($pyv -replace '(\d+\.\d+).*', '$1') -lt [version]'3.12') {
+        Write-Warning "python3 is $pyv — Bob needs 3.12+. Install it (e.g. deadsnakes PPA on Ubuntu) and ensure it's on PATH."
+    }
+
+    if ($Cpu) {
+        Write-Host "  -Cpu: skipping CUDA toolkit (CPU-only tier)." -ForegroundColor DarkGray
+    } elseif (Have 'nvidia-smi') {
+        if (Have 'nvcc') {
+            Write-Host "  CUDA toolkit (nvcc) ok" -ForegroundColor DarkGray
+        } else {
+            Write-Warning @"
+  NVIDIA GPU detected but nvcc (CUDA toolkit) is not on PATH.
+  Install the CUDA toolkit for your distro (https://developer.nvidia.com/cuda-downloads),
+  or run the CPU tier: ./install_prereqs.sh --cpu && ./setup.sh
+"@
+        }
+    } else {
+        Write-Host "  No NVIDIA GPU (nvidia-smi absent) — CPU tier. Skipping CUDA." -ForegroundColor DarkGray
+    }
+
+    # Docker is optional (compose services); already cross-platform where present.
+    if (Have 'docker') { Write-Host "  docker ok" -ForegroundColor DarkGray }
+    else { Write-Host "  docker not found (optional — needed only for the compose services). Install docker + add your user to the docker group." -ForegroundColor DarkGray }
+
+    Write-Host "`nLinux prerequisites done. Run: ./setup.sh$(if ($Cpu) { ' --cpu' })" -ForegroundColor Green
+}
+
+if ((Get-BobOS) -ne 'windows') { Install-LinuxPrereqs -Cpu:$Cpu; return }
 
 $script:stepTotal   = 7
 $script:stepCurrent = 0

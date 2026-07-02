@@ -183,6 +183,10 @@ $requiredKeys  = @('repo', 'path', 'gguf', 'sizeGB')
 foreach ($pname in ($cfg.profiles.Keys | Sort-Object)) {
   $prof = $cfg.profiles[$pname]
 
+  # NC8 — the CPU tier is a deliberate minimal profile (chat + agent only); it does not carry the
+  # sized-profile role set. Validated separately below.
+  if ($prof._cpuTier) { continue }
+
   foreach ($role in $requiredRoles) {
     $m = $prof[$role]
     Assert "[$pname] role '$role' exists" ($null -ne $m)
@@ -217,6 +221,25 @@ foreach ($pname in ($cfg.profiles.Keys | Sort-Object)) {
       Assert "[$pname][$role] pinned = true"    ($m.ContainsKey('pinned') -and $m['pinned'] -eq $true)
     }
   }
+}
+
+# NC8 — CPU tier: dedicated minimal validation (chat + agent, one tiny shared GGUF). Not pinned in
+# llama-swap terms (they're swap-group members), so no ttl/pinned assertions here.
+$cpu = $cfg.profiles['cpu']
+if ($cpu) {
+  foreach ($role in @('chat', 'agent')) {
+    $m = $cpu[$role]
+    Assert "[cpu] role '$role' exists" ($null -ne $m)
+    if (-not $m) { continue }
+    foreach ($key in $requiredKeys) {
+      Assert "[cpu][$role] has '$key'" ($m.ContainsKey($key) -and "$($m[$key])" -ne '')
+    }
+    Assert "[cpu][$role] ctx > 0"        ($m.ContainsKey('ctx') -and [int]$m['ctx'] -gt 0) "$($m['ctx'])" "> 0"
+    Assert "[cpu][$role] gguf valid"     ($m['gguf'] -match '^[a-z0-9._-]+\.gguf$') $m['gguf']
+    Assert "[cpu][$role] repo valid"     ($m['repo'] -match '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$') $m['repo']
+    Assert "[cpu][$role] tiny (<= 2 GB)" ([float]$m['sizeGB'] -gt 0 -and [float]$m['sizeGB'] -le 2.0) "$($m['sizeGB'])" "0 < GB <= 2"
+  }
+  Assert "[cpu] chat + agent share one gguf" ($cpu.chat.gguf -eq $cpu.agent.gguf)
 }
 
 # --------------------------------------------------------------------------

@@ -5,9 +5,8 @@
 param([switch]$NoWindow)
 $ErrorActionPreference = "Stop"
 $repo = Split-Path $PSScriptRoot -Parent
-$exe  = Join-Path $repo 'bin\whisper-server.exe'
-
 . "$PSScriptRoot\_models.ps1"
+$exe  = Get-BinExe -Base 'whisper-server'   # NC4: bin\whisper-server.exe | bin/whisper-server
 $bobCfg  = Get-BobConfig
 $sttPort = $bobCfg.voice.sttPort ?? 8082
 $mdl     = Join-Path $repo "models\whisper\ggml-$($bobCfg.voice.sttModel ?? 'small').bin"
@@ -33,11 +32,8 @@ if ($NoWindow) {
     if (-not (Test-Path $logsDir)) { New-Item -ItemType Directory $logsDir | Out-Null }
     $logFile = Join-Path $logsDir 'whisper.log'
     $cmd = "& '$exe' --model '$mdl' --port $sttPort --host 0.0.0.0 2>&1 | Tee-Object -FilePath '$logFile'"
-    $proc = Start-Process pwsh `
-        -ArgumentList @("-NonInteractive", "-Command", $cmd) `
-        -WindowStyle Hidden -PassThru
-    $proc.Id | Set-Content $pidFile -Encoding utf8
-    Write-Host "whisper-server: http://localhost:$sttPort   (PID $($proc.Id))" -ForegroundColor Green
+    $launchPid = Start-BobBackgroundProcess -ArgList @("-NonInteractive", "-Command", $cmd) -PidFile $pidFile
+    Write-Host "whisper-server: http://localhost:$sttPort   (PID $launchPid)" -ForegroundColor Green
     Write-Host "Logs: logs/whisper.log   Stop: bob whisper stop" -ForegroundColor DarkGray
 
     # Poll for readiness — GPU load takes ~5s, allow up to 30s

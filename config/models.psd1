@@ -226,5 +226,19 @@
       embed   = @{ repo = 'gpustack/bge-m3-GGUF';                      path = 'bge-m3-Q8_0.gguf';                      gguf = 'bge-m3-q8_0.gguf';           sizeGB = 0.6; embedding = $true; ttl = 0; pinned = $true; mlock = $true }
       agent   = @{ repo = 'NousResearch/Hermes-3-Llama-3.1-8B-GGUF';  path = 'Hermes-3-Llama-3.1-8B.Q4_K_M.gguf';    gguf = 'hermes-3-8b-q4_k_m.gguf';    ctx = 8192; kv = $true; sizeGB = 5.0; flags = @('--temp','0.1','--jinja') }
     }
+
+    # CPU / no-GPU tier (NC8). NOT for real use — proves the loop/serve/tool path with no GPU.
+    # Auto-selected by `bob profile auto` when no GPU is detected, and by CI's GPU-less CPU runner.
+    # Deliberately minimal: chat + agent share ONE tiny GGUF (single download). This profile does NOT
+    # carry the planner/coder/fim/embed roles the sized profiles do — test-dry-run [6] exempts it via
+    # the _cpuTier marker and validates it separately. Roles are NOT llama-swap-pinned (they'd collide
+    # with group.members); "pinned" here means version-locked in ND1's versions.lock.
+    # VERIFY-BEFORE-USE: confirm repo/path on huggingface.co (bob fetch --list cpu) before first pull.
+    'cpu' = @{
+      _cpuTier    = $true
+      _targetVRAM = 'CPU-only (no GPU) — tiny model, correctness/wiring only, not performance'
+      chat  = @{ repo = 'unsloth/Qwen2.5-0.5B-Instruct-GGUF'; path = 'Qwen2.5-0.5B-Instruct-Q8_0.gguf'; gguf = 'qwen2.5-0.5b-instruct-q8_0.gguf'; ctx = 4096; sizeGB = 0.5; setParams = @{ temperature = 0.7 } }
+      agent = @{ repo = 'unsloth/Qwen2.5-0.5B-Instruct-GGUF'; path = 'Qwen2.5-0.5B-Instruct-Q8_0.gguf'; gguf = 'qwen2.5-0.5b-instruct-q8_0.gguf'; ctx = 4096; sizeGB = 0.5; flags = @('--temp','0.1','--jinja') }
+    }
   }
 }

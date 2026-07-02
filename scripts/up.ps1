@@ -4,8 +4,8 @@
 param([switch]$NoOpen, [switch]$WithServices)
 $ErrorActionPreference = "Stop"
 $repo  = Split-Path $PSScriptRoot -Parent
-$webui = Join-Path $repo "tools\venv-webui\Scripts\open-webui.exe"
 . "$PSScriptRoot\_models.ps1"
+$webui = Get-VenvExe -Venv 'venv-webui' -Exe 'open-webui'   # NC4: OS-aware venv path
 $cfg        = Get-ModelsConfig
 $port        = $cfg.defaults.port ?? 8080
 $litellmPort = $cfg.defaults.litellmPort ?? 8081
@@ -18,12 +18,11 @@ if (Test-PortInUse -Port $port) {
   Write-Warning "Port $port already in use — endpoint may already be running ('bob stop' to free it)."; return
 }
 
-# 1) Endpoint — hidden window, logs to logs/llama-swap.log via start.ps1's Tee-Object
-$swapProc = Start-Process pwsh `
-    -ArgumentList @("-NonInteractive", "-File", "`"$repo\scripts\start.ps1`"") `
-    -WindowStyle Hidden -PassThru
-$swapProc.Id | Set-Content (Join-Path $logsDir 'llama-swap.pid') -Encoding utf8
-Write-Host "Endpoint:   http://localhost:$port/v1   (PID $($swapProc.Id))" -ForegroundColor Green
+# 1) Endpoint — detached background process (NC4 seam), logs to logs/llama-swap.log via start.ps1's Tee-Object
+$swapId = Start-BobBackgroundProcess `
+    -ArgList @("-NonInteractive", "-File", "`"$repo\scripts\start.ps1`"") `
+    -PidFile (Join-Path $logsDir 'llama-swap.pid')
+Write-Host "Endpoint:   http://localhost:$port/v1   (PID $swapId)" -ForegroundColor Green
 Write-Host "            logs: bob logs" -ForegroundColor DarkGray
 
 $spin = [char[]]@('|','/','-','\')
@@ -32,7 +31,7 @@ $i    = 0; $up = $false
 while ($sw.Elapsed.TotalSeconds -lt 60) {
     try { Invoke-RestMethod "http://localhost:$port/v1/models" -ErrorAction Stop | Out-Null; $up = $true; break }
     catch {}
-    if ($swapProc.HasExited) { Write-Warning "Endpoint process exited. Check: bob logs"; break }
+    if (-not (Get-Process -Id $swapId -ErrorAction SilentlyContinue)) { Write-Warning "Endpoint process exited. Check: bob logs"; break }
     Write-Host "`r  $($spin[$i++ % 4]) Starting endpoint..." -NoNewline -ForegroundColor DarkGray
     Start-Sleep -Milliseconds 200
 }
@@ -40,13 +39,13 @@ if ($up) { Write-Host "`r  Endpoint ready ($([int]$sw.Elapsed.TotalSeconds)s)   
 else      { Write-Warning "Endpoint did not respond in 60s. Check: bob logs" }
 
 # 2) LiteLLM proxy — routes all clients through :8081 (local + pro models)
-$litellmExe = Join-Path $repo 'tools\venv-litellm\Scripts\litellm.exe'
+$litellmExe = Get-VenvExe -Venv 'venv-litellm' -Exe 'litellm'
 if (Test-Path $litellmExe) { & "$PSScriptRoot\start-litellm.ps1" -NoWindow }
 else { Write-Host "LiteLLM venv not found — skipping proxy. Run scripts\bootstrap-litellm.ps1" -ForegroundColor DarkGray }
 
 # 2b) Whisper STT server — auto-start when voice.enabled = $true and binary is present
 $bobVoice = try { (Get-BobConfig).voice } catch { $null }
-$whisperBin = Join-Path $repo 'bin\whisper-server.exe'
+$whisperBin = Get-BinExe -Base 'whisper-server'
 if ($bobVoice.enabled -and (Test-Path $whisperBin)) {
     & "$PSScriptRoot\start-whisper.ps1" -NoWindow
     Write-Host "Whisper STT: http://localhost:$($bobVoice.sttPort ?? 8082)   (voice enabled)" -ForegroundColor Green
@@ -67,11 +66,10 @@ if (Test-Path $webui) {
   ) -join ""
   $uiLog = Join-Path $logsDir 'open-webui.log'
   $uiCmd = "$owEnv & '$webui' serve --port $webuiPort 2>&1 | Tee-Object -FilePath '$uiLog'"
-  $uiProc = Start-Process pwsh `
-      -ArgumentList @("-NonInteractive", "-Command", $uiCmd) `
-      -WindowStyle Hidden -PassThru
-  $uiProc.Id | Set-Content (Join-Path $logsDir 'open-webui.pid') -Encoding utf8
-  Write-Host "Open WebUI: http://localhost:$webuiPort   (PID $($uiProc.Id))" -ForegroundColor Green
+  $uiId = Start-BobBackgroundProcess `
+      -ArgList @("-NonInteractive", "-Command", $uiCmd) `
+      -PidFile (Join-Path $logsDir 'open-webui.pid')
+  Write-Host "Open WebUI: http://localhost:$webuiPort   (PID $uiId)" -ForegroundColor Green
   if (-not $NoOpen) {
     $sw2 = [Diagnostics.Stopwatch]::StartNew(); $j = 0; $uiUp = $false
     while ($sw2.Elapsed.TotalSeconds -lt 120) {
@@ -83,7 +81,7 @@ if (Test-Path $webui) {
             $uiUp = $true; break
         } catch {}
         # Bail early if the host process died
-        if ($uiProc.HasExited) {
+        if (-not (Get-Process -Id $uiId -ErrorAction SilentlyContinue)) {
             Write-Warning "Open WebUI process exited. Check: bob logs"; break
         }
         Write-Host "`r  $($spin[$j++ % 4]) Starting Open WebUI..." -NoNewline -ForegroundColor DarkGray
@@ -91,7 +89,10 @@ if (Test-Path $webui) {
     }
     if ($uiUp) {
         Write-Host "`r  Open WebUI ready ($([int]$sw2.Elapsed.TotalSeconds)s)           " -ForegroundColor Green
-        Start-Process "http://localhost:$webuiPort"
+        # NC4 — open the browser OS-appropriately (Start-Process URL is a Windows shell-verb thing).
+        $uiUrl = "http://localhost:$webuiPort"
+        if ((Get-BobOS) -eq 'windows') { Start-Process $uiUrl }
+        elseif (Get-Command xdg-open -ErrorAction SilentlyContinue) { & xdg-open $uiUrl 2>$null }
     } else { Write-Warning "Open WebUI didn't respond. Open manually: http://localhost:$webuiPort" }
   }
 } else {

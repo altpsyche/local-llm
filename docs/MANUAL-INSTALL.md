@@ -7,6 +7,52 @@ automated install, or want to understand what the scripts actually do.
 **If you just want to get running quickly, use `install_prereqs.bat` then `setup.bat` instead.**
 This document is for advanced users who prefer to drive each step manually.
 
+The bulk of this guide (steps 3–13) is Windows-specific commands. On **Linux** the same steps run
+under `pwsh` via the OS-aware seam ([PORTABILITY.md](PORTABILITY.md), Module NC) — see the Linux
+section below.
+
+---
+
+## 0. Linux (Module NC)
+
+Bob's orchestration runs on Linux under PowerShell 7 (`pwsh`). Two thin bootstrappers mirror the
+`.bat` entry points; the real build/serve logic is the same OS-aware `.ps1`.
+
+```bash
+# 1. Prerequisites: installs pwsh, then the toolchain (compiler, cmake, ninja, go, node, python3)
+#    via apt/dnf/pacman. Add --cpu to skip the CUDA toolkit (CPU-only tier).
+./install_prereqs.sh            # GPU box (expects NVIDIA driver + CUDA toolkit)
+./install_prereqs.sh --cpu      # no GPU / CI runner
+
+# 2. Build + configure: builds llama.cpp (CUDA, or CPU when no GPU), creates venvs, fetches models,
+#    wires clients. Auto-selects the CPU build + 'cpu' profile when no GPU is detected.
+./setup.sh                      # full
+./setup.sh -Profile cpu         # force the tiny CPU profile
+./setup.sh -SkipModels          # skip downloads
+
+# 3. Run
+pwsh scripts/up.ps1             # bring the stack up (nohup + pidfile)
+./bob agent "say hi"            # or: pwsh scripts/bob.ps1 agent "say hi"
+```
+
+What differs from Windows (all behind [`scripts/_platform.ps1`](../scripts/_platform.ps1)):
+
+| Concern | Windows | Linux |
+|---|---|---|
+| Package install | winget / scoop | apt / dnf / pacman (`Install-Package`) |
+| Compiler / generator | MSVC + Visual Studio cmake | gcc/g++ + Ninja |
+| CUDA toolkit | `C:\Program Files\NVIDIA…` | `/usr/local/cuda*` (`Get-CudaRoot`) |
+| Services | hidden background process | `nohup` + pidfile (`Start-BobBackgroundProcess`) |
+| Agent scheduler | Scheduled Task | crontab line (`Register-AgentTask`) |
+| Secrets | env → `data/secrets.json` | env → `secret-tool` → `data/secrets.json` |
+| Notifications | WinRT toast | `notify-send` |
+
+CUDA toolkit install on Linux is distro-specific — `install_prereqs.sh` installs the toolchain and
+flags CUDA as a manual step (or use `--cpu`). Verify a fresh install end-to-end with
+`pwsh scripts/smoke-linux.ps1 -Up`.
+
+Everything below is the Windows walkthrough.
+
 ---
 
 ## Table of Contents

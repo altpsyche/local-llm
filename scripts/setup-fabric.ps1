@@ -36,7 +36,7 @@ if ($Force -or -not (Test-Path $out)) {
 $cfg  = Get-ModelsConfig
 $port = $cfg.defaults.litellmPort ?? 8081
 
-$fabricDir = Join-Path $env:USERPROFILE '.config\fabric'
+$fabricDir = Get-HomeConfigDir -App 'fabric'   # NC5: %USERPROFILE%\.config\fabric | ~/.config/fabric
 if (-not (Test-Path $fabricDir)) { New-Item -ItemType Directory -Force $fabricDir | Out-Null }
 
 @"

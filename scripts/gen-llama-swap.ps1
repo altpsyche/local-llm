@@ -15,19 +15,26 @@ $name     = $resolved.profile
 $cfg      = $resolved.config
 $models   = $resolved.models
 
+# NC8 — the server binary name is OS-aware (llama-server.exe on Windows, llama-server on Linux) so a
+# Linux/CPU build's generated cmd points at the right file. The '${env.LLAMA_LOCAL_ROOT}' token stays
+# a llama-swap template var (single-quoted), only the exe leaf is appended.
+$srvBin = '${env.LLAMA_LOCAL_ROOT}/bin/' + (Get-BobExeName 'llama-server')
+# CPU tier: no GPU offload, flash-attn/KV-quant off (unsupported / regressive on the CPU backend).
+$isCpu  = ($name -eq 'cpu')
+
 # --- build macros from defaults (overrides the empty placeholder values in models.psd1) ---
 $d = $cfg.defaults
 if (-not $d) { throw 'models.psd1 is missing the defaults block. Add it per MODULE-A docs.' }
 
-$ngl   = if ($null -ne $d.ngl)   { $d.ngl }   else { 99 }
-$fa    = if ($d.flashAttn -ne $false) { '--flash-attn on' } else { '' }
+$ngl   = if ($isCpu) { 0 } elseif ($null -ne $d.ngl) { $d.ngl } else { 99 }
+$fa    = if ($d.flashAttn -ne $false -and -not $isCpu) { '--flash-attn on' } else { '' }
 $batch = if ($d.batch -and $d.batch -ne 512)  { "-b $($d.batch)" }   else { '' }
 $ub    = if ($d.ubatch -and $d.ubatch -ne 512) { "-ub $($d.ubatch)" } else { '' }
 $par   = if ($d.parallel -and $d.parallel -gt 1) { "-np $($d.parallel)" } else { '' }
 $thr   = if ($d.threads -and $d.threads -gt 0)   { "-t $($d.threads)" }   else { '' }
 $numa  = if ($d.numa -and $d.numa -ne '')  { "--numa $($d.numa)" }   else { '' }
 $srvParts = @(
-    '${env.LLAMA_LOCAL_ROOT}/bin/llama-server.exe',
+    $srvBin,
     '--port ${PORT}',
     "-ngl $ngl",
     $fa, $batch, $ub, $numa, $par, $thr
@@ -42,7 +49,7 @@ $kvQuantK = if ($legacyKv)              { $legacyKv } `
 $kvQuantV = if ($legacyKv)              { $legacyKv } `
              elseif ($null -ne $d.kvQuantV) { $d.kvQuantV } `
              else                           { 'q8_0' }
-$cfg.macros['kv'] = if ($kvQuantK -or $kvQuantV) {
+$cfg.macros['kv'] = if ($isCpu) { '' } elseif ($kvQuantK -or $kvQuantV) {
     "--cache-type-k $kvQuantK --cache-type-v $kvQuantV"
 } else { '' }
 

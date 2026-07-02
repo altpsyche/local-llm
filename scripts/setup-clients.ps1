@@ -4,6 +4,7 @@
 # symlink privilege (enable Windows Developer Mode, or run as admin, to get symlinks).
 $ErrorActionPreference = "Stop"
 $repo = Split-Path $PSScriptRoot -Parent
+. "$PSScriptRoot\_models.ps1"   # NC5 — seam (Get-VenvExe) + cross-platform path helpers
 
 function Wire($target, $link) {
   $dir = Split-Path $link -Parent
@@ -18,10 +19,10 @@ function Wire($target, $link) {
   }
 }
 
-# Continue (VS Code / JetBrains): ~/.continue/config.yaml
-Wire "$repo\config\continue\config.yaml" "$HOME\.continue\config.yaml"
+# Continue (VS Code / JetBrains): ~/.continue/config.yaml — Join-Path for OS-correct separators (NC5).
+Wire (Join-Path $repo 'config' 'continue' 'config.yaml') (Join-Path $HOME '.continue' 'config.yaml')
 # aider: ~/.aider.conf.yml  (auto-discovered from home, so no --config flag needed afterwards)
-Wire "$repo\config\aider\.aider.conf.yml" "$HOME\.aider.conf.yml"
+Wire (Join-Path $repo 'config' 'aider' '.aider.conf.yml') (Join-Path $HOME '.aider.conf.yml')
 
 Write-Host "`nChecking tool installations..."
 
@@ -49,7 +50,7 @@ if ($codeCmd) {
     Write-Host "      Install VS Code and re-run: .\scripts\setup-clients.ps1"
 }
 
-$aiderExe = Join-Path $PSScriptRoot '..\tools\venv-aider\Scripts\aider.exe'
+$aiderExe = Get-VenvExe -Venv 'venv-aider' -Exe 'aider'   # NC5: OS-aware venv path
 if (Test-Path $aiderExe) {
     Write-Host "  [OK] aider installed at tools/venv-aider/" -ForegroundColor Green
 } else {

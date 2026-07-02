@@ -11,9 +11,9 @@ $bobCfg   = Get-BobConfig
 $ttsPort  = $bobCfg.voice.ttsPort  ?? 8083
 $ttsVoice = $bobCfg.voice.ttsVoice ?? 'en_GB-alan-medium'
 
-$piperExe  = Join-Path $repo 'bin\piper.exe'
+$piperExe  = Get-BinExe -Base 'piper'                         # NC4: bin\piper.exe | bin/piper
 $voicePath = Join-Path $repo "bin\voices\$ttsVoice.onnx"
-$pyExe     = Join-Path $repo 'tools\venv-litellm\Scripts\python.exe'
+$pyExe     = Get-VenvExe -Venv 'venv-litellm' -Exe 'python'  # NC4: Scripts\python.exe | bin/python
 $serverScript = Join-Path $repo 'scripts\piper_server.py'
 
 if (-not (Test-Path $piperExe))  { throw "piper.exe not found — run: bob setup-voice" }
@@ -39,11 +39,8 @@ if ($NoWindow) {
     if (-not (Test-Path $logsDir)) { New-Item -ItemType Directory $logsDir | Out-Null }
     $logFile = Join-Path $logsDir 'piper.log'
     $cmd = "`$env:PIPER_EXE='$piperExe'; `$env:PIPER_VOICE='$voicePath'; `$env:PIPER_PORT='$ttsPort'; & '$pyExe' '$serverScript' 2>&1 | Tee-Object -FilePath '$logFile'"
-    $proc = Start-Process pwsh `
-        -ArgumentList @("-NonInteractive", "-Command", $cmd) `
-        -WindowStyle Hidden -PassThru
-    $proc.Id | Set-Content $pidFile -Encoding utf8
-    Write-Host "piper-server:  http://localhost:$ttsPort   (PID $($proc.Id))" -ForegroundColor Green
+    $launchPid = Start-BobBackgroundProcess -ArgList @("-NonInteractive", "-Command", $cmd) -PidFile $pidFile
+    Write-Host "piper-server:  http://localhost:$ttsPort   (PID $launchPid)" -ForegroundColor Green
     Write-Host "Voice: $ttsVoice   Logs: logs/piper.log   Stop: bob piper stop" -ForegroundColor DarkGray
 
     # Poll for readiness — FastAPI/uvicorn takes longer to start than a C++ binary
