@@ -11,6 +11,9 @@ Runs inside venv-litellm (has requests). Requires: sqlite-utils.
 Embed endpoint resolved from config (litellmPort); BGE-M3, model=embed.
 """
 
+# Lazy annotations so `-> sqlite_utils.Database` doesn't evaluate (and need the import) at def time.
+from __future__ import annotations
+
 import argparse
 import json
 import math
@@ -18,12 +21,27 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Optional deps: memory needs requests + sqlite-utils. IMPORT-SAFE — never sys.exit at import.
+# bob_core imports this module (memory_store/recall), so a missing memory dep must not kill the whole
+# agent/runtime; and it must not turn a dep-less CI box into a whole-suite collection failure. Absence
+# is surfaced as a clean RuntimeError at the call boundary (CONTRIBUTING §2) via _require_deps().
 try:
     import requests
     import sqlite_utils
-except ImportError as e:
-    print(f"Missing dependency: {e}. Run: pip install sqlite-utils requests", file=sys.stderr)
-    sys.exit(1)
+    _DEPS_ERROR = None
+except ImportError as e:  # noqa: BLE001 — capture, don't exit
+    requests = None
+    sqlite_utils = None
+    _DEPS_ERROR = e
+
+
+def _require_deps() -> None:
+    """Raise a clean RuntimeError if the optional memory deps are absent (caught by cmd_*/main)."""
+    if _DEPS_ERROR is not None:
+        raise RuntimeError(
+            f"memory requires sqlite-utils + requests ({_DEPS_ERROR}). "
+            "Install: pip install sqlite-utils requests"
+        )
 
 _DEFAULT_DB = Path(__file__).parent.parent / "data" / "bob.db"
 EMBED_MODEL = "embed"
@@ -58,6 +76,7 @@ def _litellm() -> "tuple[str, dict]":
 
 
 def get_db(db_path) -> sqlite_utils.Database:
+    _require_deps()
     db_path = Path(db_path)  # accept str (e.g. bob_core._get_db_path) or Path
     db_path.parent.mkdir(parents=True, exist_ok=True)
     db = sqlite_utils.Database(db_path)
@@ -83,6 +102,7 @@ def get_db(db_path) -> sqlite_utils.Database:
 
 
 def embed(text: str) -> list[float]:
+    _require_deps()
     base, headers = _litellm()
     url = f"{base}/embeddings"
     try:
@@ -210,6 +230,7 @@ def cmd_clear(yes: bool, db_path: Path) -> None:
 
 
 def cmd_summarize_session(messages_file: str, model: str, db_path: Path) -> None:
+    _require_deps()
     with open(messages_file, encoding="utf-8") as f:
         messages = json.load(f)
 
@@ -291,18 +312,22 @@ def main() -> None:
     args = parser.parse_args()
     db_path = Path(args.db)
 
-    if args.cmd == "store":
-        cmd_store(args.text, args.source, db_path)
-    elif args.cmd == "recall":
-        cmd_recall(args.query, args.top, args.threshold, db_path)
-    elif args.cmd == "status":
-        cmd_status(db_path)
-    elif args.cmd == "clear":
-        cmd_clear(args.yes, db_path)
-    elif args.cmd == "init-profile":
-        cmd_init_profile(args.name, args.work, db_path)
-    elif args.cmd == "summarize-session":
-        cmd_summarize_session(args.messages_file, args.model, db_path)
+    try:  # CLI boundary — a missing optional dep prints one line + exits 1, never a traceback.
+        if args.cmd == "store":
+            cmd_store(args.text, args.source, db_path)
+        elif args.cmd == "recall":
+            cmd_recall(args.query, args.top, args.threshold, db_path)
+        elif args.cmd == "status":
+            cmd_status(db_path)
+        elif args.cmd == "clear":
+            cmd_clear(args.yes, db_path)
+        elif args.cmd == "init-profile":
+            cmd_init_profile(args.name, args.work, db_path)
+        elif args.cmd == "summarize-session":
+            cmd_summarize_session(args.messages_file, args.model, db_path)
+    except RuntimeError as e:
+        print(f"bob memory: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

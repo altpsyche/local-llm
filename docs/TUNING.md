@@ -355,7 +355,7 @@ Or globally in `config/user.psd1`:
 @{ defaults = @{ noMmap = $true } }
 ```
 
-Verified: `--no-mmap` is fully supported on Windows (via `SetFilePointerEx` + `ReadFile`).
+Verified: `--no-mmap` is fully supported on Windows (via `SetFilePointerEx` + `ReadFile`) and on Linux (native `mmap`/`read`).
 
 ## Memory locking (--mlock)
 
@@ -364,6 +364,8 @@ Verified: `--no-mmap` is fully supported on Windows (via `SetFilePointerEx` + `R
 Combined with `--no-mmap`, mlock fully pins model weights in physical RAM: no disk seeks, no OS eviction to the pagefile. Inference latency for CPU-offloaded layers becomes consistent rather than occasionally spiky.
 
 **Windows requirement:** `SeLockMemoryPrivilege` is required. Without it, llama-server logs a warning and continues without locking.
+
+**Linux requirement:** a sufficient memlock limit (`RLIMIT_MEMLOCK`). Raise it with `ulimit -l unlimited` for the session, or a `memlock` entry in `/etc/security/limits.conf` for persistence. There is no Windows-style privilege to grant — `bob mlock` is a no-op on Linux.
 
 Grant it automatically (UAC prompt, one-time):
 

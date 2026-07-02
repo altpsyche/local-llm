@@ -14,7 +14,9 @@ Run this once per machine. It links the VS Code Continue config and the aider co
 
 ## The `bob` command
 
-`setup.bat` puts `bob` on your PATH. Open a terminal and these commands are available:
+`setup.bat` (Windows) or `./setup.sh` (Linux) puts `bob` on your PATH. Bob runs cross-platform under
+PowerShell 7 — the same commands work on both OSes (see [PORTABILITY.md](PORTABILITY.md)). Open a
+terminal and these commands are available:
 
 ```
 Chat (Bob identity):
@@ -61,8 +63,8 @@ Agent (Phase 3 — Hermes 3 8B, local tool use, optional scheduled tasks):
   bob agent schedule enable/disable <name>
   bob agent schedule remove <name>
   bob agent log                        Tail the agent log (logs/bob-agent.log)
-  bob agent install                    Register BobAgent Windows Scheduled Task
-  bob agent uninstall                  Remove BobAgent task
+  bob agent install                    Register the recurring BobAgent task (Windows Scheduled Task / Linux cron)
+  bob agent uninstall                  Remove the BobAgent task
   bob agent status                     Show BobAgent task state (running/ready/disabled)
 
 Plugins (drop-in scripts in plugins/<name>/invoke.ps1 or .py):
@@ -94,6 +96,7 @@ Management:
   bob profiles                         List VRAM profiles with sizes and active marker
   bob profile <name|auto>              Switch profile (auto = detect from GPU VRAM)
   bob fetch [--list] [profile]         Download models for active/specified profile
+  bob build [--cpu] [--force]          Build llama.cpp (CUDA; --cpu for a no-GPU build, auto when no GPU)
   bob verify-urls [<profile>]          Check all HuggingFace download URLs (needs network)
   bob update                           Pull latest llama.cpp and rebuild
   bob gen                              Regenerate llama-swap.yaml, litellm.yaml, and Open WebUI system prompts
@@ -242,9 +245,9 @@ The server loads a model into VRAM when it first receives a request, and unloads
 
 **mlock:** `fim` and `embed` are pinned in physical RAM with `--mlock`, preventing the OS from paging their weights to disk under memory pressure (e.g. simultaneous VS Code autocomplete, chat, and Open WebUI load). This locks approximately 4 GB of physical RAM permanently. On systems with less than 32 GB of RAM, disable it by setting `mlock = $false` on the `fim` and `embed` entries in `config/user.psd1` (gitignored per-machine override; re-run `bob gen` after editing).
 
-Setting `mlockBig = $true` in `config/user.psd1` extends mlock to the swap-group models (planner, coder, chat), pinning CPU-offloaded weight pages against pagefile eviction. This requires `SeLockMemoryPrivilege` on Windows — run `bob mlock` to check status and grant the privilege automatically (UAC prompt; restart terminal after).
+Setting `mlockBig = $true` in `config/user.psd1` extends mlock to the swap-group models (planner, coder, chat), pinning CPU-offloaded weight pages against pagefile eviction. On Windows this requires `SeLockMemoryPrivilege` — run `bob mlock` to check status and grant the privilege automatically (UAC prompt; restart terminal after). On Linux, raise the memlock limit instead (`ulimit -l unlimited` or `/etc/security/limits.conf`).
 
-To start automatically at login, put a shortcut to `up.ps1` in `shell:startup`, or create a Task Scheduler task set to "At log on" running `pwsh -File C:\bob\scripts\up.ps1 -NoOpen`.
+To start automatically at login: on Windows put a shortcut to `up.ps1` in `shell:startup`, or create a Task Scheduler task set to "At log on" running `pwsh -File C:\bob\scripts\up.ps1 -NoOpen`. On Linux, add a user systemd unit or a `@reboot` cron entry running `pwsh -File <repo>/scripts/up.ps1 -NoOpen`.
 
 ## Available models (16gb profile)
 
@@ -261,6 +264,8 @@ To start automatically at login, put a shortcut to `up.ps1` in `shell:startup`, 
 Every model's GGUF file, HuggingFace source, context size, and launch flags are defined once in [config/models.psd1](../config/models.psd1). The downloader and the runtime config both read from it. Clients reference the role names above (`coder`, `planner`, etc.), so swapping the backing model for a role never requires touching any client configuration.
 
 The `12gb` profile uses smaller variants (about 21 GB on disk instead of 38 GB). The `8gb` profile targets cards like the RTX 3070 and 4060 and is marked unvalidated; it ships with the repo but has not been tested on physical hardware yet. Switch with `bob profile 12gb` or `bob profile 8gb`, or pass `-Profile` to `setup.bat` before the first model download.
+
+There is also a `cpu` profile (a single tiny ~0.5 GB model) for **no-GPU** boxes — CI runners and dev laptops. It proves the serve/agent path works without a GPU (correctness and wiring, not performance); `bob profile auto` selects it automatically when no GPU is detected, and `bob build --cpu` produces a CUDA-off engine to run it. See [PORTABILITY.md](PORTABILITY.md).
 
 ### Pro models (API-backed, no platform fee)
 
@@ -631,9 +636,9 @@ bob agent schedule enable morning-summary
 bob agent schedule remove morning-summary
 ```
 
-Schedules are stored in `data/schedules.json`. The BobAgent Windows Scheduled Task fires every minute and checks which entries are due (5-field cron, 60 s double-fire guard). `bob agent install` registers it; `bob agent status` shows its state.
+Schedules are stored in `data/schedules.json`. A recurring task — a Windows Scheduled Task or a Linux cron entry, registered by `bob agent install` — fires `bob-agent.ps1` every minute, which checks which entries are due (5-field cron, 60 s double-fire guard). `bob agent status` shows its state.
 
-The scheduler runs with `agency = 'silent'`. Results are stored in `data/schedules.json` under `lastRunResult`. If `notify = true` is set on an entry, a Windows toast notification fires with the result.
+The scheduler runs with `agency = 'silent'`. Results are stored in `data/schedules.json` under `lastRunResult`. If `notify = true` is set on an entry, a desktop notification fires with the result (a Windows toast, or `notify-send` on Linux).
 
 ### Memory clip
 

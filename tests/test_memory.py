@@ -13,6 +13,8 @@ def _fake_embed(text: str):
     return [float(len(text)), float(sum(ord(c) for c in text) % 97), 1.0]
 
 
+@unittest.skipUnless(bob_memory._DEPS_ERROR is None,
+                     f"memory deps (sqlite-utils/requests) not installed: {bob_memory._DEPS_ERROR}")
 class TestMemoryCore(unittest.TestCase):
     def setUp(self):
         self._orig = bob_memory.embed

@@ -2,7 +2,7 @@
 
 This is a hands-on tour of every feature in the stack, structured as a typical working session. Follow it end-to-end the first time to see everything in action. After that, jump to any section as a quick reference.
 
-**Prerequisites:** `install_prereqs.bat` and `setup.bat` have been run and completed successfully. You have an open terminal.
+**Prerequisites:** `install_prereqs.bat` + `setup.bat` (Windows) or `./install_prereqs.sh` + `./setup.sh` (Linux) have been run and completed successfully. You have an open terminal. Bob runs cross-platform under PowerShell 7 — see [PORTABILITY.md](PORTABILITY.md).
 
 ---
 
@@ -57,8 +57,8 @@ You should see seven models listed: `planner`, `coder`, `chat`, `fim`, `embed`, 
 
 > **Pro models:** If you've set `DEEPSEEK_API_KEY` and `ZHIPU_API_KEY`, three additional models are available via the LiteLLM proxy at `:8081`: `chat-pro`, `planner-pro`, `coder-pro`. These route directly to DeepSeek and Zhipu APIs — no local GPU required, no platform fee. See [USAGE.md § Pro models](USAGE.md#pro-models-api-backed-no-platform-fee).
 
-> **Tip:** To start everything (including Docker services) automatically at every login, create a Task Scheduler task set to "At log on" running:
-> `pwsh -File C:\bob\scripts\up.ps1 -NoOpen`
+> **Tip:** To start everything (including Docker services) automatically at every login: on Windows create a Task Scheduler task set to "At log on"; on Linux add a user systemd unit or a `@reboot` cron entry — both running:
+> `pwsh -File <repo>/scripts/up.ps1 -NoOpen`
 
 ### Start Docker services
 
@@ -671,7 +671,7 @@ bob agent schedule add morning-summary --cron "0 9 * * *" --goal "check git log 
 bob agent schedule list
 ```
 
-The `BobAgent` Windows Scheduled Task (registered with `bob agent install`) runs every minute and fires any due entries. Results are stored in `data/schedules.json`. The scheduler always runs in `silent` mode — no terminal output.
+The recurring `BobAgent` task (registered with `bob agent install` — a Windows Scheduled Task, or a cron entry on Linux) runs every minute and fires any due entries. Results are stored in `data/schedules.json`. The scheduler always runs in `silent` mode — no terminal output.
 
 ### Save a web page to memory
 

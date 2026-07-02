@@ -1,6 +1,7 @@
 # Contributing to Bob
 
-Bob is a personal, local-first AI assistant (PowerShell CLI + Python agent harness on Windows).
+Bob is a personal, local-first AI assistant (PowerShell CLI + Python agent harness) that runs
+cross-platform on Windows and Linux under PowerShell 7 — see [docs/PORTABILITY.md](docs/PORTABILITY.md).
 This note captures the **conventions** the codebase already follows so new code stays consistent —
 most of it is enforced by the architecture, not by tooling.
 

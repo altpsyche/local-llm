@@ -23,13 +23,17 @@ def _in_secret_dir(rp: Path) -> bool:
     """True if the resolved path sits under a platform secret directory (C3): the resolved
     data-dir secrets file's dir, and the usual home credential dirs."""
     candidates = [
-        osenv.secrets_file().resolve(),                 # <data_dir>/secrets.json (any OS)
+        osenv.secrets_file(),                 # <data_dir>/secrets.json (any OS)
         _home() / ".ssh", _home() / ".aws",
         _home() / ".gnupg", _home() / ".config" / "bob",
     ]
     for base in candidates:
         try:
-            if rp == base or rp.is_relative_to(base):
+            # Resolve BOTH sides: `rp` is already resolved, so the base must be too — otherwise a
+            # Windows 8.3 short-name / symlinked temp home (e.g. RUNNER~1) never matches the long
+            # resolved target and the denial silently misses (green on Linux, leaks on Windows).
+            b = base.resolve()
+            if rp == b or rp.is_relative_to(b):
                 return True
         except (OSError, ValueError):
             continue

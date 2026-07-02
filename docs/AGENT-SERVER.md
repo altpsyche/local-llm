@@ -9,6 +9,8 @@ bob agent serve            # binds agent.serveHost:agent.agentPort (default 127.
 
 The registry and session store are built once at startup and shared across requests.
 
+The server is pure Python (FastAPI + uvicorn), so it runs unchanged on Windows and Linux; `bob agent serve` resolves to `python -m bob agent serve` on any OS (contract C1). On Linux, `scripts/smoke-linux.ps1` exercises `/health` + an owner-scoped session turn + an SSE stream as the end-to-end gate.
+
 ## Security
 
 - **Bind:** loopback (`127.0.0.1`) by default. Set `agent.serveHost = '0.0.0.0'` in `config/bob.psd1`

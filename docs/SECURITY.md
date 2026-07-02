@@ -25,12 +25,16 @@ below names the test that backs it — run `tools\venv-litellm\Scripts\python.ex
 - **Allowlist.** `file_read` returns `Access denied` for any path outside `agent.allowedReadPaths`
   (defaults to the repo root at runtime — [_models.ps1](../scripts/_models.ps1)). `file_write` is
   **disabled** unless `agent.allowedWritePaths` is set.
-- **Secrets denylist (N9).** Even inside an allowed root, `_is_denied_secret` refuses
-  `config.json` (holds `litellmKey` + `apiTokens`), any `*.psd1` (config), any `*.db` (session /
-  memory stores), anything under a `logs/` directory, and `.env*`. This closes the pre-N9 gap
+- **Secrets denylist (N9, OS-aware since NB3/C3).** Even inside an allowed root, `_is_denied_secret`
+  refuses `config.json` (holds `litellmKey` + `apiTokens`), any `*.psd1` (config), any `*.db` (session
+  / memory stores), anything under a `logs/` directory, and `.env*`. NB3 (contract C3) made it
+  OS-aware: it also denies the resolved secrets file (`data/secrets.json`) and the platform secret
+  dirs (`~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/bob`) on every OS. This closes the pre-N9 gap
   where the default repo-root allowlist exposed the proxy key and session DB to a prompt-injected
-  read. To read a legitimately-named-but-safe file that collides with the denylist, place it
-  outside those patterns.
+  read. Secrets themselves resolve through the seam — `osenv.secret()` (Python) / `Get-Secret`
+  (PowerShell, NC1): env → OS keychain → `data/secrets.json` → default; never a git-tracked file. To
+  read a legitimately-named-but-safe file that collides with the denylist, place it outside those
+  patterns.
 
 ### `git_status` / `git_log` / `git_diff` ([scripts/tools/git.py](../scripts/tools/git.py))
 - Read-only git subcommands. **Path allow-list (N9):** `_is_allowed_repo` restricts them to the
